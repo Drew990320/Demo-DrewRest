@@ -15,8 +15,13 @@ module.exports = ({ config }) => {
     raw &&
     (/127\.0\.0\.1/.test(raw) || /\blocalhost\b/i.test(raw));
   const apiUrl = raw && !isLocalhost ? raw : undefined;
+  const basePath = process.env.EXPO_PUBLIC_BASE_PATH?.trim();
   return {
     ...config,
+    experiments: {
+      ...config.experiments,
+      ...(basePath ? { baseUrl: basePath } : {}),
+    },
     extra: {
       ...config.extra,
       ...(apiUrl ? { apiUrl } : {}),
