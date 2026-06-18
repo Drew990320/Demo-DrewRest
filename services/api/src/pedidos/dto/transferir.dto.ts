@@ -1,0 +1,14 @@
+import { IsInt, IsOptional } from 'class-validator';
+
+export class TransferirPedidoDto {
+  /** Compatibilidad: ID interno (no usar en UI). */
+  @IsOptional()
+  @IsInt()
+  id_mesa_nueva?: number;
+
+  /** Recomendado: número visible de mesa (1–15). */
+  @IsOptional()
+  @IsInt()
+  mesa_numero_nuevo?: number;
+}
+

@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+
+# Build / cache
+dist/
+build/
+*.tsbuildinfo
+.cache/
+*.zip
+
+# Env
+.env
+.env.*.local
+
+# Logs & OS
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# Test
+coverage/
+
+# NestJS
+services/api/coverage/
+
+# Expo / React Native
+apps/mobile/.expo/
+apps/mobile/dist/
+apps/mobile/web-build/
+apps/mobile/*.jks
+apps/mobile/*.p8
+apps/mobile/*.p12
+apps/mobile/*.key
+apps/mobile/*.mobileprovision
+apps/mobile/.metro-health-check*
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/extensions.json

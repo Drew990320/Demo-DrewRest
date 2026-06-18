@@ -1,0 +1,2 @@
+# Netlify / compatible: todas las rutas sirven la SPA (evita 404 al refrescar en web).
+/*    /index.html   200

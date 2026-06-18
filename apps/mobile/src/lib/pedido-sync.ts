@@ -1,0 +1,308 @@
+import { connectSocket, getSocket } from './socket';
+import { tituloLugarMesa } from './mesa-label';
+
+export type CocinaLlamaTipoListo = 'entrada' | 'plato' | 'mixto';
+
+export type PedidoUpdatedPayload = {
+  pedidoId: number;
+  mesaId: number;
+  at: string;
+};
+
+export type CocinaLlamaMeseroPayload = {
+  pedidoId: number;
+  mesaId: number;
+  mesaNumero: number;
+  idMesero: number;
+  meseroNombre: string;
+  platosListos: number;
+  /** entrada = mazorcas; plato = resto de cocina; mixto = ambos en la misma llamada */
+  tipo_listo?: CocinaLlamaTipoListo;
+  at: string;
+};
+
+export function tituloCocinaLlamaMesero(
+  tipo: CocinaLlamaTipoListo = 'plato',
+): string {
+  if (tipo === 'entrada') return 'Entradas listas';
+  return 'Cocina te llama';
+}
+
+export function mensajeCocinaLlamaMesero(
+  payload: CocinaLlamaMeseroPayload,
+  opts?: { incluirMesa?: boolean },
+): string {
+  const tipo = payload.tipo_listo ?? 'plato';
+  const lugar =
+    opts?.incluirMesa !== false
+      ? ` · ${tituloLugarMesa(payload.mesaNumero)}`
+      : '';
+  const pedido = ` · pedido #${payload.pedidoId}`;
+
+  if (tipo === 'entrada') {
+    return `Las entradas ya están listas${lugar}${pedido}`;
+  }
+  if (tipo === 'mixto') {
+    return `Platos y entradas listos para recoger${lugar}${pedido}`;
+  }
+  const n = payload.platosListos;
+  return `${n} ${n === 1 ? 'plato listo' : 'platos listos'} para recoger${lugar}${pedido}`;
+}
+
+export type CocinaFaltaPlatoPayload = {
+  pedidoId: number;
+  mesaId: number;
+  mesaNumero: number;
+  idDetalle: number;
+  productoNombre: string;
+  cantidad: number;
+  meseroNombre: string;
+  at: string;
+};
+
+export type CompaneroAgregoItemsPayload = {
+  pedidoId: number;
+  mesaId: number;
+  mesaNumero: number;
+  idMeseroDueno: number;
+  idMeseroQuienAgrego: number;
+  meseroQuienAgregoNombre: string;
+  lineas: { nombre_producto: string; cantidad: number }[];
+  at: string;
+};
+
+type PedidoListener = (payloads: PedidoUpdatedPayload[]) => void;
+type MesasListener = (payloads: PedidoUpdatedPayload[]) => void;
+type CocinaLlamaListener = (payload: CocinaLlamaMeseroPayload) => void;
+type CocinaFaltaPlatoListener = (payload: CocinaFaltaPlatoPayload) => void;
+type CompaneroAgregoListener = (payload: CompaneroAgregoItemsPayload) => void;
+
+const pedidoListeners = new Set<PedidoListener>();
+const mesasListeners = new Set<MesasListener>();
+const cocinaLlamaListeners = new Set<CocinaLlamaListener>();
+const cocinaFaltaPlatoListeners = new Set<CocinaFaltaPlatoListener>();
+const companeroAgregoListeners = new Set<CompaneroAgregoListener>();
+let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+let mesasDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingPedido: PedidoUpdatedPayload[] = [];
+let pendingMesas: PedidoUpdatedPayload[] = [];
+let socketBound = false;
+let lastJoin: {
+  mesaId?: number;
+  cocina?: boolean;
+  resumen?: boolean;
+} = {};
+const ultimaFaltaPlato = { clave: '', en: 0 };
+const ultimoLlamaMesero = { clave: '', en: 0 };
+const ultimoCompaneroAgrego = { clave: '', en: 0 };
+
+function dedupeEvento(
+  clave: string,
+  state: { clave: string; en: number },
+  ventanaMs = 3000,
+): boolean {
+  const ahora = Date.now();
+  if (clave === state.clave && ahora - state.en < ventanaMs) {
+    return true;
+  }
+  state.clave = clave;
+  state.en = ahora;
+  return false;
+}
+
+function rejoinRooms(): void {
+  const s = getSocket();
+  if (!s?.connected) return;
+  if (
+    lastJoin.mesaId != null ||
+    lastJoin.cocina ||
+    lastJoin.resumen
+  ) {
+    s.emit('join', lastJoin);
+  }
+}
+
+const DEBOUNCE_MS = 400;
+
+function flushPedido() {
+  debounceTimer = null;
+  if (pendingPedido.length === 0) return;
+  const batch = pendingPedido;
+  pendingPedido = [];
+  for (const fn of pedidoListeners) {
+    try {
+      fn(batch);
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function flushMesas() {
+  mesasDebounceTimer = null;
+  if (pendingMesas.length === 0) return;
+  const batch = pendingMesas;
+  pendingMesas = [];
+  for (const fn of mesasListeners) {
+    try {
+      fn(batch);
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function schedulePedidoFlush() {
+  if (debounceTimer != null) return;
+  debounceTimer = setTimeout(flushPedido, DEBOUNCE_MS);
+}
+
+function scheduleMesasFlush() {
+  if (mesasDebounceTimer != null) return;
+  mesasDebounceTimer = setTimeout(flushMesas, DEBOUNCE_MS);
+}
+
+/** Un solo listener de socket con debounce para toda la app. */
+export function ensurePedidoSocketSync(): void {
+  const s = connectSocket();
+  if (!s) return;
+  if (!socketBound) {
+    socketBound = true;
+    s.on('pedido:updated', (payload: PedidoUpdatedPayload) => {
+      pendingPedido.push(payload);
+      schedulePedidoFlush();
+    });
+    s.on('mesas:updated', (payload: PedidoUpdatedPayload) => {
+      pendingMesas.push(payload);
+      scheduleMesasFlush();
+    });
+    s.on('cocina:llama-mesero', (payload: CocinaLlamaMeseroPayload) => {
+      const clave = `${payload.pedidoId}:${payload.idMesero}:${payload.platosListos}:${payload.tipo_listo ?? 'plato'}:${payload.at}`;
+      if (dedupeEvento(clave, ultimoLlamaMesero)) return;
+      for (const fn of cocinaLlamaListeners) {
+        try {
+          fn(payload);
+        } catch {
+          // ignore
+        }
+      }
+    });
+    s.on('cocina:falta-plato', (payload: CocinaFaltaPlatoPayload) => {
+      const clave = `${payload.pedidoId}:${payload.idDetalle}:${payload.cantidad}:${payload.at}`;
+      if (dedupeEvento(clave, ultimaFaltaPlato)) return;
+      for (const fn of cocinaFaltaPlatoListeners) {
+        try {
+          fn(payload);
+        } catch {
+          // ignore
+        }
+      }
+    });
+    s.on('mesero:companero-agrego', (payload: CompaneroAgregoItemsPayload) => {
+      const clave = `${payload.pedidoId}:${payload.idMeseroDueno}:${payload.at}`;
+      if (dedupeEvento(clave, ultimoCompaneroAgrego)) {
+        return;
+      }
+      for (const fn of companeroAgregoListeners) {
+        try {
+          fn(payload);
+        } catch {
+          // ignore
+        }
+      }
+    });
+    s.on('connect', () => {
+      rejoinRooms();
+    });
+  }
+  rejoinRooms();
+}
+
+export function joinPedidoRooms(opts: {
+  mesaId?: number;
+  cocina?: boolean;
+  resumen?: boolean;
+}): void {
+  lastJoin = { ...lastJoin, ...opts };
+  ensurePedidoSocketSync();
+  const s = getSocket();
+  s?.emit('join', lastJoin);
+}
+
+export function subscribePedidoUpdates(listener: PedidoListener): () => void {
+  ensurePedidoSocketSync();
+  pedidoListeners.add(listener);
+  return () => {
+    pedidoListeners.delete(listener);
+  };
+}
+
+export function subscribeMesasUpdates(listener: MesasListener): () => void {
+  ensurePedidoSocketSync();
+  mesasListeners.add(listener);
+  return () => {
+    mesasListeners.delete(listener);
+  };
+}
+
+export function subscribeCocinaLlamaMesero(
+  listener: CocinaLlamaListener,
+): () => void {
+  ensurePedidoSocketSync();
+  cocinaLlamaListeners.add(listener);
+  return () => {
+    cocinaLlamaListeners.delete(listener);
+  };
+}
+
+export function subscribeCocinaFaltaPlato(
+  listener: CocinaFaltaPlatoListener,
+): () => void {
+  ensurePedidoSocketSync();
+  cocinaFaltaPlatoListeners.add(listener);
+  return () => {
+    cocinaFaltaPlatoListeners.delete(listener);
+  };
+}
+
+export function subscribeCompaneroAgregoItems(
+  listener: CompaneroAgregoListener,
+): () => void {
+  ensurePedidoSocketSync();
+  companeroAgregoListeners.add(listener);
+  return () => {
+    companeroAgregoListeners.delete(listener);
+  };
+}
+
+export function resumenLineasAgregadas(
+  lineas: { nombre_producto: string; cantidad: number }[],
+): string {
+  return lineas.map((l) => `${l.cantidad}× ${l.nombre_producto}`).join(', ');
+}
+
+/** Refetch solo si algún evento afecta esta mesa. */
+export function batchAfectaMesa(
+  batch: PedidoUpdatedPayload[],
+  idMesa: number,
+): boolean {
+  return batch.some((p) => p.mesaId === idMesa);
+}
+
+/** Refetch de mis-pedidos solo si el batch toca pedidos/mesas del mesero. */
+export function batchAfectaMisPedidos(
+  batch: PedidoUpdatedPayload[],
+  mesaIds: ReadonlySet<number> | readonly number[],
+  pedidoIds?: ReadonlySet<number> | readonly number[],
+): boolean {
+  const mesas = mesaIds instanceof Set ? mesaIds : new Set(mesaIds);
+  const pedidos =
+    pedidoIds == null
+      ? null
+      : pedidoIds instanceof Set
+        ? pedidoIds
+        : new Set(pedidoIds);
+  return batch.some(
+    (p) => mesas.has(p.mesaId) || (pedidos?.has(p.pedidoId) ?? false),
+  );
+}

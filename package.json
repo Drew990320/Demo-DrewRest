@@ -1,0 +1,27 @@
+{
+  "name": "la-reserva",
+  "private": true,
+  "description": "Monorepo La Reserva: API (NestJS) + app móvil (Expo). Instala dependencias en cada carpeta (ver scripts).",
+  "scripts": {
+    "api": "npm run start:dev --prefix services/api",
+    "api:build": "npm run build --prefix services/api",
+    "api:install": "npm install --prefix services/api",
+    "mobile": "npm run start --prefix apps/mobile",
+    "mobile:android": "npm run android --prefix apps/mobile",
+    "mobile:ios": "npm run ios --prefix apps/mobile",
+    "mobile:web": "npm run web --prefix apps/mobile",
+    "mobile:install": "npm install --prefix apps/mobile",
+    "shared-types:install": "npm install --prefix packages/shared-types",
+    "install:all": "npm run api:install && npm run mobile:install && npm run shared-types:install",
+    "prisma:deploy": "npm run prisma:deploy --prefix services/api",
+    "prisma:ensure-mesas": "npm run prisma:ensure-mesas --prefix services/api",
+    "deploy:local:ip": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/show-lan-ip.ps1",
+    "la-reserva:empaquetar-api": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/empaquetar-api-la-reserva.ps1",
+    "la-reserva:empaquetar-web": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/empaquetar-web-la-reserva.ps1",
+    "mobile:build:android:preview": "npm exec --prefix apps/mobile -- eas-cli build --platform android --profile preview",
+    "mobile:eas:login": "npm exec --prefix apps/mobile -- eas-cli login"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
