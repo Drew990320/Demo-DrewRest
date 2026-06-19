@@ -1,8 +1,9 @@
 # Dependencies
 node_modules/
-# Expo export en LaReserva (rutas con "node_modules" en el nombre, no son npm)
+# Expo export en LaReserva (rutas con "node_modules" o "build" en el nombre, no son npm)
 !LaReserva/web/assets/
 !LaReserva/web/assets/**
+!LaReserva/web/assets/**/build/**
 
 # Build / cache
 dist/
