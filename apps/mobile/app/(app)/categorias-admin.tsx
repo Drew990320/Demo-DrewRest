@@ -1,3 +1,4 @@
+import { colors } from '../../src/lib/theme';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -185,16 +186,16 @@ export default function CategoriasAdminScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f6f4ee' },
+  container: { flex: 1, backgroundColor: colors.background },
   pad: { paddingTop: 16 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  intro: { color: '#6f6e67', fontSize: 13, marginBottom: 12, lineHeight: 18 },
+  intro: { color: colors.textMuted, fontSize: 13, marginBottom: 12, lineHeight: 18 },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 14,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#e5e2d8',
+    borderColor: colors.border,
     flex: 1,
   },
   catIconHead: {

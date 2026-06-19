@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseIntPipe,
@@ -49,6 +50,13 @@ export class MesasController {
     @Body() dto: UpdateMesaDto,
   ) {
     return this.mesas.actualizarMesa(id, dto);
+  }
+
+  @Delete('admin/:id')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  eliminar(@Param('id', ParseIntPipe) id: number) {
+    return this.mesas.eliminarMesa(id);
   }
 
   /** Mesa virtual 99: venta rápida de bebidas sin mesa asignada. */

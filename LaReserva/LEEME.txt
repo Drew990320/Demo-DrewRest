@@ -4,21 +4,20 @@
 
 CONTENIDO DE ESTA CARPETA
 -------------------------
-  api\          Servidor NestJS compilado (dist, node_modules, prisma, package.json)
+  api\          Servidor NestJS compilado (dist, node_modules, vendor, prisma, package.json)
 
   Si falta api\dist\main.js:
-  • En el equipo de desarrollo (código fuente): compila con "npm run build" en
-    services\api y luego ejecuta scripts\empaquetar-api-la-reserva.ps1 desde la
-    raíz del proyecto para rellenar LaReserva\api automáticamente.
-  • En el PC del cliente: deben copiarte la carpeta api\ ya preparada (no basta
-    el .bat solo sin esa carpeta).
+  • En el equipo de desarrollo:  npm run la-reserva:empaquetar
+    (compila API + web y deja LaReserva\ listo para copiar al restaurante).
+  • En el PC del cliente: deben copiarte la carpeta LaReserva\ completa.
   web\          Archivos estáticos de la app web (export Expo: index.html, _expo, etc.)
 
   Si falta web\index.html:
   • En desarrollo:  powershell -ExecutionPolicy Bypass -File scripts\empaquetar-web-la-reserva.ps1
     (usa EXPO_PUBLIC_API_URL de apps\mobile\.env o http://192.168.1.7:3000 por defecto).
   apk\          Instalable Android para meseros/cocina (opcional)
-  inicio.bat                    Doble clic para arrancar API + web
+  inicio.bat                    Doble clic para arrancar API + web (muestra IP al inicio y al final)
+  mostrar-ip.bat                Solo la IP para el celular (Wi-Fi o Ethernet, sin redes virtuales)
   ejecutar-baseline-prisma.bat  Solo si migrate falla con P3005 (ver arriba)
   detener.bat                   Cierra el API y el servidor web
   detener.ps1   Ayuda usada por detener.bat (no hace falta ejecutarlo a mano)
@@ -72,10 +71,12 @@ USUARIOS INICIALES (AUTOMÁTICO)
 
 ARRANQUE
 --------
-  1. Doble clic en inicio.bat
-  2. Espera a que terminen los cuatro pasos (migraciones, bootstrap, API, web)
-  3. Abre en el navegador:  http://localhost:8080
-     (Puerto 8080: no hace falta ejecutar el .bat como administrador.)
+  1. PostgreSQL en marcha y base creada (ej. la_reserva).
+  2. Edita api\.env con DATABASE_URL y JWT_SECRET (conserva este archivo al
+     actualizar LaReserva en el mismo PC).
+  3. Doble clic en inicio.bat
+  4. El .bat aplica migraciones pendientes, verifica datos base e inicia API+web.
+  5. Abre en el navegador la URL que muestra inicio.bat (puerto 8080, o el siguiente libre si 8080 esta ocupado p. ej. por Postgres EDB).
 
   Desde otro dispositivo en la misma red Wi-Fi:
      http://IP_WIFI_DE_ESTE_PC:8080
@@ -107,6 +108,22 @@ WI-FI SIN INTERNET (solo red local)
 DETENER
 -------
   Doble clic en detener.bat, o cierra las dos ventanas de consola (API y Web).
+
+
+ACTUALIZAR EN EL MISMO PC
+-------------------------
+  1. detener.bat
+  2. Sustituye la carpeta LaReserva por la nueva (o solo api\ + web\).
+  3. NO borres api\.env (tiene tu PostgreSQL y JWT).
+  4. inicio.bat aplicará las migraciones nuevas sobre la misma base de datos.
+
+
+ACTUALIZAR EN OTRO PC (carpeta nueva)
+-------------------------------------
+  1. Copia LaReserva\ completa (incluye api\node_modules, vendor, dist, web\).
+  2. Crea/edita api\.env con la DATABASE_URL de ESE PC.
+  3. inicio.bat crea el esquema si la base está vacía, o migra si ya existía.
+  4. Si borras LaReserva\ y la vuelves a copiar, repite pasos 2-3 (la base queda en PostgreSQL).
 
 
 APP ANDROID (APK)

@@ -19,6 +19,7 @@ import { IconTooltipButton } from '../../src/components/IconTooltipButton';
 import { PedidosActivosChips } from '../../src/components/PedidosActivosChips';
 import { api } from '../../src/lib/api';
 import { useSeleccionPedido } from '../../src/hooks/useSeleccionPedido';
+import { colors } from '../../src/lib/theme';
 
 type MostradorMesa = {
   id_mesa: number;
@@ -200,35 +201,35 @@ export default function MostradorScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f6f4ee', padding: 16 },
+  container: { flex: 1, backgroundColor: colors.background, padding: 16 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
-  err: { color: '#6f6e67', textAlign: 'center' },
+  err: { color: colors.textMuted, textAlign: 'center' },
   headerCard: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#e5e2d8',
+    borderColor: colors.border,
     marginBottom: 12,
   },
-  kicker: { color: '#6f6e67', fontWeight: '700' },
-  h1: { fontSize: 22, fontWeight: '800', color: '#262622', marginTop: 4 },
-  sub: { marginTop: 8, color: '#6f6e67', lineHeight: 20 },
+  kicker: { color: colors.textMuted, fontWeight: '700' },
+  h1: { fontSize: 22, fontWeight: '800', color: colors.text, marginTop: 4 },
+  sub: { marginTop: 8, color: colors.textMuted, lineHeight: 20 },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#e5e2d8',
+    borderColor: colors.border,
     gap: 12,
   },
-  estado: { color: '#262622', marginBottom: 4 },
+  estado: { color: colors.text, marginBottom: 4 },
   chipsBox: {
     marginTop: 8,
-    backgroundColor: '#faf9f6',
-    borderColor: '#ece9df',
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.borderLight,
   },
-  sectionLabel: { fontWeight: '800', color: '#262622', marginTop: 8 },
+  sectionLabel: { fontWeight: '800', color: colors.text, marginTop: 8 },
   pedidoRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -236,33 +237,33 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#ece9df',
+    borderTopColor: colors.borderLight,
   },
-  pedidoId: { fontWeight: '900', color: '#2f5e4f', fontSize: 16 },
+  pedidoId: { fontWeight: '900', color: colors.primary, fontSize: 16 },
   pedidoActions: { flexDirection: 'row', gap: 8, flexShrink: 1 },
   primary: {
-    backgroundColor: '#2f5e4f',
+    backgroundColor: colors.primary,
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
   },
-  primaryText: { color: '#fff', fontWeight: '900' },
+  primaryText: { color: colors.surface, fontWeight: '900' },
   secondary: {
-    backgroundColor: '#efece2',
+    backgroundColor: colors.backgroundAlt,
     borderRadius: 12,
     paddingVertical: 10,
     paddingHorizontal: 12,
     alignItems: 'center',
   },
-  secondaryText: { color: '#262622', fontWeight: '800', fontSize: 13 },
+  secondaryText: { color: colors.text, fontWeight: '800', fontSize: 13 },
   tertiary: {
     borderWidth: 1,
-    borderColor: '#2f5e4f',
+    borderColor: colors.primary,
     borderRadius: 12,
     paddingVertical: 10,
     paddingHorizontal: 12,
     alignItems: 'center',
   },
-  tertiaryText: { color: '#2f5e4f', fontWeight: '800', fontSize: 13 },
+  tertiaryText: { color: colors.primary, fontWeight: '800', fontSize: 13 },
   disabled: { opacity: 0.6 },
 });

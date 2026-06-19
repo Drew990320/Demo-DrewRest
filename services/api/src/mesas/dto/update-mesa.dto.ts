@@ -12,6 +12,13 @@ export class UpdateMesaDto {
   @Type(() => Number)
   @IsInt()
   @Min(1)
+  @Max(999)
+  numero?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   @Max(50)
   capacidad?: number;
 

@@ -22,8 +22,4 @@ export type ComandaTicket = {
   es_adicional?: boolean;
 };
 
-export function etiquetaMesaComanda(numero: number): string {
-  if (numero === 98) return 'Para llevar';
-  if (numero === 99) return 'Mostrador';
-  return `Mesa ${numero}`;
-}
+export { etiquetaMesaComanda } from '@la-reserva/shared-domain/mesa-label';

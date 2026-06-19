@@ -1,19 +1,21 @@
 import { BadRequestException } from '@nestjs/common';
 import type { EstadoPedido, Prisma } from '@prisma/client';
-import { MESA_PARA_LLEVAR_NUMERO } from '../mesas/mesas.service';
+import {
+  NOMBRE_PRODUCTO_MAZORCA,
+  pedidoUsaLineaMazorca,
+  esDetalleMazorcaAcompanamiento,
+} from '@la-reserva/shared-domain/mazorca-pedido';
+import {
+  cantidadLineaMazorcaInicial,
+  planificarSyncMazorca,
+  type LineaMazorcaSync,
+} from '@la-reserva/shared-domain/mazorca-linea-pedido';
 
-const NOMBRE_PRODUCTO_MAZORCA = 'Mazorca (acompañamiento)';
-
-/** Mesa 98 (para llevar): comensales solo referencia; sin línea de mazorca. */
-export function pedidoUsaLineaMazorca(mesaNumero: number): boolean {
-  return mesaNumero !== MESA_PARA_LLEVAR_NUMERO;
-}
-
-export function esDetalleMazorcaAcompanamiento(producto: {
-  esAcompanamientoMazorca: boolean;
-}): boolean {
-  return producto.esAcompanamientoMazorca;
-}
+export {
+  NOMBRE_PRODUCTO_MAZORCA,
+  pedidoUsaLineaMazorca,
+  esDetalleMazorcaAcompanamiento,
+};
 
 let cachedMazorcaProductId: number | null = null;
 
@@ -36,28 +38,20 @@ export async function idProductoMazorcaAcompanamiento(
   return p.idProducto;
 }
 
-type LineaMazorca = {
-  idDetalle: number;
-  cantidad: number;
-  enviadoCocina: boolean;
-  listoParaRecoger: boolean;
-  listoCocina: boolean;
-};
-
-function cantidadBloqueada(lineas: LineaMazorca[]): number {
-  return lineas.reduce(
-    (s, l) =>
-      s + (l.listoCocina || l.listoParaRecoger ? l.cantidad : 0),
-    0,
-  );
-}
-
-function cantidadTotal(lineas: LineaMazorca[]): number {
-  return lineas.reduce((s, l) => s + l.cantidad, 0);
-}
-
-function lineaEditable(lineas: LineaMazorca[]): LineaMazorca | undefined {
-  return lineas.find((l) => !l.listoCocina && !l.listoParaRecoger);
+function toLineasSync(
+  lineas: {
+    idDetalle: number;
+    cantidad: number;
+    listoCocina: boolean;
+    listoParaRecoger: boolean;
+  }[],
+): LineaMazorcaSync[] {
+  return lineas.map((l) => ({
+    id_detalle: l.idDetalle,
+    cantidad: l.cantidad,
+    listo_cocina: l.listoCocina,
+    listo_para_recoger: l.listoParaRecoger,
+  }));
 }
 
 /** Sincroniza la línea automática de mazorca con el número de comensales. */
@@ -72,17 +66,6 @@ export async function sincronizarLineaMazorcaAcompanamiento(
 ): Promise<void> {
   const productoId = await idProductoMazorcaAcompanamiento(tx);
 
-  if (!pedidoUsaLineaMazorca(params.mesaNumero)) {
-    await tx.detallePedido.deleteMany({
-      where: { idPedido: params.idPedido, idProducto: productoId },
-    });
-    return;
-  }
-
-  if (params.numComensales < 1) {
-    throw new BadRequestException('Debe haber al menos 1 comensal');
-  }
-
   const lineas = await tx.detallePedido.findMany({
     where: { idPedido: params.idPedido, idProducto: productoId },
     orderBy: { idDetalle: 'asc' },
@@ -95,66 +78,51 @@ export async function sincronizarLineaMazorcaAcompanamiento(
     },
   });
 
-  const total = cantidadTotal(lineas);
-  const bloqueada = cantidadBloqueada(lineas);
+  const plan = planificarSyncMazorca({
+    usa_linea_mazorca: pedidoUsaLineaMazorca(params.mesaNumero),
+    num_comensales: params.numComensales,
+    lineas: toLineasSync(lineas),
+  });
 
-  if (params.numComensales < bloqueada) {
-    throw new BadRequestException(
-      'No puedes bajar comensales por debajo de las mazorcas ya listas o entregadas',
-    );
-  }
-
-  if (total === params.numComensales) {
-    return;
-  }
-
-  const enviadoNuevo = params.estadoPedido === 'en_cocina';
-
-  if (total < params.numComensales) {
-    const agregar = params.numComensales - total;
-    const editable = lineaEditable(lineas);
-    if (editable) {
-      await tx.detallePedido.update({
-        where: { idDetalle: editable.idDetalle },
-        data: { cantidad: editable.cantidad + agregar },
+  switch (plan.tipo) {
+    case 'limpiar':
+      await tx.detallePedido.deleteMany({
+        where: { idPedido: params.idPedido, idProducto: productoId },
       });
       return;
-    }
-    await tx.detallePedido.create({
-      data: {
-        idPedido: params.idPedido,
-        idProducto: productoId,
-        cantidad: agregar,
-        precioUnitario: 0,
-        enviadoCocina: enviadoNuevo,
-      },
-    });
-    return;
-  }
-
-  let quitar = total - params.numComensales;
-  const editables = lineas
-    .filter((l) => !l.listoCocina && !l.listoParaRecoger)
-    .sort((a, b) => b.idDetalle - a.idDetalle);
-
-  for (const l of editables) {
-    if (quitar <= 0) break;
-    const resta = Math.min(quitar, l.cantidad);
-    quitar -= resta;
-    if (l.cantidad === resta) {
-      await tx.detallePedido.delete({ where: { idDetalle: l.idDetalle } });
-    } else {
-      await tx.detallePedido.update({
-        where: { idDetalle: l.idDetalle },
-        data: { cantidad: l.cantidad - resta },
+    case 'error':
+      throw new BadRequestException(plan.mensaje);
+    case 'sin_cambios':
+      return;
+    case 'subir':
+      if (plan.modo === 'editar') {
+        await tx.detallePedido.update({
+          where: { idDetalle: plan.id_detalle },
+          data: { cantidad: plan.nueva_cantidad },
+        });
+        return;
+      }
+      await tx.detallePedido.create({
+        data: {
+          idPedido: params.idPedido,
+          idProducto: productoId,
+          cantidad: plan.cantidad,
+          precioUnitario: 0,
+          enviadoCocina: params.estadoPedido === 'en_cocina',
+        },
       });
-    }
-  }
-
-  if (quitar > 0) {
-    throw new BadRequestException(
-      'No se pudo ajustar comensales: hay mazorcas ya listas o en mesa',
-    );
+      return;
+    case 'bajar':
+      for (const id of plan.eliminar) {
+        await tx.detallePedido.delete({ where: { idDetalle: id } });
+      }
+      for (const row of plan.actualizar) {
+        await tx.detallePedido.update({
+          where: { idDetalle: row.id_detalle },
+          data: { cantidad: row.nueva_cantidad },
+        });
+      }
+      return;
   }
 }
 
@@ -167,22 +135,25 @@ export async function crearLineaMazorcaInicial(
     mesaNumero: number;
   },
 ): Promise<void> {
-  if (!pedidoUsaLineaMazorca(params.mesaNumero)) return;
   const productoId = await idProductoMazorcaAcompanamiento(tx);
   const existe = await tx.detallePedido.findFirst({
     where: { idPedido: params.idPedido, idProducto: productoId },
     select: { idDetalle: true },
   });
-  if (existe) return;
+  const cantidad = cantidadLineaMazorcaInicial({
+    usa_linea_mazorca: pedidoUsaLineaMazorca(params.mesaNumero),
+    ya_tiene_linea: Boolean(existe),
+    num_comensales: params.numComensales,
+  });
+  if (cantidad == null) return;
+
   await tx.detallePedido.create({
     data: {
       idPedido: params.idPedido,
       idProducto: productoId,
-      cantidad: params.numComensales,
+      cantidad,
       precioUnitario: 0,
       enviadoCocina: false,
     },
   });
 }
-
-export { NOMBRE_PRODUCTO_MAZORCA };

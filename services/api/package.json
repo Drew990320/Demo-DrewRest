@@ -16,6 +16,7 @@
     "prisma:baseline": "prisma migrate resolve --applied 20250402120000_modo_para_llevar_empaque && prisma migrate resolve --applied 20250402140000_caja_diaria && prisma migrate resolve --applied 20250402180000_cocina_prioridad_proteina && prisma migrate resolve --applied 20250405120000_pedido_historial && prisma migrate resolve --applied 20250410140000_mesa_disponible_por_dia",
     "postinstall": "prisma generate",
     "build": "nest build",
+    "prebuild": "npm run build --prefix ../../packages/shared-domain",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
@@ -33,6 +34,7 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@la-reserva/shared-domain": "file:../../packages/shared-domain",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.3",
     "@nestjs/core": "^11.0.1",

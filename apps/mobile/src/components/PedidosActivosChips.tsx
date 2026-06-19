@@ -1,3 +1,4 @@
+import { colors } from '../lib/theme';
 import {
   Pressable,
   ScrollView,
@@ -60,26 +61,26 @@ export function PedidosActivosChips<T extends PedidoChip>({
 
 const styles = StyleSheet.create({
   box: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#e5e2d8',
+    borderColor: colors.border,
   },
-  label: { fontWeight: '600', marginBottom: 8, color: '#3d3d3a' },
+  label: { fontWeight: '600', marginBottom: 8, color: colors.text },
   row: { flexDirection: 'row', gap: 8, paddingVertical: 4 },
   chip: {
     paddingVertical: 10,
     paddingHorizontal: 14,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#d9d5ca',
-    backgroundColor: '#faf9f6',
+    borderColor: colors.borderInput,
+    backgroundColor: colors.surfaceMuted,
   },
   chipOn: {
-    borderColor: '#2f5e4f',
-    backgroundColor: '#e8f2ee',
+    borderColor: colors.primary,
+    backgroundColor: colors.primaryLight,
   },
-  chipText: { fontWeight: '800', color: '#3d3d3a' },
-  chipTextOn: { color: '#24493e' },
+  chipText: { fontWeight: '800', color: colors.text },
+  chipTextOn: { color: colors.primaryDark },
 });

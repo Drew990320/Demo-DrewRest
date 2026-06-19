@@ -20,9 +20,9 @@ import { showBriefNotice, showNotice } from '../../src/lib/app-dialog';
 import { appShadow } from '../../src/lib/shadow';
 import { tituloLugarMesa } from '../../src/lib/mesa-label';
 import {
+  agruparLineasCocinaVisibles,
   agruparPlatosPendientes,
   normalizarPedidoCocinaView,
-  ordenarDetallesCocina,
   pedidoActivoEnCocina,
   type PedidoCocinaView,
 } from '../../src/lib/cocina-pedido-view';
@@ -30,6 +30,7 @@ import { puedeVerCocina } from '../../src/hooks/usePuedeTomarPedidos';
 import { useResponsive } from '../../src/hooks/useResponsive';
 import { joinPedidoRooms, subscribeCocinaFaltaPlato } from '../../src/lib/pedido-sync';
 import { useRefetchOnSync } from '../../src/hooks/useRefetchOnSync';
+import { colors } from '../../src/lib/theme';
 
 type CocinaResponse = {
   pedidos: PedidoCocinaView[];
@@ -65,7 +66,7 @@ export default function CocinaScreen() {
   const [llamandoId, setLlamandoId] = useState<number | null>(null);
   const [prioridadBusyId, setPrioridadBusyId] = useState<number | null>(null);
   const [reimprimiendoId, setReimprimiendoId] = useState<number | null>(null);
-  const [listoBusyId, setListoBusyId] = useState<number | null>(null);
+  const [listoBusyKey, setListoBusyKey] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!puedeVer) {
@@ -101,7 +102,6 @@ export default function CocinaScreen() {
   useEffect(() => {
     if (!puedeVer) return;
     return subscribeCocinaFaltaPlato((payload) => {
-      load().catch(() => undefined);
       void showBriefNotice(
         'Falta en cocina',
         `${payload.meseroNombre} no encontró ${payload.cantidad}× ${payload.productoNombre} en ${tituloLugarMesa(payload.mesaNumero)}.`,
@@ -161,14 +161,19 @@ export default function CocinaScreen() {
     }
   }
 
-  async function marcarListoDetalle(idDetalle: number, listo: boolean) {
-    setListoBusyId(idDetalle);
+  async function marcarListoGrupo(ids: number[], listo: boolean) {
+    const busyKey = ids.join('-');
+    setListoBusyKey(busyKey);
     try {
-      await api(`/pedidos/detalles/${idDetalle}/listo-para-recoger`, {
-        method: 'PATCH',
-        token,
-        body: JSON.stringify({ listo_para_recoger: listo }),
-      });
+      await Promise.all(
+        ids.map((idDetalle) =>
+          api(`/pedidos/detalles/${idDetalle}/listo-para-recoger`, {
+            method: 'PATCH',
+            token,
+            body: JSON.stringify({ listo_para_recoger: listo }),
+          }),
+        ),
+      );
       await load();
     } catch (e) {
       await showBriefNotice(
@@ -177,7 +182,7 @@ export default function CocinaScreen() {
         'error',
       );
     } finally {
-      setListoBusyId(null);
+      setListoBusyKey(null);
     }
   }
 
@@ -347,7 +352,7 @@ export default function CocinaScreen() {
         </Text>
       ) : (
         cola.map((p) => {
-          const lineas = ordenarDetallesCocina(p.detalles);
+          const lineas = agruparLineasCocinaVisibles(p.detalles);
           const esBaja = p.prioridad_cocina === 'baja';
           return (
             <View
@@ -375,13 +380,18 @@ export default function CocinaScreen() {
               </View>
 
               <View style={styles.comanda}>
-                {lineas.map((d) => (
+                {lineas.map((d) => {
+                  const grupoKey = d.ids_detalle.join('-');
+                  const listo = d.listo_para_recoger;
+                  const listoParcial = d.listo_para_recoger_parcial;
+                  return (
                   <View
-                    key={d.id_detalle}
+                    key={grupoKey}
                     style={[
                       styles.linea,
                       d.es_acompanamiento_mazorca && styles.lineaMazorca,
-                      d.listo_para_recoger && styles.lineaListo,
+                      listo && styles.lineaListo,
+                      listoParcial && styles.lineaListoParcial,
                     ]}
                   >
                     <Text style={styles.lineaNombre}>
@@ -390,7 +400,7 @@ export default function CocinaScreen() {
                     {d.nota_cocina ? (
                       <Text style={styles.lineaNota}>↳ {d.nota_cocina}</Text>
                     ) : null}
-                    {d.personalizaciones.length > 0 ? (
+                    {d.personalizaciones && d.personalizaciones.length > 0 ? (
                       <Text style={styles.lineaPers}>
                         {d.personalizaciones.map((x) => x.descripcion).join(' · ')}
                       </Text>
@@ -398,28 +408,33 @@ export default function CocinaScreen() {
                     <View style={styles.lineaFoot}>
                       <IconTooltipButton
                         icon={
-                          d.listo_para_recoger
+                          listo
                             ? 'close-circle-outline'
                             : 'checkmark-circle-outline'
                         }
                         label={
-                          d.listo_para_recoger
+                          listo
                             ? 'Quitar aviso de listo'
-                            : 'Marcar listo para recoger'
+                            : listoParcial
+                              ? 'Marcar todo el grupo listo'
+                              : 'Marcar listo para recoger'
                         }
-                        variant={d.listo_para_recoger ? 'secondary' : 'primary'}
+                        variant={listo ? 'secondary' : 'primary'}
                         size={20}
-                        disabled={listoBusyId === d.id_detalle}
+                        disabled={listoBusyKey === grupoKey}
                         onPress={() =>
-                          marcarListoDetalle(d.id_detalle, !d.listo_para_recoger)
+                          marcarListoGrupo(d.ids_detalle, !listo)
                         }
                       />
-                      {d.listo_para_recoger ? (
+                      {listo ? (
                         <Text style={styles.lineaListoText}>Lista en el pase</Text>
+                      ) : listoParcial ? (
+                        <Text style={styles.lineaListoText}>Parte lista</Text>
                       ) : null}
                     </View>
                   </View>
-                ))}
+                );
+                })}
               </View>
 
               <ActionIconBar
@@ -493,17 +508,17 @@ export default function CocinaScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f6f4ee', padding: 16 },
+  container: { flex: 1, backgroundColor: colors.background, padding: 16 },
   center: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
-    backgroundColor: '#f6f4ee',
+    backgroundColor: colors.background,
   },
   denied: {
     textAlign: 'center',
-    color: '#6f6e67',
+    color: colors.textMuted,
     marginBottom: 16,
     fontSize: 16,
   },
@@ -514,9 +529,9 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     paddingHorizontal: 4,
   },
-  greeting: { color: '#6f6e67', fontWeight: '700', flex: 1 },
+  greeting: { color: colors.textMuted, fontWeight: '700', flex: 1 },
   resumenBar: {
-    backgroundColor: '#1e4d3a',
+    backgroundColor: colors.primaryDark,
     borderRadius: 14,
     padding: 14,
     marginBottom: 16,
@@ -530,17 +545,17 @@ const styles = StyleSheet.create({
   resumenNum: {
     fontSize: 40,
     fontWeight: '900',
-    color: '#fff',
+    color: colors.surface,
     lineHeight: 44,
     minWidth: 48,
   },
   resumenLabel: {
-    color: '#fff',
+    color: colors.surface,
     fontWeight: '800',
     fontSize: 16,
   },
   resumenMeta: {
-    color: '#b8d9cc',
+    color: colors.primaryMuted,
     fontSize: 13,
     marginTop: 2,
   },
@@ -553,27 +568,27 @@ const styles = StyleSheet.create({
     maxWidth: '100%',
   },
   chipCerdo: { backgroundColor: 'rgba(201,162,39,0.25)' },
-  chipText: { color: '#fff', fontWeight: '800', fontSize: 13 },
-  chipTextCerdo: { color: '#ffe9a8' },
-  chipMesas: { color: '#b8d9cc', fontSize: 11, marginTop: 2 },
+  chipText: { color: colors.surface, fontWeight: '800', fontSize: 13 },
+  chipTextCerdo: { color: colors.secondaryLight },
+  chipMesas: { color: colors.primaryMuted, fontSize: 11, marginTop: 2 },
   empty: {
-    color: '#6f6e67',
+    color: colors.textMuted,
     textAlign: 'center',
     fontSize: 15,
     marginTop: 24,
     paddingHorizontal: 16,
   },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 14,
     padding: 14,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#e5e2d8',
+    borderColor: colors.border,
     ...appShadow('elevated'),
   },
-  cardAlta: { borderLeftWidth: 4, borderLeftColor: '#2f8f5f' },
-  cardBaja: { borderLeftWidth: 4, borderLeftColor: '#c9a227' },
+  cardAlta: { borderLeftWidth: 4, borderLeftColor: colors.danger },
+  cardBaja: { borderLeftWidth: 4, borderLeftColor: colors.warning },
   cardHead: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -584,24 +599,24 @@ const styles = StyleSheet.create({
   mesaTitle: {
     fontSize: 22,
     fontWeight: '900',
-    color: '#262622',
+    color: colors.text,
   },
   cardSub: {
-    color: '#6f6e67',
+    color: colors.textMuted,
     fontSize: 13,
     marginTop: 2,
     lineHeight: 18,
   },
   badgeBaja: {
-    backgroundColor: '#fff8e6',
+    backgroundColor: colors.secondaryLight,
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderWidth: 1,
-    borderColor: '#e8d9a8',
+    borderColor: colors.warningBorder,
   },
   badgeBajaText: {
-    color: '#8a6a1a',
+    color: colors.warningText,
     fontWeight: '800',
     fontSize: 11,
   },
@@ -609,20 +624,27 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingTop: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#ece9df',
+    borderTopColor: colors.borderLight,
     gap: 8,
   },
   linea: { gap: 2 },
   lineaMazorca: {
-    backgroundColor: '#faf6eb',
+    backgroundColor: colors.warningLight,
     borderRadius: 8,
     padding: 8,
     borderWidth: 1,
-    borderColor: '#e8d9a8',
+    borderColor: colors.warningBorder,
   },
   lineaListo: {
-    borderColor: '#2f5e4f',
-    backgroundColor: '#f0f7f4',
+    borderColor: colors.successBorder,
+    backgroundColor: colors.successLight,
+  },
+  lineaListoParcial: {
+    borderWidth: 1,
+    borderColor: colors.secondary,
+    borderRadius: 8,
+    padding: 8,
+    backgroundColor: colors.secondaryLight,
   },
   lineaFoot: {
     flexDirection: 'row',
@@ -633,22 +655,22 @@ const styles = StyleSheet.create({
   lineaListoText: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#2f5e4f',
+    color: colors.successText,
   },
   lineaNombre: {
     fontSize: 17,
     fontWeight: '800',
-    color: '#262622',
+    color: colors.text,
   },
   lineaNota: {
     fontSize: 14,
-    color: '#a26a2f',
+    color: colors.secondary,
     fontWeight: '600',
     paddingLeft: 4,
   },
   lineaPers: {
     fontSize: 13,
-    color: '#6f6e67',
+    color: colors.textMuted,
     paddingLeft: 4,
   },
   cardFoot: { marginTop: 10 },
@@ -660,21 +682,21 @@ const styles = StyleSheet.create({
     marginTop: 10,
     paddingTop: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#ece9df',
+    borderTopColor: colors.borderLight,
   },
-  prioLabel: { fontSize: 12, color: '#6f6e67', fontWeight: '600' },
+  prioLabel: { fontSize: 12, color: colors.textMuted, fontWeight: '600' },
   prioChip: {
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 8,
-    backgroundColor: '#f6f4ee',
+    backgroundColor: colors.background,
     borderWidth: 1,
-    borderColor: '#e5e2d8',
+    borderColor: colors.border,
   },
   prioChipOn: {
-    backgroundColor: '#2f5e4f',
-    borderColor: '#2f5e4f',
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
-  prioChipText: { fontSize: 12, fontWeight: '700', color: '#6f6e67' },
-  prioChipTextOn: { color: '#fff' },
+  prioChipText: { fontSize: 12, fontWeight: '700', color: colors.textMuted },
+  prioChipTextOn: { color: colors.surface },
 });

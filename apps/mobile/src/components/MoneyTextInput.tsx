@@ -4,6 +4,7 @@ import {
   sanitizeMontoDigitos,
 } from '../lib/cop-input';
 import { formatCOP } from '../lib/format';
+import { colors } from '../lib/theme';
 
 type Props = Omit<
   TextInputProps,
@@ -21,7 +22,7 @@ export function MoneyTextInput({
   onChangeDigits,
   placeholderAmount,
   placeholder,
-  placeholderTextColor = '#9a988f',
+  placeholderTextColor = colors.textHint,
   ...rest
 }: Props) {
   const resolvedPlaceholder =

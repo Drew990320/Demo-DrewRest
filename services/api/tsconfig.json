@@ -13,6 +13,10 @@
     "sourceMap": true,
     "outDir": "./dist",
     "baseUrl": "./",
+    "paths": {
+      "@la-reserva/shared-domain": ["../../packages/shared-domain/dist/index"],
+      "@la-reserva/shared-domain/*": ["../../packages/shared-domain/dist/*"]
+    },
     "incremental": true,
     "skipLibCheck": true,
     "strictNullChecks": true,

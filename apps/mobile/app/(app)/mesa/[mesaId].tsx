@@ -37,6 +37,7 @@ import {
 import { useRefetchOnSync } from '../../../src/hooks/useRefetchOnSync';
 import { useResponsive } from '../../../src/hooks/useResponsive';
 import { useSeleccionPedido } from '../../../src/hooks/useSeleccionPedido';
+import { colors } from '../../../src/lib/theme';
 import {
   agruparLineasPedido,
   etiquetaEstadoLineaPedido,
@@ -697,7 +698,7 @@ export default function MesaDetailScreen() {
             style={[styles.input, narrowField]}
             keyboardType="number-pad"
             placeholder={placeholderComensalesMesa(mesa.numero)}
-            placeholderTextColor="#9a988f"
+            placeholderTextColor={colors.textHint}
             value={comensales}
             onChangeText={setComensales}
           />
@@ -931,7 +932,7 @@ export default function MesaDetailScreen() {
                 key: 'cobrar',
                 icon: PedidoIcon.cobrar,
                 label: 'Cobrar / facturar',
-                variant: 'primary',
+                variant: 'money',
                 onPress: () =>
                   router.push(`/(app)/pedido/${pedido.id_pedido}/factura`),
               },
@@ -975,7 +976,7 @@ export default function MesaDetailScreen() {
               <TextInput
                 style={[styles.input, styles.transferInput, narrowField]}
               placeholder="Mesa destino (1–15)"
-                placeholderTextColor="#9a988f"
+                placeholderTextColor={colors.textHint}
                 keyboardType="number-pad"
                 value={mesaDestino}
                 onChangeText={setMesaDestino}
@@ -997,7 +998,7 @@ export default function MesaDetailScreen() {
                 style={[styles.input, narrowField]}
                 keyboardType="number-pad"
                 placeholder={placeholderComensalesMesa(mesa.numero)}
-                placeholderTextColor="#9a988f"
+                placeholderTextColor={colors.textHint}
                 value={comensales}
                 onChangeText={setComensales}
               />
@@ -1017,146 +1018,146 @@ export default function MesaDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f6f4ee' },
+  container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  emptyTitle: { fontSize: 18, fontWeight: '800', color: '#262622', marginBottom: 8 },
+  emptyTitle: { fontSize: 18, fontWeight: '800', color: colors.text, marginBottom: 8 },
   emptySub: {
     fontSize: 15,
-    color: '#6f6e67',
+    color: colors.textMuted,
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 16,
   },
   headerCard: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#e5e2d8',
+    borderColor: colors.border,
     ...appShadow('elevated'),
   },
-  kicker: { color: '#6f6e67', fontWeight: '700', letterSpacing: 0.3 },
-  h1: { fontSize: 34, fontWeight: '800', color: '#262622', marginTop: 4 },
-  meta: { marginTop: 2, color: '#6f6e67' },
-  warn: { marginTop: 12, color: '#bc6c25' },
+  kicker: { color: colors.textMuted, fontWeight: '700', letterSpacing: 0.3 },
+  h1: { fontSize: 34, fontWeight: '800', color: colors.text, marginTop: 4 },
+  meta: { marginTop: 2, color: colors.textMuted },
+  warn: { marginTop: 12, color: colors.cocina },
   box: {
     marginTop: 20,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#e5e2d8',
+    borderColor: colors.border,
     ...appShadow('soft'),
   },
-  label: { fontWeight: '600', marginBottom: 8, color: '#3d3d3a' },
+  label: { fontWeight: '600', marginBottom: 8, color: colors.text },
   otroTicketBox: {
     marginTop: 16,
     paddingTop: 16,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#ece9df',
+    borderTopColor: colors.borderLight,
   },
   pedidoTop: { marginBottom: 8 },
-  pedidoMeta: { color: '#6f6e67', marginTop: 2 },
+  pedidoMeta: { color: colors.textMuted, marginTop: 2 },
   input: {
     borderWidth: 1,
-    borderColor: '#d9d5ca',
+    borderColor: colors.borderInput,
     borderRadius: 12,
     padding: 12,
     marginBottom: 12,
     fontSize: 16,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
   },
   transferBox: {
     marginTop: 12,
     paddingTop: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#ece9df',
+    borderTopColor: colors.borderLight,
   },
-  transferLabel: { fontWeight: '800', color: '#262622', marginBottom: 8 },
+  transferLabel: { fontWeight: '800', color: colors.text, marginBottom: 8 },
   transferRow: { flexDirection: 'row', gap: 10, alignItems: 'center' },
   transferInput: { marginBottom: 0, flexGrow: 0, flexShrink: 1 },
   transferBtn: {
-    backgroundColor: '#24493e',
+    backgroundColor: colors.primaryDark,
     paddingVertical: 12,
     paddingHorizontal: 14,
     borderRadius: 12,
   },
-  transferBtnText: { color: '#fff', fontWeight: '900' },
+  transferBtnText: { color: colors.surface, fontWeight: '900' },
   primary: {
-    backgroundColor: '#2f5e4f',
+    backgroundColor: colors.primary,
     padding: 14,
     borderRadius: 12,
     alignItems: 'center',
     marginTop: 8,
   },
-  primaryText: { color: '#fff', fontWeight: '600', fontSize: 16 },
+  primaryText: { color: colors.surface, fontWeight: '600', fontSize: 16 },
   secondary: {
     borderWidth: 1,
-    borderColor: '#2f5e4f',
+    borderColor: colors.primary,
     padding: 14,
     borderRadius: 12,
     alignItems: 'center',
     marginTop: 8,
   },
-  secondaryText: { color: '#2f5e4f', fontWeight: '700', fontSize: 16 },
+  secondaryText: { color: colors.primary, fontWeight: '700', fontSize: 16 },
   cocinaBtn: {
-    backgroundColor: '#bc6c25',
+    backgroundColor: colors.cocina,
     padding: 14,
     borderRadius: 12,
     alignItems: 'center',
     marginTop: 8,
   },
-  cocinaBtnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+  cocinaBtnText: { color: colors.surface, fontWeight: '800', fontSize: 16 },
   agregarHint: {
     marginTop: 8,
     fontSize: 12,
-    color: '#6f6e67',
+    color: colors.textMuted,
     lineHeight: 17,
   },
   actionBar: { marginTop: 12, marginBottom: 4 },
   tertiary: {
     borderWidth: 1,
-    borderColor: '#d9d5ca',
+    borderColor: colors.borderInput,
     padding: 14,
     borderRadius: 12,
     alignItems: 'center',
     marginTop: 8,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
   },
-  tertiaryText: { color: '#3d3d3a', fontWeight: '700', fontSize: 16 },
+  tertiaryText: { color: colors.text, fontWeight: '700', fontSize: 16 },
   danger: {
     marginTop: 10,
     borderWidth: 1,
-    borderColor: '#f0c6cb',
-    backgroundColor: '#fff5f6',
+    borderColor: colors.dangerBorder,
+    backgroundColor: colors.dangerLight,
     padding: 14,
     borderRadius: 12,
     alignItems: 'center',
   },
-  dangerText: { color: '#b23a48', fontWeight: '900', fontSize: 16 },
+  dangerText: { color: colors.dangerDark, fontWeight: '900', fontSize: 16 },
   disabled: { opacity: 0.6 },
   line: {
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#ece9df',
+    borderBottomColor: colors.borderLight,
     paddingVertical: 10,
   },
   comensalesRow: {
     marginBottom: 8,
     paddingBottom: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#ece9df',
+    borderBottomColor: colors.borderLight,
     gap: 6,
   },
   comensalesLabel: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#6f5a2a',
+    color: colors.warningText,
   },
-  lineMain: { fontSize: 16, color: '#262622', fontWeight: '600' },
-  linePrice: { fontSize: 14, color: '#6f6e67', marginTop: 4 },
-  nota: { fontSize: 13, color: '#a26a2f', marginTop: 4 },
-  pers: { fontSize: 13, color: '#4a4a45', marginTop: 2 },
-  subLine: { fontSize: 12, color: '#8a8578', marginTop: 4, fontStyle: 'italic' },
+  lineMain: { fontSize: 16, color: colors.text, fontWeight: '600' },
+  linePrice: { fontSize: 14, color: colors.textMuted, marginTop: 4 },
+  nota: { fontSize: 13, color: colors.secondary, marginTop: 4 },
+  pers: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
+  subLine: { fontSize: 12, color: colors.textHint, marginTop: 4, fontStyle: 'italic' },
   lineActions: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1171,47 +1172,47 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#c9c4b8',
-    backgroundColor: '#faf9f6',
+    borderColor: colors.borderInput,
+    backgroundColor: colors.surfaceMuted,
     alignItems: 'center',
   },
-  qtyBtnText: { fontSize: 18, fontWeight: '800', color: '#262622' },
-  qtyVal: { fontSize: 16, fontWeight: '800', color: '#262622', minWidth: 28, textAlign: 'center' },
+  qtyBtnText: { fontSize: 18, fontWeight: '800', color: colors.text },
+  qtyVal: { fontSize: 16, fontWeight: '800', color: colors.text, minWidth: 28, textAlign: 'center' },
   removeLine: {
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#e8c4c8',
-    backgroundColor: '#fff8f9',
+    borderColor: colors.dangerBorder,
+    backgroundColor: colors.dangerLight,
   },
-  removeLineText: { color: '#a33c48', fontWeight: '800', fontSize: 14 },
+  removeLineText: { color: colors.dangerDark, fontWeight: '800', fontSize: 14 },
   historialToggle: {
     marginTop: 12,
     paddingVertical: 10,
     paddingHorizontal: 4,
   },
   historialToggleText: {
-    color: '#2f5e4f',
+    color: colors.primary,
     fontWeight: '800',
     fontSize: 15,
   },
   historialBox: {
     marginBottom: 8,
     padding: 12,
-    backgroundColor: '#faf9f6',
+    backgroundColor: colors.surfaceMuted,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#ece9df',
+    borderColor: colors.borderLight,
   },
-  historialMuted: { color: '#6f6e67', fontSize: 14 },
+  historialMuted: { color: colors.textMuted, fontSize: 14 },
   historialLine: {
     marginBottom: 12,
     paddingBottom: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#e5e2d8',
+    borderBottomColor: colors.border,
   },
-  historialMeta: { fontSize: 12, color: '#6f6e67' },
-  historialTipo: { fontWeight: '800', color: '#262622', marginTop: 4 },
-  historialDet: { fontSize: 14, color: '#3d3d3a', marginTop: 4, lineHeight: 20 },
+  historialMeta: { fontSize: 12, color: colors.textMuted },
+  historialTipo: { fontWeight: '800', color: colors.text, marginTop: 4 },
+  historialDet: { fontSize: 14, color: colors.text, marginTop: 4, lineHeight: 20 },
 });

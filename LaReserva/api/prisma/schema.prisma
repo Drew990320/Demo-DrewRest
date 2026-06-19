@@ -127,6 +127,8 @@ model Producto {
   activo             Boolean                 @default(true)
   esPlatoPrincipal   Boolean                 @default(false) @map("es_plato_principal")
   esEmpacable        Boolean                 @default(false) @map("es_empacable")
+  /// Línea automática de cocina: 1 por comensal, sin cobro (no aparece en menú).
+  esAcompanamientoMazorca Boolean            @default(false) @map("es_acompanamiento_mazorca")
   tipoProteina       TipoProteina            @default(ninguno) @map("tipo_proteina")
   categoria          Categoria               @relation(fields: [idCategoria], references: [idCategoria])
   detalles           DetallePedido[]
@@ -167,6 +169,7 @@ model Pedido {
 
   @@index([idMesa, estado])
   @@index([estado, creadoEn])
+  @@index([idUsuario, estado])
   @@map("pedido")
 }
 

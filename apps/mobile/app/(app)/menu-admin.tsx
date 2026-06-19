@@ -20,6 +20,7 @@ import { formStyles } from '../../src/lib/form-layout';
 import { api } from '../../src/lib/api';
 import { digitsFromMonto, parseCOPDigits } from '../../src/lib/cop-input';
 import { showAppDialog, showNotice } from '../../src/lib/app-dialog';
+import { colors } from '../../src/lib/theme';
 
 type Categoria = { id_categoria: number; nombre: string };
 
@@ -404,21 +405,21 @@ export default function MenuAdminScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f6f4ee' },
+  container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   hint: {
     paddingHorizontal: 16,
     paddingBottom: 8,
-    color: '#6f6e67',
+    color: colors.textMuted,
     fontSize: 13,
   },
   listPad: { padding: 16, paddingTop: 0 },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#e5e2d8',
+    borderColor: colors.border,
   },
   cardInactive: { opacity: 0.72 },
   cardRow: {
@@ -434,8 +435,8 @@ const styles = StyleSheet.create({
     gap: 8,
     flexShrink: 0,
   },
-  cardTitle: { fontWeight: '800', fontSize: 16, color: '#262622' },
-  cardMeta: { marginTop: 4, color: '#6f6e67', fontSize: 13 },
+  cardTitle: { fontWeight: '800', fontSize: 16, color: colors.text },
+  cardMeta: { marginTop: 4, color: colors.textMuted, fontSize: 13 },
   modalVisibilityRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -443,9 +444,9 @@ const styles = StyleSheet.create({
     marginTop: 16,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#e5e2d8',
+    borderTopColor: colors.border,
   },
-  modalVisibilityLabel: { fontWeight: '600', color: '#444', flex: 1 },
+  modalVisibilityLabel: { fontWeight: '600', color: colors.text, flex: 1 },
   modalVisibilityActions: { flexDirection: 'row', gap: 8 },
   catScroll: { maxHeight: 88, marginBottom: 4 },
   chip: {
@@ -453,19 +454,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 10,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: '#e5e2d8',
+    borderColor: colors.border,
     maxWidth: 220,
   },
-  chipOn: { backgroundColor: '#e8f5e9', borderColor: '#2f5e4f' },
-  chipText: { fontSize: 12, color: '#444' },
-  chipTextOn: { fontWeight: '800', color: '#1b5e20' },
+  chipOn: { backgroundColor: colors.successLight, borderColor: colors.primary },
+  chipText: { fontSize: 12, color: colors.text },
+  chipTextOn: { fontWeight: '800', color: colors.mesaLibre },
   rowSwitch: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: 8,
   },
-  switchLabel: { fontWeight: '600', color: '#444' },
+  switchLabel: { fontWeight: '600', color: colors.text },
 });

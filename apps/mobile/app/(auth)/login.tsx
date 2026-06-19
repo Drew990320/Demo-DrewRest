@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import {
   Alert,
+  Image,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
@@ -13,12 +14,14 @@ import { ActionIconBar } from '../../src/components/ActionIconBar';
 import { useAuth } from '../../src/context/AuthContext';
 import { useFormShell } from '../../src/hooks/useFormShell';
 import { AdminIcon } from '../../src/lib/app-icons';
-import { API_URL } from '../../src/lib/config';
 import { showNotice } from '../../src/lib/app-dialog';
 import {
   avisarSiFaltanObligatorios,
 } from '../../src/lib/form-validation';
 import { appShadow } from '../../src/lib/shadow';
+import { colors } from '../../src/lib/theme';
+
+const logo = require('../../assets/logo.png');
 
 export default function LoginScreen() {
   const { login } = useAuth();
@@ -27,7 +30,6 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
-  const [checkingApi, setCheckingApi] = useState(false);
 
   async function onSubmit() {
     if (
@@ -52,43 +54,26 @@ export default function LoginScreen() {
     }
   }
 
-  async function onCheckApi() {
-    setCheckingApi(true);
-    const healthUrl = `${API_URL.replace(/\/$/, '')}/health`;
-    try {
-      const res = await fetch(healthUrl, { method: 'GET' });
-      const body = await res.text();
-      if (!res.ok) {
-        Alert.alert(
-          'API responde con error',
-          `URL: ${healthUrl}\nHTTP ${res.status}\n${body || res.statusText}`,
-        );
-        return;
-      }
-      Alert.alert('API OK', `URL: ${healthUrl}\nRespuesta: ${body}`);
-    } catch (e) {
-      Alert.alert(
-        'Sin conexión al API',
-        `URL: ${healthUrl}\n${e instanceof Error ? e.message : String(e)}`,
-      );
-    } finally {
-      setCheckingApi(false);
-    }
-  }
-
   return (
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <View style={[styles.card, formShell]}>
+        <View style={styles.logoWrap}>
+          <Image
+            source={logo}
+            style={styles.logo}
+            resizeMode="contain"
+            accessibilityLabel="La Reserva"
+          />
+        </View>
         <Text style={styles.badge}>STAFF</Text>
-        <Text style={styles.title}>La Reserva</Text>
         <Text style={styles.sub}>Sistema interno del restaurante</Text>
         <TextInput
           style={styles.input}
           placeholder="Correo"
-          placeholderTextColor="#9a988f"
+          placeholderTextColor={colors.textHint}
           autoCapitalize="none"
           keyboardType="email-address"
           value={email}
@@ -97,7 +82,7 @@ export default function LoginScreen() {
         <TextInput
           style={styles.input}
           placeholder="Contraseña"
-          placeholderTextColor="#9a988f"
+          placeholderTextColor={colors.textHint}
           secureTextEntry
           value={password}
           onChangeText={setPassword}
@@ -114,25 +99,6 @@ export default function LoginScreen() {
             },
           ]}
         />
-        {__DEV__ ? (
-          <ActionIconBar
-            actions={[
-              {
-                key: 'api',
-                icon: checkingApi ? 'hourglass-outline' : AdminIcon.probarApi,
-                label: checkingApi ? 'Probando API…' : 'Probar conexión API',
-                variant: 'secondary',
-                disabled: checkingApi,
-                onPress: onCheckApi,
-              },
-            ]}
-          />
-        ) : null}
-        {__DEV__ ? (
-          <Text style={styles.devApiHint} selectable>
-            API: {API_URL}
-          </Text>
-        ) : null}
       </View>
     </KeyboardAvoidingView>
   );
@@ -144,46 +110,48 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
-    backgroundColor: '#f6f4ee',
+    backgroundColor: colors.background,
   },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 20,
     padding: 20,
     borderWidth: 1,
-    borderColor: '#e5e2d8',
+    borderColor: colors.border,
     ...appShadow('login'),
+  },
+  logoWrap: {
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    borderRadius: 16,
+    backgroundColor: colors.background,
+  },
+  logo: {
+    width: 280,
+    height: 200,
   },
   badge: {
     alignSelf: 'flex-start',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 999,
-    backgroundColor: '#eef4f1',
-    color: '#2f5e4f',
+    backgroundColor: colors.primaryLight,
+    color: colors.primary,
     fontSize: 12,
     fontWeight: '700',
-    marginBottom: 10,
-  },
-  title: {
-    fontSize: 30,
-    fontWeight: '700',
     marginBottom: 6,
-    color: '#262622',
   },
-  sub: { fontSize: 15, color: '#6f6e67', marginBottom: 22 },
+  sub: { fontSize: 15, color: colors.textMuted, marginBottom: 22 },
   input: {
     borderWidth: 1,
-    borderColor: '#d9d5ca',
+    borderColor: colors.borderInput,
     borderRadius: 12,
     padding: 14,
     marginBottom: 12,
     fontSize: 16,
-    backgroundColor: '#fff',
-  },
-  devApiHint: {
-    marginTop: 14,
-    fontSize: 11,
-    color: '#9a988f',
+    backgroundColor: colors.surface,
+    color: colors.text,
   },
 });

@@ -14,17 +14,18 @@ import type { AppNotification } from '../lib/app-notifications';
 import type { DialogVariant } from '../lib/app-dialog';
 import { appShadow } from '../lib/shadow';
 import { MOTION } from '../lib/motion';
+import { colors } from '../lib/theme';
 
 function variantColor(variant: DialogVariant): string {
   switch (variant) {
     case 'success':
-      return '#2f5e4f';
+      return colors.success;
     case 'error':
-      return '#9b3b3b';
+      return colors.danger;
     case 'warning':
-      return '#a26a2f';
+      return colors.warning;
     default:
-      return '#3d5a80';
+      return colors.info;
   }
 }
 
@@ -80,7 +81,7 @@ export function NotificationFab() {
             : 'Notificaciones'
         }
       >
-        <Ionicons name="notifications" size={26} color="#fff" />
+        <Ionicons name="notifications" size={26} color={colors.onPrimary} />
         {unreadCount > 0 ? (
           <View style={styles.badge}>
             <Text style={styles.badgeText}>
@@ -122,14 +123,14 @@ export function NotificationFab() {
                 </Pressable>
               ) : null}
               <Pressable onPress={closePanel} hitSlop={8}>
-                <Ionicons name="close" size={24} color="#5c5c56" />
+                <Ionicons name="close" size={24} color={colors.textMuted} />
               </Pressable>
             </View>
           </View>
 
           {notifications.length === 0 ? (
             <View style={styles.empty}>
-              <Ionicons name="notifications-off-outline" size={40} color="#a8a89e" />
+              <Ionicons name="notifications-off-outline" size={40} color={colors.textHint} />
               <Text style={styles.emptyText}>No hay notificaciones</Text>
             </View>
           ) : (
@@ -153,7 +154,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: '#2f5e4f',
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 900,
@@ -165,32 +166,32 @@ const styles = StyleSheet.create({
     minWidth: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: '#c44',
+    backgroundColor: colors.danger,
     borderWidth: 2,
-    borderColor: '#f6f4ee',
+    borderColor: colors.background,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 4,
   },
   badgeText: {
-    color: '#fff',
+    color: colors.onPrimary,
     fontSize: 11,
     fontWeight: '900',
   },
   panelBackdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(38, 38, 34, 0.35)',
+    backgroundColor: 'rgba(61, 54, 48, 0.35)',
   },
   panel: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: '#f6f4ee',
+    backgroundColor: colors.background,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     borderWidth: 1,
-    borderColor: '#e8e4d8',
+    borderColor: colors.border,
     borderBottomWidth: 0,
   },
   panelHeader: {
@@ -201,12 +202,12 @@ const styles = StyleSheet.create({
     paddingTop: 18,
     paddingBottom: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#e8e4d8',
+    borderBottomColor: colors.border,
   },
   panelTitle: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#262622',
+    color: colors.text,
   },
   panelActions: {
     flexDirection: 'row',
@@ -214,7 +215,7 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   panelActionText: {
-    color: '#2f5e4f',
+    color: colors.primary,
     fontWeight: '700',
     fontSize: 14,
   },
@@ -230,13 +231,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 12,
     marginBottom: 6,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: '#ece9df',
+    borderColor: colors.borderLight,
   },
   rowUnread: {
-    backgroundColor: '#eef7f2',
-    borderColor: '#b8dcc8',
+    backgroundColor: colors.primaryLight,
+    borderColor: colors.primaryMuted,
   },
   rowDot: {
     width: 8,
@@ -248,19 +249,19 @@ const styles = StyleSheet.create({
   rowTitle: {
     fontWeight: '800',
     fontSize: 15,
-    color: '#262622',
+    color: colors.text,
   },
   rowMessage: {
     marginTop: 4,
     fontSize: 13,
     lineHeight: 18,
-    color: '#5c5c56',
+    color: colors.textMuted,
   },
   rowTime: {
     marginTop: 6,
     fontSize: 11,
     fontWeight: '600',
-    color: '#8a8a82',
+    color: colors.textHint,
   },
   empty: {
     alignItems: 'center',
@@ -269,7 +270,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   emptyText: {
-    color: '#8a8a82',
+    color: colors.textHint,
     fontSize: 15,
     fontWeight: '600',
   },

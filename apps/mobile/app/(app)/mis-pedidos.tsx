@@ -9,7 +9,6 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useIsFocused } from '@react-navigation/native';
 import { useAuth } from '../../src/context/AuthContext';
 import { AnimatedEnter } from '../../src/components/AnimatedEnter';
 import { ActionIconBar } from '../../src/components/ActionIconBar';
@@ -19,7 +18,9 @@ import { AccionIcon, AdminIcon, PedidoIcon } from '../../src/lib/app-icons';
 import { api } from '../../src/lib/api';
 import { alertarSiSinPapel } from '../../src/lib/alarma-impresora';
 import { showBriefNotice, showNotice } from '../../src/lib/app-dialog';
+import { colors, status } from '../../src/lib/theme';
 import {
+  detalleMapById,
   mesasActivasDePedidos,
   normalizarPedidoCocinaView,
   platosSinEnviarCocina,
@@ -37,15 +38,7 @@ import { tituloLugarMesa } from '../../src/lib/mesa-label';
 import { appShadow } from '../../src/lib/shadow';
 import { puedeVerMisPedidos } from '../../src/hooks/usePuedeTomarPedidos';
 import { useSeleccionPedido } from '../../src/hooks/useSeleccionPedido';
-import {
-  batchAfectaMisPedidos,
-  joinPedidoRooms,
-  subscribeCocinaLlamaMesero,
-  subscribeCompaneroAgregoItems,
-  resumenLineasAgregadas,
-  tituloCocinaLlamaMesero,
-  mensajeCocinaLlamaMesero,
-} from '../../src/lib/pedido-sync';
+import { batchAfectaMisPedidos, joinPedidoRooms } from '../../src/lib/pedido-sync';
 import { useRefetchOnSync } from '../../src/hooks/useRefetchOnSync';
 
 type MisActivosResponse = {
@@ -57,7 +50,6 @@ export default function MisPedidosScreen() {
   const { token, user } = useAuth();
   const router = useRouter();
   const puedeVer = puedeVerMisPedidos(user?.rol);
-  const isFocused = useIsFocused();
   const [items, setItems] = useState<PedidoCocinaView[]>([]);
   const [mesasActivas, setMesasActivas] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -135,37 +127,6 @@ export default function MisPedidosScreen() {
       ),
   });
 
-  useEffect(() => {
-    if (!puedeVer || user?.id == null) return;
-    return subscribeCocinaLlamaMesero((payload) => {
-      if (payload.idMesero !== user.id) return;
-      const tipo = payload.tipo_listo ?? 'plato';
-      void showBriefNotice(
-        tituloCocinaLlamaMesero(tipo),
-        mensajeCocinaLlamaMesero(payload),
-        'info',
-      );
-      if (isFocused) {
-        load().catch(() => undefined);
-      }
-    });
-  }, [load, puedeVer, user?.id, isFocused]);
-
-  useEffect(() => {
-    if (!puedeVer || user?.id == null) return;
-    return subscribeCompaneroAgregoItems((payload) => {
-      if (payload.idMeseroDueno !== user.id) return;
-      void showBriefNotice(
-        'Tu mesa fue actualizada',
-        `${payload.meseroQuienAgregoNombre} agregó ${resumenLineasAgregadas(payload.lineas)} en ${tituloLugarMesa(payload.mesaNumero)} · pedido #${payload.pedidoId}`,
-        'info',
-      );
-      if (isFocused) {
-        load().catch(() => undefined);
-      }
-    });
-  }, [load, puedeVer, user?.id, isFocused]);
-
   async function onRefresh() {
     setRefreshing(true);
     try {
@@ -242,7 +203,7 @@ export default function MisPedidosScreen() {
     detalles: PedidoCocinaView['detalles'],
     delta: number,
   ) {
-    const byId = new Map(detalles.map((d) => [d.id_detalle, d]));
+    const byId = detalleMapById(detalles);
     setCantidadesRecogida((prev) => ({
       ...prev,
       [idPedido]: cambiarCantidadGrupoRecogida(
@@ -258,7 +219,7 @@ export default function MisPedidosScreen() {
     p: PedidoCocinaView,
     g: LineaPedidoGrupo,
   ) {
-    const byId = new Map(p.detalles.map((d) => [d.id_detalle, d]));
+    const byId = detalleMapById(p.detalles);
     const solicitudes = distribuirRecogidaEnGrupo(
       g,
       cantidadesPedido(p.id_pedido),
@@ -292,7 +253,7 @@ export default function MisPedidosScreen() {
   }
 
   async function avisarFaltaGrupo(p: PedidoCocinaView, g: LineaPedidoGrupo) {
-    const byId = new Map(p.detalles.map((d) => [d.id_detalle, d]));
+    const byId = detalleMapById(p.detalles);
     const solicitudes = distribuirRecogidaEnGrupo(
       g,
       cantidadesPedido(p.id_pedido),
@@ -556,26 +517,26 @@ export default function MisPedidosScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f6f4ee', padding: 16 },
+  container: { flex: 1, backgroundColor: colors.background, padding: 16 },
   cardEnter: { marginBottom: 0 },
   center: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
-    backgroundColor: '#f6f4ee',
+    backgroundColor: colors.background,
   },
-  denied: { textAlign: 'center', color: '#6f6e67', marginBottom: 16, fontSize: 16 },
+  denied: { textAlign: 'center', color: colors.textMuted, marginBottom: 16, fontSize: 16 },
   resumenCard: {
-    backgroundColor: '#2f5e4f',
+    backgroundColor: colors.primary,
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#24493e',
+    borderColor: colors.primaryDark,
   },
   resumenKicker: {
-    color: '#c8e8dc',
+    color: colors.primaryMuted,
     fontWeight: '700',
     fontSize: 12,
     letterSpacing: 0.4,
@@ -584,140 +545,146 @@ const styles = StyleSheet.create({
   resumenHero: {
     fontSize: 44,
     fontWeight: '900',
-    color: '#fff',
+    color: colors.surface,
     marginTop: 4,
     lineHeight: 48,
   },
   resumenHeroLabel: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#e8f7f0',
+    color: colors.primaryLight,
     marginTop: 2,
   },
-  resumenSub: { marginTop: 8, color: '#c8e8dc', fontSize: 13, lineHeight: 18 },
+  resumenSub: { marginTop: 8, color: colors.primaryMuted, fontSize: 13, lineHeight: 18 },
   alertaCocina: {
-    backgroundColor: '#fff8e6',
+    backgroundColor: status.warn.bg,
     borderRadius: 16,
     padding: 14,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#e8c96a',
+    borderColor: status.warn.border,
+    borderLeftWidth: 5,
+    borderLeftColor: status.warn.accent,
   },
   alertaCocinaTitle: {
-    color: '#7a5c1e',
+    color: status.warn.fg,
     fontWeight: '800',
     fontSize: 15,
   },
   alertaCocinaSub: {
     marginTop: 6,
-    color: '#8a6a1a',
+    color: status.warn.fg,
     fontSize: 13,
     lineHeight: 18,
   },
   alertaRecoger: {
-    backgroundColor: '#e8f5ef',
+    backgroundColor: status.ok.bg,
     borderRadius: 16,
     padding: 14,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#2f8f5f',
+    borderColor: status.ok.border,
+    borderLeftWidth: 5,
+    borderLeftColor: status.ok.accent,
   },
   alertaRecogerTitle: {
-    color: '#1e6b45',
+    color: status.ok.fg,
     fontWeight: '800',
     fontSize: 15,
   },
   alertaRecogerSub: {
     marginTop: 6,
-    color: '#2f5e4f',
+    color: status.ok.accent,
     fontSize: 13,
     lineHeight: 18,
   },
   alertaAyuda: {
-    backgroundColor: '#eef2f8',
+    backgroundColor: status.info.bg,
     borderRadius: 16,
     padding: 14,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#3d5a80',
+    borderColor: status.info.border,
+    borderLeftWidth: 5,
+    borderLeftColor: status.info.accent,
   },
   alertaAyudaTitle: {
-    color: '#2c4360',
+    color: status.info.fg,
     fontWeight: '800',
     fontSize: 15,
   },
   alertaAyudaSub: {
     marginTop: 6,
-    color: '#3d5a80',
+    color: status.info.accent,
     fontSize: 13,
     lineHeight: 18,
   },
   headerCard: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#e5e2d8',
+    borderColor: colors.border,
     marginBottom: 12,
     ...appShadow('elevated'),
   },
-  kicker: { color: '#6f6e67', fontWeight: '700', letterSpacing: 0.3 },
-  h1: { fontSize: 22, fontWeight: '800', marginTop: 4, color: '#262622' },
-  sub: { marginTop: 4, color: '#6f6e67', fontSize: 13, lineHeight: 18 },
-  empty: { color: '#6f6e67', marginTop: 8 },
+  kicker: { color: colors.textMuted, fontWeight: '700', letterSpacing: 0.3 },
+  h1: { fontSize: 22, fontWeight: '800', marginTop: 4, color: colors.text },
+  sub: { marginTop: 4, color: colors.textMuted, fontSize: 13, lineHeight: 18 },
+  empty: { color: colors.textMuted, marginTop: 8 },
   chipsCard: { marginBottom: 12 },
   totalesWrap: { marginTop: 10, gap: 8 },
   totalRow: {
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#e5e2d8',
-    backgroundColor: '#fbfaf7',
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceMuted,
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
-  totalRowTitle: { color: '#262622', fontWeight: '800', fontSize: 14 },
-  totalRowMeta: { color: '#6f6e67', marginTop: 4, fontSize: 12 },
+  totalRowTitle: { color: colors.text, fontWeight: '800', fontSize: 14 },
+  totalRowMeta: { color: colors.textMuted, marginTop: 4, fontSize: 12 },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 14,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#e5e2d8',
+    borderColor: colors.border,
     ...appShadow('elevated'),
   },
-  cardBordeAlta: { borderLeftWidth: 4, borderLeftColor: '#2f8f5f' },
-  cardBordeBaja: { borderLeftWidth: 4, borderLeftColor: '#c9a227' },
+  cardBordeAlta: { borderLeftWidth: 4, borderLeftColor: colors.danger },
+  cardBordeBaja: { borderLeftWidth: 4, borderLeftColor: colors.warning },
   cardTop: { marginBottom: 8 },
   rowPills: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
   pill: {
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 999,
-    backgroundColor: '#eef4f1',
+    backgroundColor: colors.primaryLight,
   },
-  pillText: { color: '#2f5e4f', fontWeight: '800' },
+  pillText: { color: colors.primary, fontWeight: '800' },
   pillSinCocina: {
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 999,
-    backgroundColor: '#fff0d6',
+    backgroundColor: status.warn.bg,
     borderWidth: 1,
-    borderColor: '#e8a84a',
+    borderColor: status.warn.border,
   },
-  pillSinCocinaText: { color: '#9a5a00', fontWeight: '800', fontSize: 12 },
+  pillSinCocinaText: { color: status.warn.fg, fontWeight: '800', fontSize: 12 },
   pillPrioridad: {
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 999,
     borderWidth: 1,
   },
-  pillPrioridadAlta: { backgroundColor: '#e8f5ef', borderColor: '#2f8f5f' },
-  pillPrioridadBaja: { backgroundColor: '#fff8e6', borderColor: '#c9a227' },
+  pillPrioridadAlta: { backgroundColor: colors.dangerLight, borderColor: colors.danger },
+  pillPrioridadBaja: { backgroundColor: colors.warningLight, borderColor: colors.warning },
   pillPrioridadText: { fontWeight: '900', fontSize: 12 },
-  pillPrioridadTextAlta: { color: '#1e6b45' },
-  pillPrioridadTextBaja: { color: '#8a6a1a' },
-  cardTitle: { fontWeight: '800', color: '#262622', fontSize: 16 },
-  cardMeta: { color: '#6f6e67', marginTop: 2, textTransform: 'capitalize' },
+  pillPrioridadTextAlta: { color: colors.dangerText },
+  pillPrioridadTextBaja: { color: colors.warningText },
+  cardTitle: { fontWeight: '800', color: colors.text, fontSize: 16 },
+  cardMeta: { color: colors.textMuted, marginTop: 2, textTransform: 'capitalize' },
   cardActions: { marginTop: 6 },
 });

@@ -2,7 +2,13 @@ import type { EstadoPedido } from './local-api-types';
 import {
   NOMBRE_MAZORCA_ACOMPANAMIENTO,
   pedidoUsaLineaMazorca,
-} from './mazorca-pedido';
+} from '@la-reserva/shared-domain/mazorca-pedido';
+import {
+  cantidadLineaMazorcaInicial,
+  planificarSyncMazorca,
+} from '@la-reserva/shared-domain/mazorca-linea-pedido';
+
+export { NOMBRE_MAZORCA_ACOMPANAMIENTO, pedidoUsaLineaMazorca };
 
 type ProductoRow = {
   id_producto: number;
@@ -41,30 +47,23 @@ function lineasMazorca(pedido: PedidoRow, productoId: number): DetalleRow[] {
   return pedido.detalles.filter((d) => d.id_producto === productoId);
 }
 
-function cantidadBloqueada(lineas: DetalleRow[]): number {
-  return lineas.reduce(
-    (s, l) =>
-      s + (l.listo_cocina || l.listo_para_recoger ? l.cantidad : 0),
-    0,
-  );
-}
-
-function cantidadTotal(lineas: DetalleRow[]): number {
-  return lineas.reduce((s, l) => s + l.cantidad, 0);
-}
-
 export function crearLineaMazorcaInicialLocal(
   pedido: PedidoRow,
   mesaNumero: number,
   productoId: number,
   nextDetalleId: () => number,
 ): void {
-  if (!pedidoUsaLineaMazorca(mesaNumero)) return;
-  if (lineasMazorca(pedido, productoId).length > 0) return;
+  const cantidad = cantidadLineaMazorcaInicial({
+    usa_linea_mazorca: pedidoUsaLineaMazorca(mesaNumero),
+    ya_tiene_linea: lineasMazorca(pedido, productoId).length > 0,
+    num_comensales: pedido.num_comensales,
+  });
+  if (cantidad == null) return;
+
   pedido.detalles.push({
     id_detalle: nextDetalleId(),
     id_producto: productoId,
-    cantidad: pedido.num_comensales,
+    cantidad,
     precio_unitario: 0,
     enviado_cocina: false,
     listo_para_recoger: false,
@@ -80,62 +79,52 @@ export function sincronizarLineaMazorcaLocal(
   productoId: number,
   nextDetalleId: () => number,
 ): string | null {
-  if (!pedidoUsaLineaMazorca(mesaNumero)) {
-    pedido.detalles = pedido.detalles.filter((d) => d.id_producto !== productoId);
-    return null;
-  }
-  if (pedido.num_comensales < 1) {
-    return 'Debe haber al menos 1 comensal';
-  }
-
   const lineas = lineasMazorca(pedido, productoId);
-  const total = cantidadTotal(lineas);
-  const bloqueada = cantidadBloqueada(lineas);
-  if (pedido.num_comensales < bloqueada) {
-    return 'No puedes bajar comensales por debajo de las mazorcas ya listas o entregadas';
-  }
-  if (total === pedido.num_comensales) return null;
+  const plan = planificarSyncMazorca({
+    usa_linea_mazorca: pedidoUsaLineaMazorca(mesaNumero),
+    num_comensales: pedido.num_comensales,
+    lineas: lineas.map((l) => ({
+      id_detalle: l.id_detalle,
+      cantidad: l.cantidad,
+      listo_cocina: l.listo_cocina,
+      listo_para_recoger: l.listo_para_recoger,
+    })),
+  });
 
-  const enviadoNuevo = pedido.estado === 'en_cocina';
-
-  if (total < pedido.num_comensales) {
-    const agregar = pedido.num_comensales - total;
-    const editable = lineas.find((l) => !l.listo_cocina && !l.listo_para_recoger);
-    if (editable) {
-      editable.cantidad += agregar;
+  switch (plan.tipo) {
+    case 'limpiar':
+      pedido.detalles = pedido.detalles.filter((d) => d.id_producto !== productoId);
       return null;
-    }
-    pedido.detalles.push({
-      id_detalle: nextDetalleId(),
-      id_producto: productoId,
-      cantidad: agregar,
-      precio_unitario: 0,
-      enviado_cocina: enviadoNuevo,
-      listo_para_recoger: false,
-      listo_cocina: false,
-      id_detalle_padre: null,
-      nota_cocina: null,
-    });
-    return null;
+    case 'error':
+      return plan.mensaje;
+    case 'sin_cambios':
+      return null;
+    case 'subir':
+      if (plan.modo === 'editar') {
+        const editable = pedido.detalles.find((d) => d.id_detalle === plan.id_detalle);
+        if (editable) editable.cantidad = plan.nueva_cantidad;
+        return null;
+      }
+      pedido.detalles.push({
+        id_detalle: nextDetalleId(),
+        id_producto: productoId,
+        cantidad: plan.cantidad,
+        precio_unitario: 0,
+        enviado_cocina: pedido.estado === 'en_cocina',
+        listo_para_recoger: false,
+        listo_cocina: false,
+        id_detalle_padre: null,
+        nota_cocina: null,
+      });
+      return null;
+    case 'bajar':
+      for (const id of plan.eliminar) {
+        pedido.detalles = pedido.detalles.filter((d) => d.id_detalle !== id);
+      }
+      for (const row of plan.actualizar) {
+        const det = pedido.detalles.find((d) => d.id_detalle === row.id_detalle);
+        if (det) det.cantidad = row.nueva_cantidad;
+      }
+      return null;
   }
-
-  let quitar = total - pedido.num_comensales;
-  const editables = lineas
-    .filter((l) => !l.listo_cocina && !l.listo_para_recoger)
-    .sort((a, b) => b.id_detalle - a.id_detalle);
-
-  for (const l of editables) {
-    if (quitar <= 0) break;
-    const resta = Math.min(quitar, l.cantidad);
-    quitar -= resta;
-    l.cantidad -= resta;
-    if (l.cantidad <= 0) {
-      pedido.detalles = pedido.detalles.filter((d) => d.id_detalle !== l.id_detalle);
-    }
-  }
-
-  if (quitar > 0) {
-    return 'No se pudo ajustar comensales: hay mazorcas ya listas o en mesa';
-  }
-  return null;
 }

@@ -1,6 +1,6 @@
 import { PrismaClient, TipoPersonalizacion } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
-import { inferirTipoProteina } from '../src/pedidos/cocina-prioridad';
+import { inferirTipoProteina } from './seed-helpers';
 
 const prisma = new PrismaClient();
 

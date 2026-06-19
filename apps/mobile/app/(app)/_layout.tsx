@@ -9,11 +9,18 @@ import { MOTION } from '../../src/lib/motion';
 import { useAuth } from '../../src/context/AuthContext';
 import { useNetwork } from '../../src/context/NetworkContext';
 import { useImpresoraAlertas } from '../../src/hooks/useImpresoraAlertas';
+import { usePedidoNotificaciones } from '../../src/hooks/usePedidoNotificaciones';
 import { useBlurFocusOnRouteChange } from '../../src/hooks/useBlurFocusOnRouteChange';
 import { useResponsive } from '../../src/hooks/useResponsive';
 import { API_URL } from '../../src/lib/config';
 import { NotificationProvider } from '../../src/context/NotificationCenterContext';
 import { NotificationFab } from '../../src/components/NotificationFab';
+import { colors } from '../../src/lib/theme';
+
+function PedidoNotificacionesListener() {
+  usePedidoNotificaciones();
+  return null;
+}
 
 function HeaderHomeTitle({ children }: { children?: string }) {
   const router = useRouter();
@@ -27,7 +34,7 @@ function HeaderHomeTitle({ children }: { children?: string }) {
         accessibilityRole="button"
         accessibilityLabel="Ir al inicio (mesas)"
       >
-        <Ionicons name="home" size={20} color="#fff" />
+        <Ionicons name="home" size={20} color={colors.onPrimary} />
       </AnimatedPressable>
       {!!title && title !== 'Mesas' && (
         <Text numberOfLines={1} style={styles.headerSubTitle}>
@@ -58,7 +65,8 @@ export default function AppGroupLayout() {
 
   return (
     <NotificationProvider>
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#f0ede4' }} edges={['top']}>
+    <PedidoNotificacionesListener />
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.backgroundAlt }} edges={['top']}>
       <View
         style={[
           styles.appFrame,
@@ -85,8 +93,8 @@ export default function AppGroupLayout() {
         >
           <Stack
       screenOptions={{
-        headerStyle: { backgroundColor: '#f0ede4' },
-        headerTintColor: '#262622',
+        headerStyle: { backgroundColor: colors.backgroundAlt },
+        headerTintColor: colors.text,
         headerTitleStyle: { fontWeight: '700' },
         headerTitleAlign: 'center',
         animation: 'slide_from_right',
@@ -145,18 +153,18 @@ const styles = StyleSheet.create({
   appFrameWide: { alignItems: 'center' },
   appInner: { flex: 1, width: '100%' },
   offlineBanner: {
-    backgroundColor: '#5c4033',
+    backgroundColor: colors.offline,
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
-  offlineText: { color: '#f6f4ee', fontSize: 13, fontWeight: '600', textAlign: 'center' },
+  offlineText: { color: colors.onDark, fontSize: 13, fontWeight: '600', textAlign: 'center' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   headerTitleWrap: { alignItems: 'center', justifyContent: 'center' },
   homePill: {
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: '#2f5e4f',
+    backgroundColor: colors.primary,
   },
-  headerSubTitle: { marginTop: 4, color: '#6f6e67', fontWeight: '700', fontSize: 12 },
+  headerSubTitle: { marginTop: 4, color: colors.textMuted, fontWeight: '700', fontSize: 12 },
 });

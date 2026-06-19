@@ -9,24 +9,23 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useFocusEffect, useIsFocused } from '@react-navigation/native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../../../src/context/AuthContext';
 import { AnimatedEnter } from '../../../src/components/AnimatedEnter';
 import { AnimatedPressable } from '../../../src/components/AnimatedPressable';
 import { IconTooltipButton } from '../../../src/components/IconTooltipButton';
 import { NavIcon } from '../../../src/lib/app-icons';
 import { api } from '../../../src/lib/api';
-import { showBriefNotice } from '../../../src/lib/app-dialog';
-import { etiquetaMesaNumero, tituloLugarMesa } from '../../../src/lib/mesa-label';
+import { etiquetaMesaNumero } from '../../../src/lib/mesa-label';
 import { appShadow } from '../../../src/lib/shadow';
 import { blurWebFocus } from '../../../src/lib/web-a11y';
+import { colors, status } from '../../../src/lib/theme';
 import {
   gridItemWidth,
   useResponsive,
 } from '../../../src/hooks/useResponsive';
 import { useRefetchOnSync } from '../../../src/hooks/useRefetchOnSync';
 import type { MisActivosResumen } from '../../../src/lib/mis-activos-resumen';
-import { subscribeCocinaLlamaMesero, subscribeCompaneroAgregoItems, resumenLineasAgregadas, tituloCocinaLlamaMesero, mensajeCocinaLlamaMesero } from '../../../src/lib/pedido-sync';
 import {
   puedeTomarPedidos,
   puedeVerCocina,
@@ -77,7 +76,6 @@ export default function MesasScreen() {
 
   const esChef = user?.rol === 'chef';
   const tomaPedidos = puedeTomarPedidos(user?.rol);
-  const isFocused = useIsFocused();
 
   useEffect(() => {
     if (esChef) {
@@ -149,37 +147,6 @@ export default function MesasScreen() {
     }, [load, loadContadoresVirtuales]),
   );
 
-  useEffect(() => {
-    if (!puedeVerMisPedidos(user?.rol) || user?.id == null) return;
-    return subscribeCocinaLlamaMesero((payload) => {
-      if (payload.idMesero !== user.id) return;
-      const tipo = payload.tipo_listo ?? 'plato';
-      void showBriefNotice(
-        tituloCocinaLlamaMesero(tipo),
-        mensajeCocinaLlamaMesero(payload, { incluirMesa: false }),
-        'info',
-      );
-      if (isFocused) {
-        loadContadoresVirtuales().catch(() => undefined);
-      }
-    });
-  }, [user?.id, user?.rol, loadContadoresVirtuales, isFocused]);
-
-  useEffect(() => {
-    if (!puedeVerMisPedidos(user?.rol) || user?.id == null) return;
-    return subscribeCompaneroAgregoItems((payload) => {
-      if (payload.idMeseroDueno !== user.id) return;
-      void showBriefNotice(
-        'Tu mesa fue actualizada',
-        `${payload.meseroQuienAgregoNombre} agregó ${resumenLineasAgregadas(payload.lineas)} en ${tituloLugarMesa(payload.mesaNumero)} · pedido #${payload.pedidoId}`,
-        'info',
-      );
-      if (isFocused) {
-        loadContadoresVirtuales().catch(() => undefined);
-      }
-    });
-  }, [user?.id, user?.rol, loadContadoresVirtuales, isFocused]);
-
   async function onRefresh() {
     setRefreshing(true);
     try {
@@ -190,30 +157,36 @@ export default function MesasScreen() {
   }
 
   function estadoColor(estado: string) {
-    if (estado === 'libre') return '#1b5e20';
-    if (estado === 'ocupada') return '#b71c1c';
-    return '#6c757d';
+    if (estado === 'libre') return colors.mesaLibre;
+    if (estado === 'ocupada') return colors.mesaOcupada;
+    return colors.textMuted;
   }
 
   function cardVisual(estado: string) {
     if (estado === 'libre') {
       return {
-        backgroundColor: '#e8f5e9',
-        borderColor: '#2e7d32',
+        backgroundColor: colors.mesaLibreBg,
+        borderColor: colors.mesaLibreBorder,
         borderWidth: 2,
+        borderLeftWidth: 5,
+        borderLeftColor: colors.success,
       };
     }
     if (estado === 'ocupada') {
       return {
-        backgroundColor: '#ffebee',
-        borderColor: '#c62828',
+        backgroundColor: colors.mesaOcupadaBg,
+        borderColor: colors.mesaOcupadaBorder,
         borderWidth: 2,
+        borderLeftWidth: 5,
+        borderLeftColor: colors.danger,
       };
     }
     return {
-      backgroundColor: '#fff',
-      borderColor: '#e3e0d7',
+      backgroundColor: colors.surface,
+      borderColor: colors.borderLight,
       borderWidth: 1,
+      borderLeftWidth: 5,
+      borderLeftColor: colors.textHint,
     };
   }
 
@@ -240,7 +213,8 @@ export default function MesasScreen() {
         { paddingHorizontal: r.contentPadding, paddingTop: r.contentPadding },
       ]}
     >
-      <View style={styles.topBar}>
+      <AnimatedEnter index={0}>
+        <View style={styles.topBar}>
         <Text style={[styles.greeting, { fontSize: r.fontSize.body }]}>
           {user?.nombre} · {rolLabel(user?.rol)}
         </Text>
@@ -336,9 +310,11 @@ export default function MesasScreen() {
             }}
           />
         </View>
-      </View>
+        </View>
+      </AnimatedEnter>
 
       {platosParaRecoger > 0 && puedeVerMisPedidos(user?.rol) ? (
+        <AnimatedEnter index={1}>
         <Pressable
           style={styles.alertaRecoger}
           onPress={() => router.push('/(app)/mis-pedidos')}
@@ -350,9 +326,11 @@ export default function MesasScreen() {
             Toca aquí para ver tus pedidos.
           </Text>
         </Pressable>
+        </AnimatedEnter>
       ) : null}
 
       {platosSinPasarCocina > 0 && puedeVerMisPedidos(user?.rol) ? (
+        <AnimatedEnter index={2}>
         <Pressable
           style={styles.alertaCocina}
           onPress={() => router.push('/(app)/mis-pedidos')}
@@ -364,9 +342,11 @@ export default function MesasScreen() {
             Toca aquí para revisar tus pedidos.
           </Text>
         </Pressable>
+        </AnimatedEnter>
       ) : null}
 
       {platosAyudaCompaneros > 0 && puedeVerMisPedidos(user?.rol) ? (
+        <AnimatedEnter index={3}>
         <Pressable
           style={styles.alertaAyuda}
           onPress={() => router.push('/(app)/ayuda-companeros')}
@@ -378,13 +358,26 @@ export default function MesasScreen() {
             de recoger. Puedes confirmarlos en mesa si su teléfono no responde.
           </Text>
         </Pressable>
+        </AnimatedEnter>
       ) : null}
 
+      <AnimatedEnter index={4}>
       <Text style={[styles.h1, { fontSize: r.fontSize.h1 }]}>Mesas</Text>
-      <Text style={[styles.legend, { fontSize: r.fontSize.small }]}>
-        Verde = disponible · Rojo = ocupada (nombre del mesero) · Se actualiza al abrir o
-        cerrar pedidos
-      </Text>
+      <View style={styles.legendRow}>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendDot, { backgroundColor: colors.success }]} />
+          <Text style={[styles.legend, { fontSize: r.fontSize.small }]}>
+            Disponible
+          </Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendDot, { backgroundColor: colors.danger }]} />
+          <Text style={[styles.legend, { fontSize: r.fontSize.small }]}>
+            Ocupada
+          </Text>
+        </View>
+      </View>
+      </AnimatedEnter>
 
       <FlatList
         key={`mesas-grid-${r.gridColumns}`}
@@ -402,7 +395,7 @@ export default function MesasScreen() {
         contentContainerStyle={{ paddingBottom: r.contentPadding }}
         renderItem={({ item, index }) => (
           <AnimatedEnter
-            index={index}
+            index={index + 5}
             style={{
               width: cardWidth,
               marginBottom: r.gridColumns === 1 ? r.gridGap : 0,
@@ -451,17 +444,17 @@ export default function MesasScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f6f4ee' },
+  container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   topBar: {
     marginBottom: 12,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: '#e5e2d8',
+    borderColor: colors.border,
     borderRadius: 14,
     padding: 12,
   },
-  greeting: { color: '#6f6e67', textAlign: 'center', fontWeight: '600' },
+  greeting: { color: colors.textMuted, textAlign: 'center', fontWeight: '600' },
   actions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -470,66 +463,88 @@ const styles = StyleSheet.create({
   },
   alertaCocina: {
     marginBottom: 12,
-    backgroundColor: '#fff8e6',
+    backgroundColor: status.warn.bg,
     borderWidth: 1,
-    borderColor: '#e8c96a',
+    borderColor: status.warn.border,
+    borderLeftWidth: 5,
+    borderLeftColor: status.warn.accent,
     borderRadius: 14,
     padding: 12,
   },
   alertaRecoger: {
     marginBottom: 12,
-    backgroundColor: '#e8f5ef',
+    backgroundColor: status.ok.bg,
     borderWidth: 1,
-    borderColor: '#2f8f5f',
+    borderColor: status.ok.border,
+    borderLeftWidth: 5,
+    borderLeftColor: status.ok.accent,
     borderRadius: 14,
     padding: 12,
   },
   alertaRecogerTitle: {
-    color: '#1e6b45',
+    color: status.ok.fg,
     fontWeight: '800',
     fontSize: 14,
   },
   alertaRecogerSub: {
     marginTop: 4,
-    color: '#2f5e4f',
+    color: status.ok.accent,
     fontSize: 13,
     lineHeight: 18,
   },
   alertaCocinaTitle: {
-    color: '#7a5c1e',
+    color: status.warn.fg,
     fontWeight: '800',
     fontSize: 14,
   },
   alertaCocinaSub: {
     marginTop: 4,
-    color: '#8a6a1a',
+    color: status.warn.fg,
     fontSize: 13,
     lineHeight: 18,
   },
   alertaAyuda: {
     marginBottom: 12,
-    backgroundColor: '#eef2f8',
+    backgroundColor: status.info.bg,
     borderWidth: 1,
-    borderColor: '#3d5a80',
+    borderColor: status.info.border,
+    borderLeftWidth: 5,
+    borderLeftColor: status.info.accent,
     borderRadius: 14,
     padding: 12,
   },
   alertaAyudaTitle: {
-    color: '#2c4360',
+    color: status.info.fg,
     fontWeight: '800',
     fontSize: 14,
   },
   alertaAyudaSub: {
     marginTop: 4,
-    color: '#3d5a80',
+    color: status.info.accent,
     fontSize: 13,
     lineHeight: 18,
   },
-  h1: { fontWeight: '700', marginBottom: 6, color: '#262622' },
-  legend: {
-    color: '#6f6e67',
+  h1: { fontWeight: '700', marginBottom: 8, color: colors.text },
+  legendRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
     marginBottom: 12,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  legendDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  legend: {
+    color: colors.textMuted,
     lineHeight: 16,
+    fontWeight: '600',
   },
   card: {
     borderRadius: 14,
@@ -539,12 +554,12 @@ const styles = StyleSheet.create({
   },
   cardNum: {
     fontWeight: '700',
-    color: '#262622',
+    color: colors.text,
     textAlign: 'center',
   },
   cardEst: {
     marginTop: 6,
-    fontWeight: '600',
+    fontWeight: '700',
     textAlign: 'center',
   },
 });

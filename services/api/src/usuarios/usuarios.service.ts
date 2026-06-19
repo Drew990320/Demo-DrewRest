@@ -10,6 +10,9 @@ import { CreateMeseroDto } from './dto/create-mesero.dto';
 import { PatchUsuarioDto } from './dto/patch-usuario.dto';
 import { emailMeseroDesdeNombre } from './email-mesero';
 import { nombreUsuarioPublico } from './usuario-display';
+import { validarDesactivarUsuario } from '@la-reserva/shared-domain/mesa-admin-validacion';
+
+const PEDIDOS_ABIERTOS = ['abierto', 'en_cocina'] as const;
 
 @Injectable()
 export class UsuariosService {
@@ -112,6 +115,18 @@ export class UsuariosService {
     }
     if (dto.activo === false && idUsuario === actorId) {
       throw new ForbiddenException('No puedes desactivar tu propia sesión');
+    }
+    if (dto.activo === false) {
+      const pedidosActivos = await this.prisma.pedido.count({
+        where: {
+          idUsuario,
+          estado: { in: [...PEDIDOS_ABIERTOS] },
+        },
+      });
+      const validacion = validarDesactivarUsuario({ pedidosActivos });
+      if (!validacion.ok) {
+        throw new ConflictException(validacion.mensaje);
+      }
     }
 
     const data: { activo?: boolean; passwordHash?: string } = {};

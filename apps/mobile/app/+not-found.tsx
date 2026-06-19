@@ -1,3 +1,4 @@
+import { colors } from '../src/lib/theme';
 import { Stack, useRouter } from 'expo-router';
 import { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
@@ -64,37 +65,37 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f6f4ee',
+    backgroundColor: colors.background,
     padding: 24,
   },
   card: {
     width: '100%',
     maxWidth: 420,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 20,
     borderWidth: 1,
-    borderColor: '#e5e2d8',
+    borderColor: colors.border,
     ...appShadow('elevated'),
   },
-  kicker: { color: '#b71c1c', fontWeight: '800', letterSpacing: 1 },
+  kicker: { color: colors.danger, fontWeight: '800', letterSpacing: 1 },
   title: {
     fontSize: 22,
     fontWeight: '800',
-    color: '#262622',
+    color: colors.text,
     marginTop: 8,
     marginBottom: 10,
   },
   sub: {
     fontSize: 15,
-    color: '#6f6e67',
+    color: colors.textMuted,
     lineHeight: 22,
     marginBottom: 18,
   },
   hint: {
     marginTop: 14,
     fontSize: 12,
-    color: '#8a8880',
+    color: colors.textHint,
     textAlign: 'center',
   },
 });

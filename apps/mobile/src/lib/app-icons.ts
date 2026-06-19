@@ -62,4 +62,6 @@ export const AdminIcon = {
   entrar: 'log-in-outline',
   probarApi: 'pulse-outline',
   irMenu: 'book-outline',
+  eliminar: 'trash-outline',
+  editar: 'pencil-outline',
 } as const satisfies Record<string, AppIconName>;

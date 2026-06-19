@@ -11,6 +11,7 @@ import {
   maxRecogibleGrupo,
 } from '../lib/recogida-parcial';
 import { detallePuedeRecogerMesero } from '../lib/cocina-pedido-view';
+import { colors, status } from '../lib/theme';
 
 type Props = {
   idPedido: number;
@@ -167,54 +168,54 @@ export function filtrarDetallesSoloRecogibles(
 const styles = StyleSheet.create({
   line: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#ece9df',
+    borderTopColor: colors.borderLight,
     paddingTop: 10,
     marginTop: 8,
   },
   lineEnMesa: {
-    backgroundColor: '#eef7f2',
+    backgroundColor: colors.surfaceMuted,
     marginHorizontal: -8,
     paddingHorizontal: 8,
     borderRadius: 8,
     borderTopWidth: 0,
   },
   lineSinCocina: {
-    backgroundColor: '#fff8e6',
+    backgroundColor: status.warn.bg,
     marginHorizontal: -8,
     paddingHorizontal: 8,
     borderRadius: 8,
     borderTopWidth: 0,
   },
   lineListoRecoger: {
-    backgroundColor: '#e8f5ef',
+    backgroundColor: status.ok.bg,
     marginHorizontal: -8,
     paddingHorizontal: 8,
     borderRadius: 8,
     borderTopWidth: 0,
   },
   lineRecogerOpcional: {
-    backgroundColor: '#fbf6ea',
+    backgroundColor: status.warn.bg,
     marginHorizontal: -8,
     paddingHorizontal: 8,
     borderRadius: 8,
     borderTopWidth: 0,
   },
-  lineMain: { fontSize: 15, fontWeight: '700', color: '#262622' },
-  lineEstado: { marginTop: 4, fontSize: 12, fontWeight: '700', color: '#5c7a6d' },
-  lineEstadoSinCocina: { color: '#9a5a00' },
-  lineEstadoRecoger: { color: '#1e6b45' },
-  lineEstadoRecogerOpcional: { color: '#8a6a1a' },
-  lineEstadoEnMesa: { color: '#2f5e4f', fontWeight: '800' },
+  lineMain: { fontSize: 15, fontWeight: '700', color: colors.text },
+  lineEstado: { marginTop: 4, fontSize: 12, fontWeight: '700', color: colors.successText },
+  lineEstadoSinCocina: { color: status.warn.fg },
+  lineEstadoRecoger: { color: status.ok.accent },
+  lineEstadoRecogerOpcional: { color: status.warn.fg },
+  lineEstadoEnMesa: { color: colors.info, fontWeight: '800' },
   lineActions: { marginTop: 8, gap: 8 },
   qtyRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   qtyPickVal: {
     minWidth: 44,
     textAlign: 'center',
     fontWeight: '800',
-    color: '#262622',
+    color: colors.text,
     fontSize: 14,
   },
   iconRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
-  nota: { color: '#a26a2f', marginTop: 4 },
-  pers: { color: '#4a4a45', marginTop: 4, fontSize: 13 },
+  nota: { color: colors.secondary, marginTop: 4 },
+  pers: { color: colors.textMuted, marginTop: 4, fontSize: 13 },
 });

@@ -1,0 +1,86 @@
+{
+  "name": "@la-reserva/shared-domain",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Lógica de negocio pura compartida entre API y app móvil",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./cobro-parcial": {
+      "types": "./dist/cobro-parcial.d.ts",
+      "default": "./dist/cobro-parcial.js"
+    },
+    "./cocina-prioridad": {
+      "types": "./dist/cocina-prioridad.d.ts",
+      "default": "./dist/cocina-prioridad.js"
+    },
+    "./descuentos-pedido": {
+      "types": "./dist/descuentos-pedido.d.ts",
+      "default": "./dist/descuentos-pedido.js"
+    },
+    "./empaque-para-llevar": {
+      "types": "./dist/empaque-para-llevar.d.ts",
+      "default": "./dist/empaque-para-llevar.js"
+    },
+    "./email-mesero": {
+      "types": "./dist/email-mesero.d.ts",
+      "default": "./dist/email-mesero.js"
+    },
+    "./factura-lineas-group": {
+      "types": "./dist/factura-lineas-group.d.ts",
+      "default": "./dist/factura-lineas-group.js"
+    },
+    "./mazorca-pedido": {
+      "types": "./dist/mazorca-pedido.d.ts",
+      "default": "./dist/mazorca-pedido.js"
+    },
+    "./mazorca-linea-pedido": {
+      "types": "./dist/mazorca-linea-pedido.d.ts",
+      "default": "./dist/mazorca-linea-pedido.js"
+    },
+    "./mesa-label": {
+      "types": "./dist/mesa-label.d.ts",
+      "default": "./dist/mesa-label.js"
+    },
+    "./mesa-admin-validacion": {
+      "types": "./dist/mesa-admin-validacion.d.ts",
+      "default": "./dist/mesa-admin-validacion.js"
+    },
+    "./cocina-producto": {
+      "types": "./dist/cocina-producto.d.ts",
+      "default": "./dist/cocina-producto.js"
+    },
+    "./cocina-vista": {
+      "types": "./dist/cocina-vista.d.ts",
+      "default": "./dist/cocina-vista.js"
+    },
+    "./comanda-lineas-group": {
+      "types": "./dist/comanda-lineas-group.d.ts",
+      "default": "./dist/comanda-lineas-group.js"
+    },
+    "./dias-semana": {
+      "types": "./dist/dias-semana.d.ts",
+      "default": "./dist/dias-semana.js"
+    },
+    "./usuario-display": {
+      "types": "./dist/usuario-display.d.ts",
+      "default": "./dist/usuario-display.js"
+    },
+    "./resumen-diario-ventas": {
+      "types": "./dist/resumen-diario-ventas.d.ts",
+      "default": "./dist/resumen-diario-ventas.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepare": "npm run build",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "~5.7.3"
+  }
+}

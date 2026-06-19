@@ -34,6 +34,7 @@ import { joinPedidoRooms } from '../../src/lib/pedido-sync';
 import { useRefetchOnSync } from '../../src/hooks/useRefetchOnSync';
 import { useFormFieldStyle } from '../../src/hooks/useFormFieldStyle';
 import { formStyles } from '../../src/lib/form-layout';
+import { colors } from '../../src/lib/theme';
 
 type Resumen = {
   fecha: string;
@@ -50,6 +51,18 @@ type Resumen = {
     mesa_numero: number;
     pedidos_atendidos: number;
     total_facturado: number;
+  }[];
+  platos_por_categoria?: {
+    categoria_nombre: string;
+    cantidad: number;
+    subtotal: number;
+  }[];
+  items_menu?: {
+    id_producto: number;
+    nombre_producto: string;
+    categoria_nombre: string;
+    cantidad: number;
+    subtotal: number;
   }[];
   pedidos_detalle?: {
     id_factura: number;
@@ -91,6 +104,8 @@ function normalizeResumen(raw: Resumen): Resumen {
     totales_por_metodo: tp,
     efectivo_esperado_en_caja: esperado,
     pedidos_detalle: raw.pedidos_detalle ?? [],
+    platos_por_categoria: raw.platos_por_categoria ?? [],
+    items_menu: raw.items_menu ?? [],
   };
 }
 
@@ -684,6 +699,67 @@ export default function ResumenDiarioScreen() {
       </View>
 
       <View style={styles.card}>
+        <Text style={styles.sectionTitle}>Platos por categoría</Text>
+        <Text style={styles.help}>
+          Platos principales facturados en el día, agrupados por categoría del menú.
+        </Text>
+        {(data.platos_por_categoria?.length ?? 0) === 0 ? (
+          <Text style={styles.empty}>Sin platos facturados en esta fecha.</Text>
+        ) : (
+          <>
+            <View style={styles.ventaHeadRow}>
+              <Text style={[styles.ventaHeadCell, styles.ventaColNombre]}>Categoría</Text>
+              <Text style={[styles.ventaHeadCell, styles.ventaColCant]}>Cant.</Text>
+              <Text style={[styles.ventaHeadCell, styles.ventaColSub]}>Subtotal</Text>
+            </View>
+            {data.platos_por_categoria!.map((row) => (
+              <View key={row.categoria_nombre} style={styles.ventaRow}>
+                <Text style={[styles.ventaCell, styles.ventaColNombre]} numberOfLines={2}>
+                  {row.categoria_nombre}
+                </Text>
+                <Text style={[styles.ventaCell, styles.ventaColCant]}>{row.cantidad}</Text>
+                <Text style={[styles.ventaCell, styles.ventaColSub]}>
+                  {formatCOP(row.subtotal)}
+                </Text>
+              </View>
+            ))}
+          </>
+        )}
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>Ítems del menú</Text>
+        <Text style={styles.help}>
+          Todo lo cobrado en facturas del día (bebidas, acompañamientos, etc.), por producto.
+        </Text>
+        {(data.items_menu?.length ?? 0) === 0 ? (
+          <Text style={styles.empty}>Sin ítems facturados en esta fecha.</Text>
+        ) : (
+          <>
+            <View style={styles.ventaHeadRow}>
+              <Text style={[styles.ventaHeadCell, styles.ventaColNombre]}>Producto</Text>
+              <Text style={[styles.ventaHeadCell, styles.ventaColCant]}>Cant.</Text>
+              <Text style={[styles.ventaHeadCell, styles.ventaColSub]}>Subtotal</Text>
+            </View>
+            {data.items_menu!.map((row) => (
+              <View key={row.id_producto} style={styles.ventaRow}>
+                <View style={styles.ventaColNombre}>
+                  <Text style={styles.ventaCell} numberOfLines={2}>
+                    {row.nombre_producto}
+                  </Text>
+                  <Text style={styles.ventaMeta}>{row.categoria_nombre}</Text>
+                </View>
+                <Text style={[styles.ventaCell, styles.ventaColCant]}>{row.cantidad}</Text>
+                <Text style={[styles.ventaCell, styles.ventaColSub]}>
+                  {formatCOP(row.subtotal)}
+                </Text>
+              </View>
+            ))}
+          </>
+        )}
+      </View>
+
+      <View style={styles.card}>
         <Text style={styles.sectionTitle}>Impresión de cierre</Text>
         <Text style={styles.help}>
           Requiere el API en el PC del restaurante con impresora POS configurada. Los totales
@@ -748,7 +824,7 @@ export default function ResumenDiarioScreen() {
                   <Ionicons
                     name={mesaAbierta ? 'chevron-down' : 'chevron-forward'}
                     size={18}
-                    color="#2f5e4f"
+                    color={colors.primary}
                   />
                   <View style={styles.mesaHeadText}>
                     <Text style={styles.mesaTitle}>
@@ -776,7 +852,7 @@ export default function ResumenDiarioScreen() {
                           <Ionicons
                             name={grupoAbierto ? 'chevron-down' : 'chevron-forward'}
                             size={16}
-                            color="#2f5e4f"
+                            color={colors.primary}
                           />
                           <View style={styles.pedidoHeadText}>
                             <Text style={styles.pedidoTitle}>
@@ -826,7 +902,7 @@ export default function ResumenDiarioScreen() {
                                     <Ionicons
                                       name={pedAbierto ? 'chevron-down' : 'chevron-forward'}
                                       size={14}
-                                      color="#6f6e67"
+                                      color={colors.textMuted}
                                     />
                                     <View style={styles.pedidoHeadText}>
                                       <Text style={styles.cobroTitle}>
@@ -1079,14 +1155,14 @@ export default function ResumenDiarioScreen() {
                   ? {
                       [fechaDraft.trim()]: {
                         selected: true,
-                        selectedColor: '#2f5e4f',
+                        selectedColor: colors.primary,
                       },
                     }
                   : undefined
               }
               theme={{
-                todayTextColor: '#2f5e4f',
-                arrowColor: '#2f5e4f',
+                todayTextColor: colors.primary,
+                arrowColor: colors.primary,
               }}
             />
             <ActionIconBar
@@ -1119,36 +1195,36 @@ export default function ResumenDiarioScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f6f4ee', padding: 16 },
+  container: { flex: 1, backgroundColor: colors.background, padding: 16 },
   center: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
-    backgroundColor: '#f6f4ee',
+    backgroundColor: colors.background,
   },
-  denied: { textAlign: 'center', color: '#6f6e67', marginBottom: 16, fontSize: 16 },
+  denied: { textAlign: 'center', color: colors.textMuted, marginBottom: 16, fontSize: 16 },
   headerCard: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#e5e2d8',
+    borderColor: colors.border,
     marginBottom: 12,
   },
-  kicker: { color: '#6f6e67', fontWeight: '700' },
-  h1: { fontSize: 24, fontWeight: '800', color: '#262622', marginTop: 4 },
-  total: { fontSize: 28, fontWeight: '900', color: '#2f5e4f', marginTop: 8 },
-  sub: { marginTop: 4, color: '#6f6e67' },
+  kicker: { color: colors.textMuted, fontWeight: '700' },
+  h1: { fontSize: 24, fontWeight: '800', color: colors.text, marginTop: 4 },
+  total: { fontSize: 28, fontWeight: '900', color: colors.primary, marginTop: 8 },
+  sub: { marginTop: 4, color: colors.textMuted },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#e5e2d8',
+    borderColor: colors.border,
     marginBottom: 12,
   },
-  sectionTitle: { fontWeight: '800', color: '#262622', marginBottom: 10 },
+  sectionTitle: { fontWeight: '800', color: colors.text, marginBottom: 10 },
   sectionHeadRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1157,37 +1233,37 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   sectionActions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  linkAction: { color: '#2f5e4f', fontWeight: '800', fontSize: 13 },
-  linkSep: { color: '#b8b5ac' },
-  help: { color: '#6f6e67', marginTop: -6, marginBottom: 10 },
+  linkAction: { color: colors.primary, fontWeight: '800', fontSize: 13 },
+  linkSep: { color: colors.textHint },
+  help: { color: colors.textMuted, marginTop: -6, marginBottom: 10 },
   filterRow: { marginBottom: 4 },
   dateBtn: {
     width: '100%',
     borderWidth: 1,
-    borderColor: '#d9d5ca',
+    borderColor: colors.borderInput,
     borderRadius: 12,
     padding: 12,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     justifyContent: 'center',
   },
-  dateBtnText: { fontSize: 16, fontWeight: '700', color: '#262622' },
+  dateBtnText: { fontSize: 16, fontWeight: '700', color: colors.text },
   btn: {
-    backgroundColor: '#2f5e4f',
+    backgroundColor: colors.primary,
     paddingVertical: 12,
     paddingHorizontal: 14,
     borderRadius: 12,
   },
-  btnText: { color: '#fff', fontWeight: '900' },
+  btnText: { color: colors.surface, fontWeight: '900' },
   btnDisabled: { opacity: 0.65 },
   input: {
     borderWidth: 1,
-    borderColor: '#d9d5ca',
+    borderColor: colors.borderInput,
     borderRadius: 12,
     padding: 12,
     fontSize: 16,
     fontWeight: '700',
     marginBottom: 10,
-    backgroundColor: '#faf9f6',
+    backgroundColor: colors.surfaceMuted,
   },
   payRow: {
     flexDirection: 'row',
@@ -1196,16 +1272,43 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   payRowLast: { marginBottom: 4 },
-  payLabel: { color: '#3d3d3a', fontWeight: '600' },
-  payValue: { fontWeight: '800', color: '#262622' },
-  payStrong: { fontWeight: '800', color: '#2f5e4f' },
-  payStrongVal: { fontWeight: '900', color: '#2f5e4f', fontSize: 17 },
+  payLabel: { color: colors.text, fontWeight: '600' },
+  payValue: { fontWeight: '800', color: colors.text },
+  payStrong: { fontWeight: '800', color: colors.primary },
+  payStrongVal: { fontWeight: '900', color: colors.primary, fontSize: 17 },
   divider: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#ece9df',
+    borderTopColor: colors.borderLight,
     marginVertical: 8,
   },
-  helpSmall: { fontSize: 12, color: '#6f6e67', marginTop: 8, lineHeight: 16 },
+  helpSmall: { fontSize: 12, color: colors.textMuted, marginTop: 8, lineHeight: 16 },
+  ventaHeadRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingBottom: 6,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.borderLight,
+    marginBottom: 4,
+  },
+  ventaHeadCell: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+  },
+  ventaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    gap: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.borderLight,
+  },
+  ventaCell: { color: colors.text, fontWeight: '600' },
+  ventaMeta: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
+  ventaColNombre: { flex: 1 },
+  ventaColCant: { width: 44, textAlign: 'center', fontWeight: '800' },
+  ventaColSub: { width: 96, textAlign: 'right', fontWeight: '800' },
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.35)',
@@ -1213,42 +1316,42 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   modalCard: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#e5e2d8',
+    borderColor: colors.border,
     maxWidth: 360,
     width: '100%',
     alignSelf: 'center',
   },
-  modalTitle: { fontWeight: '900', color: '#262622', marginBottom: 10 },
-  empty: { color: '#6f6e67' },
+  modalTitle: { fontWeight: '900', color: colors.text, marginBottom: 10 },
+  empty: { color: colors.textMuted },
   mesaBlock: {
     marginTop: 12,
     borderWidth: 1,
-    borderColor: '#ece9df',
+    borderColor: colors.borderLight,
     borderRadius: 14,
     overflow: 'hidden',
-    backgroundColor: '#faf9f6',
+    backgroundColor: colors.surfaceMuted,
   },
   mesaHead: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 12,
-    backgroundColor: '#f0ede4',
+    backgroundColor: colors.backgroundAlt,
     gap: 8,
   },
   mesaHeadLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
   mesaHeadText: { flex: 1 },
-  mesaTitle: { fontWeight: '900', color: '#262622', fontSize: 16 },
-  mesaSub: { color: '#6f6e67', marginTop: 2, fontSize: 13 },
-  mesaTotal: { fontWeight: '900', color: '#2f5e4f', fontSize: 16 },
+  mesaTitle: { fontWeight: '900', color: colors.text, fontSize: 16 },
+  mesaSub: { color: colors.textMuted, marginTop: 2, fontSize: 13 },
+  mesaTotal: { fontWeight: '900', color: colors.primary, fontSize: 16 },
   pedidoGrupoBlock: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#e5e2d8',
-    backgroundColor: '#fff',
+    borderTopColor: colors.border,
+    backgroundColor: colors.surface,
   },
   pedidoGrupoHead: {
     flexDirection: 'row',
@@ -1257,11 +1360,11 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     paddingHorizontal: 12,
     gap: 8,
-    backgroundColor: '#f7f6f2',
+    backgroundColor: colors.surfaceMuted,
   },
   pedidoGrupoBody: {
     paddingBottom: 8,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
   },
   actionRow: {
     width: '100%',
@@ -1273,17 +1376,17 @@ const styles = StyleSheet.create({
     marginHorizontal: 8,
     marginTop: 6,
     borderWidth: 1,
-    borderColor: '#ece9df',
+    borderColor: colors.borderLight,
     borderRadius: 10,
     overflow: 'hidden',
-    backgroundColor: '#faf9f6',
+    backgroundColor: colors.surfaceMuted,
   },
-  cobroTitle: { fontWeight: '700', color: '#3d3d38', fontSize: 13 },
-  cobroTotal: { fontWeight: '800', color: '#3d3d38', fontSize: 14 },
+  cobroTitle: { fontWeight: '700', color: colors.text, fontSize: 13 },
+  cobroTotal: { fontWeight: '800', color: colors.text, fontSize: 14 },
   pedidoBlock: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#e5e2d8',
-    backgroundColor: '#fff',
+    borderTopColor: colors.border,
+    backgroundColor: colors.surface,
   },
   pedidoHead: {
     flexDirection: 'row',
@@ -1295,14 +1398,14 @@ const styles = StyleSheet.create({
   },
   pedidoHeadLeft: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
   pedidoHeadText: { flex: 1 },
-  pedidoTitle: { fontWeight: '800', color: '#262622', fontSize: 14 },
-  pedidoMeta: { color: '#6f6e67', marginTop: 2, fontSize: 12, lineHeight: 16 },
-  pedidoTotal: { fontWeight: '900', color: '#262622', fontSize: 15 },
+  pedidoTitle: { fontWeight: '800', color: colors.text, fontSize: 14 },
+  pedidoMeta: { color: colors.textMuted, marginTop: 2, fontSize: 12, lineHeight: 16 },
+  pedidoTotal: { fontWeight: '900', color: colors.text, fontSize: 15 },
   pedidoBody: {
     paddingHorizontal: 12,
     paddingBottom: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#f0ede4',
+    borderTopColor: colors.backgroundAlt,
   },
   lineRow: {
     flexDirection: 'row',
@@ -1312,16 +1415,16 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   lineLeft: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
-  lineQty: { fontWeight: '800', color: '#6f6e67', minWidth: 28 },
-  lineName: { flex: 1, color: '#262622', fontWeight: '600' },
+  lineQty: { fontWeight: '800', color: colors.textMuted, minWidth: 28 },
+  lineName: { flex: 1, color: colors.text, fontWeight: '600' },
   lineRight: { alignItems: 'flex-end' },
-  lineUnit: { fontSize: 11, color: '#6f6e67' },
-  lineSub: { fontWeight: '800', color: '#262622', marginTop: 2 },
+  lineUnit: { fontSize: 11, color: colors.textMuted },
+  lineSub: { fontWeight: '800', color: colors.text, marginTop: 2 },
   totalsBox: {
     marginTop: 8,
     paddingTop: 8,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#ece9df',
+    borderTopColor: colors.borderLight,
     gap: 4,
   },
   totalLine: {
@@ -1329,10 +1432,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  totalLabel: { color: '#6f6e67', fontWeight: '600' },
-  totalValue: { fontWeight: '700', color: '#262622' },
-  totalDiscount: { fontWeight: '700', color: '#b71c1c' },
-  totalStrong: { fontWeight: '800', color: '#2f5e4f' },
-  totalStrongVal: { fontWeight: '900', color: '#2f5e4f' },
+  totalLabel: { color: colors.textMuted, fontWeight: '600' },
+  totalValue: { fontWeight: '700', color: colors.text },
+  totalDiscount: { fontWeight: '700', color: colors.danger },
+  totalStrong: { fontWeight: '800', color: colors.primary },
+  totalStrongVal: { fontWeight: '900', color: colors.primary },
 });
 

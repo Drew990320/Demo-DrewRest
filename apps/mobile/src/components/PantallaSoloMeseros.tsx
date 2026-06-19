@@ -2,6 +2,7 @@ import { useRouter } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 import { ActionIconBar } from './ActionIconBar';
 import { AccionIcon } from '../lib/app-icons';
+import { colors } from '../lib/theme';
 
 export function PantallaSoloMeseros({
   mensaje = 'Esta pantalla es solo para tomar pedidos (mesero o administrador).',
@@ -33,7 +34,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
-    backgroundColor: '#f6f4ee',
+    backgroundColor: colors.background,
   },
-  denied: { textAlign: 'center', color: '#6f6e67', marginBottom: 16, fontSize: 16 },
+  denied: { textAlign: 'center', color: colors.textMuted, marginBottom: 16, fontSize: 16 },
 });

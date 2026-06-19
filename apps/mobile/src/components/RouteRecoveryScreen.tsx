@@ -1,3 +1,4 @@
+import { colors } from '../lib/theme';
 import { Stack, useRouter } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 import { ActionIconBar } from './ActionIconBar';
@@ -57,19 +58,19 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f6f4ee',
+    backgroundColor: colors.background,
     padding: 24,
   },
   card: {
     width: '100%',
     maxWidth: 420,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 20,
     borderWidth: 1,
-    borderColor: '#e5e2d8',
+    borderColor: colors.border,
     ...appShadow('soft'),
   },
-  title: { fontSize: 20, fontWeight: '800', color: '#262622', marginBottom: 8 },
-  sub: { fontSize: 15, color: '#6f6e67', lineHeight: 22, marginBottom: 18 },
+  title: { fontSize: 20, fontWeight: '800', color: colors.text, marginBottom: 8 },
+  sub: { fontSize: 15, color: colors.textMuted, lineHeight: 22, marginBottom: 18 },
 });

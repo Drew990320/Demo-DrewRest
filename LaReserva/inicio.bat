@@ -5,23 +5,35 @@ setlocal EnableExtensions
 
 cd /d "%~dp0"
 
+set "WEB_PORT="
+for /f "usebackq delims=" %%p in (`powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\find-free-port.ps1"`) do set "WEB_PORT=%%p"
+if not defined WEB_PORT set "WEB_PORT=8080"
+
 echo ========================================
 echo   La Reserva - Iniciando sistema
 echo ========================================
+echo.
+echo Cerrando instancias anteriores (si las hay)...
+taskkill /FI "WINDOWTITLE eq LaReserva_API*" /T /F >nul 2>&1
+taskkill /FI "WINDOWTITLE eq LaReserva_Web*" /T /F >nul 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0detener.ps1"
+echo.
+if not "%WEB_PORT%"=="8080" (
+  echo   Puerto web: %WEB_PORT% ^(8080 ocupado por otro servicio^)
+) else (
+  echo   Puerto web: %WEB_PORT%
+)
+echo.
+echo   IP para celulares en la red del restaurante:
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\show-lan-ip.ps1" -Compact -WebPort %WEB_PORT% -ApiPort 3000
 echo.
 
 if not exist "%~dp0api\dist\main.js" (
   if not exist "%~dp0api\dist\src\main.js" (
     echo [ERROR] No se encuentra api\dist\main.js ni api\dist\src\main.js
     echo.
-    echo Esta carpeta LaReserva\api debe contener el servidor compilado.
-    echo.
-    echo Si estas en el proyecto de desarrollo ^(monorepo^):
-    echo   1^) Compila el API:  cd services\api   y   npm run build
-    echo   2^) Empaqueta a LaReserva:  powershell -ExecutionPolicy Bypass -File scripts\empaquetar-api-la-reserva.ps1
-    echo      ^(ejecutar desde la raiz del repo, carpeta donde estan services y LaReserva^)
-    echo.
-    echo Si ya entregaron el paquete: copia aqui la carpeta api\ completa ^(dist, prisma, node_modules, package.json^).
+    echo Copia la carpeta LaReserva\api completa del paquete de instalacion
+    echo ^(dist, prisma, node_modules, vendor, package.json^).
     echo.
     pause
     exit /b 1
@@ -36,18 +48,20 @@ if not exist "%~dp0api\package.json" (
 
 if not exist "%~dp0web\index.html" (
   echo [ERROR] Falta web\index.html ^(export estatico de Expo^).
-  echo.
-  echo Si estas en el proyecto de desarrollo:
-  echo   powershell -ExecutionPolicy Bypass -File scripts\empaquetar-web-la-reserva.ps1
-  echo   ^(desde la raiz del repo; genera apps\mobile\dist y copia a LaReserva\web^)
-  echo.
-  echo Si entregaron el paquete: debe existir la carpeta web\ con index.html y assets.
-  echo.
   pause
   exit /b 1
 )
 
 if not exist "%~dp0api\.env" (
+  if exist "%~dp0api\.env.example" (
+    echo [AVISO] No existe api\.env — se crea desde .env.example
+    copy /Y "%~dp0api\.env.example" "%~dp0api\.env" >nul
+    echo         Edita api\.env con tu PostgreSQL ^(DATABASE_URL^) y JWT_SECRET.
+    echo         Luego vuelve a ejecutar inicio.bat
+    echo.
+    pause
+    exit /b 1
+  )
   echo [ERROR] Falta api\.env ^(DATABASE_URL, JWT_SECRET, PORT, etc.^)
   echo         Ver LEEME.txt
   pause
@@ -61,22 +75,48 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo [1/3] Migraciones de base de datos ^(Prisma^)...
 cd /d "%~dp0api"
-call npx prisma migrate deploy
-if errorlevel 1 (
+
+if not exist "%~dp0api\node_modules\" (
+  echo [0/4] Instalando dependencias ^(primera vez o carpeta sin node_modules^)...
+  call npm install --omit=dev
+  if errorlevel 1 (
+    echo [ERROR] npm install fallo.
+    pause
+    exit /b 1
+  )
   echo.
-  echo [ERROR] prisma migrate deploy fallo. Revisa DATABASE_URL en api\.env
-  echo         y que PostgreSQL este en marcha.
-  echo.
-  echo Si el error es P3005 ^(base no vacia / esquema ya existente^):
-  echo   Cierra esta ventana y ejecuta UNA VEZ:  ejecutar-baseline-prisma.bat
-  echo   Luego vuelve a iniciar con inicio.bat
-  echo.
+)
+
+if not exist "%~dp0api\vendor\shared-domain\dist\index.js" (
+  echo [ERROR] Falta vendor\shared-domain en api\.
+  echo         Usa el paquete LaReserva generado con npm run la-reserva:empaquetar
   pause
   exit /b 1
 )
 
+echo [1/4] Base de datos ^(Prisma generate + migrate deploy^)...
+call npx prisma generate
+if errorlevel 1 goto :migrate_err
+call npx prisma migrate deploy
+if errorlevel 1 goto :migrate_err
+goto :migrate_ok
+
+:migrate_err
+echo.
+echo [ERROR] Fallo la preparacion de la base de datos.
+echo         Revisa DATABASE_URL en api\.env y que PostgreSQL este en marcha.
+echo.
+echo Si el error es P3005 ^(base no vacia / esquema ya existente sin historial^):
+echo   Cierra esta ventana y ejecuta UNA VEZ:  ejecutar-baseline-prisma.bat
+echo   Luego vuelve a iniciar con inicio.bat
+echo.
+echo Si el error es P1000: usuario o contraseña incorrectos en DATABASE_URL.
+echo.
+pause
+exit /b 1
+
+:migrate_ok
 echo.
 echo [2/4] Verificando datos iniciales ^(roles, usuarios y mesas^)...
 if exist "%~dp0api\scripts\bootstrap-inicial.js" (
@@ -84,7 +124,6 @@ if exist "%~dp0api\scripts\bootstrap-inicial.js" (
   if errorlevel 1 (
     echo.
     echo [ERROR] Fallo el bootstrap inicial de datos.
-    echo         Revisa la salida anterior y la conexion a la BD en api\.env
     pause
     exit /b 1
   )
@@ -99,18 +138,15 @@ if exist "%~dp0api\dist\main.js" (
 ) else (
   start "LaReserva_API" /D "%~dp0api" cmd /k "node --env-file=.env dist/src/main.js"
 )
-if errorlevel 1 (
-  echo [ERROR] No se pudo iniciar el API.
-  pause
-  exit /b 1
-)
-
-REM Puerto 8080: no requiere ejecutar como administrador en Windows.
-set "WEB_PORT=8080"
 
 echo.
-echo [4/4] Iniciando web estatica ^(puerto %WEB_PORT%, accesible en la red^)...
-start "LaReserva_Web" /D "%~dp0web" cmd /k "node spa-server.js"
+echo [4/4] Iniciando web estatica ^(puerto %WEB_PORT%^)...
+start "LaReserva_Web" /D "%~dp0web" cmd /k "set WEB_PORT=%WEB_PORT%&& node spa-server.js"
+
+timeout /t 2 /nobreak >nul
+if exist "%~dp0web\web-port.txt" (
+  set /p WEB_PORT=<"%~dp0web\web-port.txt"
+)
 
 echo.
 echo ========================================
@@ -119,15 +155,17 @@ echo ========================================
 echo   App web en ESTE PC:
 echo     http://localhost:%WEB_PORT%
 echo.
-echo   IP para el CELULAR ^(misma Wi-Fi^):
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$w=Get-NetIPAddress -AddressFamily IPv4|Where-Object{$_.InterfaceAlias -match 'Wi-Fi|WLAN|Wireless|802.11' -and $_.IPAddress -notlike '169.254.*'}|Select-Object -First 1;if($w){Write-Host ('    http://{0}:' + '%WEB_PORT%' -f $w.IPAddress);Write-Host ('    API: http://{0}:3000/health' -f $w.IPAddress)}else{Write-Host '    Ejecuta mostrar-ip.bat o ipconfig para ver la IPv4 Wi-Fi'}"
+echo   IP para el CELULAR ^(misma red — Wi-Fi o Ethernet^):
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\show-lan-ip.ps1" -Compact -WebPort %WEB_PORT% -ApiPort 3000
+echo.
+echo   Si 8080 estaba ocupado ^(p. ej. Postgres EDB^), la web usa el puerto %WEB_PORT%.
+echo   Mira la ventana LaReserva_Web para confirmar el puerto.
 echo.
 echo   IMPORTANTE:
-echo   - Usa la IP del adaptador Wi-Fi ^(NO 192.168.56.x de VirtualBox^).
-echo   - Si el puerto %WEB_PORT% esta ocupado, serve fallara: cierra lo que lo use
-echo     o cambia WEB_PORT en este .bat.
+echo   - PostgreSQL debe estar instalado y la base creada ^(ver LEEME.txt^).
+echo   - Al actualizar LaReserva, conserva api\.env del PC ^(no lo sobreescribas^).
+echo   - inicio.bat aplica migraciones pendientes automaticamente.
 echo   - Si el celular no entra: ejecuta abrir-firewall.bat como administrador.
-echo   - Misma red Wi-Fi en PC y celular ^(no datos moviles^).
 echo.
 echo   Para detener: ejecuta detener.bat o cierra las ventanas API y Web.
 echo ========================================

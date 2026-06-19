@@ -15,7 +15,7 @@ import { ActionIconBar } from '../../../../src/components/ActionIconBar';
 import { IconTooltipButton } from '../../../../src/components/IconTooltipButton';
 import { MoneyTextInput } from '../../../../src/components/MoneyTextInput';
 import { api } from '../../../../src/lib/api';
-import { AccionIcon } from '../../../../src/lib/app-icons';
+import { AccionIcon, PedidoIcon } from '../../../../src/lib/app-icons';
 import { alertarSiSinPapel } from '../../../../src/lib/alarma-impresora';
 import { showAppDialog, showNotice } from '../../../../src/lib/app-dialog';
 import { digitsFromMonto, parseCOPDigits } from '../../../../src/lib/cop-input';
@@ -43,6 +43,7 @@ import { RouteRecoveryScreen } from '../../../../src/components/RouteRecoveryScr
 import { useFormFieldStyle } from '../../../../src/hooks/useFormFieldStyle';
 import { formStyles } from '../../../../src/lib/form-layout';
 import { appShadow } from '../../../../src/lib/shadow';
+import { colors } from '../../../../src/lib/theme';
 
 type DescuentosEstimados = {
   descuento_sopas: number;
@@ -729,8 +730,8 @@ export default function FacturaScreen() {
             <Switch
               value={dividirCuenta}
               onValueChange={setDividirCuenta}
-              trackColor={{ false: '#d9d5ca', true: '#9ec4b5' }}
-              thumbColor={dividirCuenta ? '#2f5e4f' : '#f4f3f4'}
+              trackColor={{ false: colors.borderInput, true: colors.successBorder }}
+              thumbColor={dividirCuenta ? colors.primary : colors.borderLight}
               disabled={busy}
             />
           </View>
@@ -870,8 +871,8 @@ export default function FacturaScreen() {
                   setDescSopaOn(v);
                   setConfigDirty(true);
                 }}
-                trackColor={{ false: '#d9d5ca', true: '#9ec4b5' }}
-                thumbColor={descSopaOn ? '#2f5e4f' : '#f4f3f4'}
+                trackColor={{ false: colors.borderInput, true: colors.successBorder }}
+                thumbColor={descSopaOn ? colors.primary : colors.borderLight}
               />
             </View>
             {descSopaOn ? (
@@ -908,8 +909,8 @@ export default function FacturaScreen() {
                   setDescMulerosOn(v);
                   setConfigDirty(true);
                 }}
-                trackColor={{ false: '#d9d5ca', true: '#9ec4b5' }}
-                thumbColor={descMulerosOn ? '#2f5e4f' : '#f4f3f4'}
+                trackColor={{ false: colors.borderInput, true: colors.successBorder }}
+                thumbColor={descMulerosOn ? colors.primary : colors.borderLight}
               />
             </View>
             {descMulerosOn ? (
@@ -955,8 +956,8 @@ export default function FacturaScreen() {
               value={Boolean(pedido.cliente_mulero)}
               onValueChange={marcarClienteCamionero}
               disabled={marcandoCamionero || busy}
-              trackColor={{ false: '#d9d5ca', true: '#9ec4b5' }}
-              thumbColor={pedido.cliente_mulero ? '#2f5e4f' : '#f4f3f4'}
+              trackColor={{ false: colors.borderInput, true: colors.successBorder }}
+              thumbColor={pedido.cliente_mulero ? colors.primary : colors.borderLight}
             />
           </View>
         </View>
@@ -1004,7 +1005,7 @@ export default function FacturaScreen() {
               value={personasSplit}
               onChangeText={(t) => setPersonasSplit(t.replace(/\D/g, '').slice(0, 2))}
               placeholder="2"
-              placeholderTextColor="#9a988f"
+              placeholderTextColor={colors.textHint}
             />
             {repartoIgual?.map((monto, i) => (
               <Text key={i} style={styles.splitLine}>
@@ -1033,8 +1034,8 @@ export default function FacturaScreen() {
             <Switch
               value={precuentaConCopia}
               onValueChange={setPrecuentaConCopia}
-              trackColor={{ false: '#d9d5ca', true: '#9ec4b5' }}
-              thumbColor={precuentaConCopia ? '#2f5e4f' : '#f4f3f4'}
+              trackColor={{ false: colors.borderInput, true: colors.successBorder }}
+              thumbColor={precuentaConCopia ? colors.primary : colors.borderLight}
               disabled={busy || imprimiendoPrecuenta}
             />
           </View>
@@ -1131,8 +1132,8 @@ export default function FacturaScreen() {
                 setImprimirFactura(v);
                 if (v) setFacturaConCopia(true);
               }}
-              trackColor={{ false: '#d9d5ca', true: '#9ec4b5' }}
-              thumbColor={imprimirFactura ? '#2f5e4f' : '#f4f3f4'}
+              trackColor={{ false: colors.borderInput, true: colors.successBorder }}
+              thumbColor={imprimirFactura ? colors.primary : colors.borderLight}
               disabled={busy}
             />
           </View>
@@ -1150,8 +1151,8 @@ export default function FacturaScreen() {
               <Switch
                 value={facturaConCopia}
                 onValueChange={setFacturaConCopia}
-                trackColor={{ false: '#d9d5ca', true: '#9ec4b5' }}
-                thumbColor={facturaConCopia ? '#2f5e4f' : '#f4f3f4'}
+                trackColor={{ false: colors.borderInput, true: colors.successBorder }}
+                thumbColor={facturaConCopia ? colors.primary : colors.borderLight}
                 disabled={busy}
               />
             </View>
@@ -1167,7 +1168,7 @@ export default function FacturaScreen() {
                 ? 'hourglass-outline'
                 : efectivoCubreTotal
                   ? 'checkmark-done-outline'
-                  : 'checkmark-circle-outline',
+                  : PedidoIcon.cobrar,
               label: busy
                 ? 'Procesando cobro…'
                 : dividirCuenta && unidadesTanda === 0
@@ -1183,7 +1184,7 @@ export default function FacturaScreen() {
                       : dividirCuenta
                         ? 'Cobrar selección e imprimir'
                         : 'Confirmar cobro e imprimir',
-              variant: 'primary',
+              variant: 'money',
               disabled: deshabilitarCobro,
               onPress: cobrar,
             },
@@ -1202,63 +1203,63 @@ export default function FacturaScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f6f4ee', padding: 16 },
+  container: { flex: 1, backgroundColor: colors.background, padding: 16 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   headerCard: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#e5e2d8',
+    borderColor: colors.border,
     marginBottom: 12,
     ...appShadow('elevated'),
   },
-  kicker: { color: '#6f6e67', fontWeight: '700', letterSpacing: 0.3 },
-  h1: { fontSize: 22, fontWeight: '800', marginTop: 6, color: '#262622' },
+  kicker: { color: colors.textMuted, fontWeight: '700', letterSpacing: 0.3 },
+  h1: { fontSize: 22, fontWeight: '800', marginTop: 6, color: colors.text },
   subtotalLine: {
     fontSize: 15,
-    color: '#5c4033',
+    color: colors.offline,
     marginTop: 10,
     fontWeight: '600',
   },
   descLine: {
     fontSize: 14,
-    color: '#b71c1c',
+    color: colors.danger,
     marginTop: 4,
     fontWeight: '700',
   },
-  total: { fontSize: 28, fontWeight: '900', marginTop: 12, color: '#2f5e4f' },
+  total: { fontSize: 28, fontWeight: '900', marginTop: 12, color: colors.primary },
   errorHint: {
     marginTop: 8,
-    color: '#b71c1c',
+    color: colors.danger,
     fontWeight: '700',
     fontSize: 13,
   },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#e5e2d8',
+    borderColor: colors.border,
     marginBottom: 12,
     ...appShadow('soft'),
   },
   totalCard: {
-    borderColor: '#c5d9ce',
-    backgroundColor: '#f8fbf9',
+    borderColor: colors.successBorder,
+    backgroundColor: colors.surfaceMuted,
   },
-  sectionTitle: { fontWeight: '800', color: '#262622', marginBottom: 8 },
-  subsectionTitle: { fontWeight: '800', color: '#3d3d3a', fontSize: 15 },
+  sectionTitle: { fontWeight: '800', color: colors.text, marginBottom: 8 },
+  subsectionTitle: { fontWeight: '800', color: colors.text, fontSize: 15 },
   subsectionGap: { marginTop: 8 },
   adminHint: {
     fontSize: 13,
-    color: '#6f6e67',
+    color: colors.textMuted,
     marginBottom: 12,
     lineHeight: 18,
   },
   fieldHint: {
     fontSize: 12,
-    color: '#6f6e67',
+    color: colors.textMuted,
     marginBottom: 6,
     fontWeight: '600',
   },
@@ -1269,7 +1270,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 8,
   },
-  discLabel: { fontWeight: '800', color: '#262622', fontSize: 16 },
+  discLabel: { fontWeight: '800', color: colors.text, fontSize: 16 },
   saveConfigRow: {
     alignItems: 'center',
     marginTop: 12,
@@ -1284,116 +1285,116 @@ const styles = StyleSheet.create({
     minWidth: 36,
     textAlign: 'center',
     fontWeight: '800',
-    color: '#2f5e4f',
+    color: colors.primary,
     fontSize: 14,
   },
   splitBox: {
     marginTop: 14,
     paddingTop: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#d5e5dc',
+    borderTopColor: colors.successBorder,
   },
-  splitTitle: { fontWeight: '800', color: '#262622', marginBottom: 4 },
+  splitTitle: { fontWeight: '800', color: colors.text, marginBottom: 4 },
   splitInput: {
     borderWidth: 1,
-    borderColor: '#d9d5ca',
+    borderColor: colors.borderInput,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
     marginTop: 8,
     marginBottom: 8,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     maxWidth: 120,
   },
-  splitLine: { fontSize: 14, color: '#3d3d3a', marginTop: 4, fontWeight: '600' },
+  splitLine: { fontSize: 14, color: colors.text, marginTop: 4, fontWeight: '600' },
   line: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#ece9df',
+    borderBottomColor: colors.borderLight,
   },
   lineHijo: { paddingLeft: 28 },
   lineCobrado: { opacity: 0.55 },
   lineBody: { flex: 1, paddingRight: 8 },
-  lineName: { color: '#262622', fontWeight: '600' },
-  lineNameCobrado: { color: '#8a8880', textDecorationLine: 'line-through' },
-  lineNameSeleccionado: { color: '#2f5e4f' },
+  lineName: { color: colors.text, fontWeight: '600' },
+  lineNameCobrado: { color: colors.textHint, textDecorationLine: 'line-through' },
+  lineNameSeleccionado: { color: colors.primary },
   check: {
     width: 28,
     height: 28,
     borderRadius: 8,
     borderWidth: 2,
-    borderColor: '#c5c2b8',
+    borderColor: colors.borderInput,
     marginRight: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
   },
   checkOn: {
-    borderColor: '#2f5e4f',
-    backgroundColor: '#e8f3ee',
+    borderColor: colors.primary,
+    backgroundColor: colors.primaryLight,
   },
-  checkMark: { color: '#2f5e4f', fontWeight: '900', fontSize: 16 },
+  checkMark: { color: colors.primary, fontWeight: '900', fontSize: 16 },
   checkPlaceholder: { width: 28, marginRight: 10 },
   parcialBanner: {
-    backgroundColor: '#fff8e6',
+    backgroundColor: colors.secondaryLight,
     borderRadius: 12,
     padding: 12,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#f0d78c',
+    borderColor: colors.warningBorder,
   },
-  parcialBannerTitle: { fontWeight: '800', color: '#7a5a00', marginBottom: 4 },
-  parcialBannerText: { color: '#6f5a20', fontSize: 13, fontWeight: '600' },
+  parcialBannerTitle: { fontWeight: '800', color: colors.warningText, marginBottom: 4 },
+  parcialBannerText: { color: colors.warningText, fontSize: 13, fontWeight: '600' },
   seleccionHint: {
     marginTop: 8,
     fontSize: 13,
-    color: '#6f6e67',
+    color: colors.textMuted,
     fontStyle: 'italic',
   },
   tandaHint: {
     fontSize: 13,
-    color: '#5c7a6d',
+    color: colors.successText,
     fontWeight: '600',
     marginBottom: 4,
   },
-  price: { fontWeight: '800', color: '#262622' },
-  label: { fontWeight: '800', marginBottom: 10, color: '#262622' },
+  price: { fontWeight: '800', color: colors.text },
+  label: { fontWeight: '800', marginBottom: 10, color: colors.text },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
   chip: {
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#d9d5ca',
-    backgroundColor: '#fff',
+    borderColor: colors.borderInput,
+    backgroundColor: colors.surface,
   },
-  chipOn: { backgroundColor: '#2f5e4f', borderColor: '#2f5e4f' },
-  chipText: { textTransform: 'capitalize', color: '#3d3d3a', fontWeight: '700' },
-  chipTextOn: { color: '#fff' },
+  chipOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  chipText: { textTransform: 'capitalize', color: colors.text, fontWeight: '700' },
+  chipTextOn: { color: colors.surface },
   efectivoBox: { marginBottom: 16 },
   input: {
     borderWidth: 1,
-    borderColor: '#d9d5ca',
+    borderColor: colors.borderInput,
     borderRadius: 12,
     padding: 14,
     fontSize: 18,
     fontWeight: '700',
-    backgroundColor: '#faf9f6',
+    backgroundColor: colors.surfaceMuted,
   },
   vueltoOk: {
     marginTop: 10,
     fontSize: 18,
     fontWeight: '900',
-    color: '#1b5e20',
+    color: colors.mesaLibre,
   },
   vueltoFalta: {
     marginTop: 8,
     fontSize: 15,
     fontWeight: '700',
-    color: '#b71c1c',
+    color: colors.danger,
   },
   walletBtnWrap: { marginTop: 14, alignSelf: 'flex-start' },
   printRow: {
@@ -1405,14 +1406,14 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 14,
     borderRadius: 12,
-    backgroundColor: '#faf9f6',
+    backgroundColor: colors.surfaceMuted,
     borderWidth: 1,
-    borderColor: '#ece9df',
+    borderColor: colors.borderLight,
     gap: 12,
   },
   switchWrap: { paddingTop: 2 },
-  printLabel: { fontWeight: '800', color: '#262622', fontSize: 15 },
-  printHint: { fontSize: 12, color: '#6f6e67', marginTop: 4, lineHeight: 16 },
+  printLabel: { fontWeight: '800', color: colors.text, fontSize: 15 },
+  printHint: { fontSize: 12, color: colors.textMuted, marginTop: 4, lineHeight: 16 },
   payActions: { marginTop: 4, paddingTop: 8 },
   precuentaActions: { marginTop: 4 },
 });

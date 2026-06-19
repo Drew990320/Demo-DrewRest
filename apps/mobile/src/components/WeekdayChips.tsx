@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { colors } from '../lib/theme';
 import {
   WEEKDAYS,
   countActiveWeekdays,
@@ -98,23 +99,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#d9d5ca',
-    backgroundColor: '#faf9f6',
+    borderColor: colors.borderInput,
+    backgroundColor: colors.surfaceMuted,
     alignItems: 'center',
     justifyContent: 'center',
   },
   chipOn: {
-    backgroundColor: '#2f5e4f',
-    borderColor: '#24493e',
+    backgroundColor: colors.primary,
+    borderColor: colors.primaryDark,
   },
   chipPressed: { opacity: 0.82 },
   chipDisabled: { opacity: 0.5 },
   chipText: {
     fontSize: 12,
     fontWeight: '800',
-    color: '#6f6e67',
+    color: colors.textMuted,
   },
-  chipTextOn: { color: '#fff' },
+  chipTextOn: { color: colors.surface },
   footer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -125,9 +126,9 @@ const styles = StyleSheet.create({
   quickLink: {
     fontSize: 12,
     fontWeight: '800',
-    color: '#2f5e4f',
+    color: colors.primary,
   },
-  quickLinkMuted: { color: '#b8b5ac' },
-  quickSep: { color: '#b8b5ac', fontSize: 12 },
-  count: { fontSize: 11, fontWeight: '700', color: '#9a988f' },
+  quickLinkMuted: { color: colors.textHint },
+  quickSep: { color: colors.textHint, fontSize: 12 },
+  count: { fontSize: 11, fontWeight: '700', color: colors.textHint },
 });

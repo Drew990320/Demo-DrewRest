@@ -2,6 +2,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
@@ -33,6 +34,11 @@ import {
 import { mesaDisponibleHoyBogota } from '../common/mesa-dia';
 import { weekdayBogota } from '../common/timezone';
 import { categoriaDisponibleEnDia } from '../common/categoria-dia';
+import {
+  categoriaEsBebida,
+  debeMarcarCocina,
+} from '@la-reserva/shared-domain/cocina-producto';
+import { agregarVentasResumenDiario } from '@la-reserva/shared-domain/resumen-diario-ventas';
 import {
   ordenarPedidosCocina,
   contarPorcionesPendientesCocina,
@@ -95,10 +101,6 @@ const facturasInclude = {
   orderBy: { emitidaEn: 'asc' as const },
 };
 
-function categoriaEsBebida(nombreCategoria: string): boolean {
-  return nombreCategoria.toLowerCase().includes('bebida');
-}
-
 function tipoListoCocinaLlama(
   detalles: Array<{ producto: { esAcompanamientoMazorca: boolean } }>,
 ): 'entrada' | 'plato' | 'mixto' {
@@ -110,15 +112,10 @@ function tipoListoCocinaLlama(
   return 'plato';
 }
 
-function debeMarcarCocina(
-  nombreCategoria: string,
-  esEmpacable: boolean,
-): boolean {
-  return !categoriaEsBebida(nombreCategoria) && !esEmpacable;
-}
-
 @Injectable()
 export class PedidosService {
+  private readonly logger = new Logger(PedidosService.name);
+
   private configDescuentosCache: {
     row: {
       id: number;
@@ -198,9 +195,16 @@ export class PedidosService {
     contexto: 'comanda' | 'factura' | 'prueba',
     pedidoId?: number,
   ): ResultadoImpresion {
-    void job().then((impresion) => {
-      this.emitirAlertaImpresora(impresion, contexto, pedidoId);
-    });
+    void job()
+      .then((impresion) => {
+        this.emitirAlertaImpresora(impresion, contexto, pedidoId);
+      })
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.error(
+          `Error en cola de impresión (${contexto}${pedidoId != null ? ` pedido ${pedidoId}` : ''}): ${msg}`,
+        );
+      });
     return { impreso: false, en_cola: true };
   }
 
@@ -615,6 +619,40 @@ export class PedidosService {
     const efectivoEsperadoEnCaja =
       montoBaseEfectivo + totalesPorMetodo.efectivo;
 
+    const detallesFacturados = await this.prisma.detallePedido.findMany({
+      where: {
+        idFactura: { not: null },
+        factura: { emitidaEn: { gte: start, lt: end } },
+        producto: { esAcompanamientoMazorca: false },
+      },
+      select: {
+        cantidad: true,
+        precioUnitario: true,
+        producto: {
+          select: {
+            idProducto: true,
+            nombre: true,
+            esPlatoPrincipal: true,
+            categoria: { select: { nombre: true } },
+          },
+        },
+      },
+    });
+
+    const ventas = agregarVentasResumenDiario(
+      detallesFacturados.map((d) => {
+        const pu = Number(d.precioUnitario);
+        return {
+          id_producto: d.producto.idProducto,
+          nombre_producto: d.producto.nombre,
+          categoria_nombre: d.producto.categoria.nombre,
+          es_plato_principal: d.producto.esPlatoPrincipal,
+          cantidad: d.cantidad,
+          subtotal_linea: pu * d.cantidad,
+        };
+      }),
+    );
+
     return {
       fecha: base.toFormat('yyyy-LL-dd'),
       total_facturado: totalFacturado,
@@ -625,6 +663,8 @@ export class PedidosService {
       monto_base_efectivo: montoBaseEfectivo,
       totales_por_metodo: totalesPorMetodo,
       efectivo_esperado_en_caja: efectivoEsperadoEnCaja,
+      platos_por_categoria: ventas.platos_por_categoria,
+      items_menu: ventas.items_menu,
     };
   }
 

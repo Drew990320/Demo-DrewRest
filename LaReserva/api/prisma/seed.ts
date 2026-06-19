@@ -1,6 +1,6 @@
 import { PrismaClient, TipoPersonalizacion } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
-import { inferirTipoProteina } from '../src/pedidos/cocina-prioridad';
+import { inferirTipoProteina } from './seed-helpers';
 
 const prisma = new PrismaClient();
 
@@ -250,6 +250,29 @@ async function main() {
 
     if (cat.nombre.startsWith('Platos fuertes')) {
       platosFuertesProductIds.push(...categoria.productos.map((p) => p.idProducto));
+    }
+  }
+
+  const catEntradas = await prisma.categoria.findFirst({
+    where: { nombre: { contains: 'Entradas' } },
+  });
+  if (catEntradas) {
+    const existe = await prisma.producto.findFirst({
+      where: { esAcompanamientoMazorca: true },
+    });
+    if (!existe) {
+      await prisma.producto.create({
+        data: {
+          idCategoria: catEntradas.idCategoria,
+          nombre: 'Mazorca (acompañamiento)',
+          descripcion: 'Incluida con el servicio · 1 por comensal',
+          precio: 0,
+          activo: true,
+          esPlatoPrincipal: false,
+          esEmpacable: false,
+          esAcompanamientoMazorca: true,
+        },
+      });
     }
   }
 

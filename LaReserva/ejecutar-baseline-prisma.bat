@@ -1,37 +1,41 @@
 @echo off
 chcp 65001 >nul
+setlocal EnableExtensions
+
 cd /d "%~dp0api"
 
 echo ========================================================================
 echo  BASELINE PRISMA (solo si migrate deploy falla con error P3005)
 echo
-echo  Usa esto cuando la base de datos YA TIENE tablas pero Prisma dice que
-echo  el esquema "no esta vacio" (suele pasar si antes usaste db push).
+echo  Usa esto cuando la base de datos YA TIENE tablas pero Prisma no tiene
+echo  el historial de migraciones (suele pasar si antes usaste db push).
 echo
 echo  Si la base es NUEVA y vacia, NO ejecutes esto: solo inicio.bat
 echo ========================================================================
 echo.
 pause
 
-echo Marcando migraciones como ya aplicadas...
-call npx prisma migrate resolve --applied 20250402120000_modo_para_llevar_empaque
-if errorlevel 1 goto :err
-call npx prisma migrate resolve --applied 20250402140000_caja_diaria
-if errorlevel 1 goto :err
-call npx prisma migrate resolve --applied 20250402180000_cocina_prioridad_proteina
-if errorlevel 1 goto :err
-call npx prisma migrate resolve --applied 20250405120000_pedido_historial
-if errorlevel 1 goto :err
-call npx prisma migrate resolve --applied 20250410140000_mesa_disponible_por_dia
-if errorlevel 1 goto :err
+echo Marcando todas las migraciones del paquete como ya aplicadas...
+set "COUNT=0"
+for /d %%M in ("%~dp0api\prisma\migrations\*") do (
+  echo   - %%~nxM
+  call npx prisma migrate resolve --applied "%%~nxM"
+  if errorlevel 1 goto :err
+  set /a COUNT+=1
+)
+
+if "%COUNT%"=="0" (
+  echo [ERROR] No hay carpetas en api\prisma\migrations
+  goto :err
+)
 
 echo.
-echo Aplicando migraciones pendientes (si las hay)...
+echo Aplicando migraciones pendientes ^(si las hay^)...
 call npx prisma migrate deploy
 if errorlevel 1 goto :err
 
 echo.
-echo Listo. Vuelve a usar inicio.bat para arrancar el sistema.
+echo Listo ^(%COUNT% migraciones marcadas^). Vuelve a usar inicio.bat.
 echo.
 pause
 exit /b 0

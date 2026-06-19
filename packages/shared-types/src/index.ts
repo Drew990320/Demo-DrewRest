@@ -30,6 +30,8 @@ export interface MesaDto {
 
 /** Respuesta admin `GET /mesas/admin` — visibilidad por día (API en zona Bogotá). */
 export interface MesaAdminDto extends MesaDto {
+  pedidos_activos?: number;
+  total_pedidos?: number;
   disponible_lunes: boolean;
   disponible_martes: boolean;
   disponible_miercoles: boolean;

@@ -1,20 +1,24 @@
 import { Prisma, TipoProteina } from '@prisma/client';
 import {
+  categoriaEsBebida,
+  debeMarcarCocina,
+} from '@la-reserva/shared-domain/cocina-producto';
+import {
+  detallePendienteRecogerMesero,
+  platosPendientesRecogerPedido,
+  pedidoTieneRecogidaPendiente,
+} from '@la-reserva/shared-domain/cocina-vista';
+import {
   prioridadAutomaticaDesdeTipos,
   prioridadCocinaEfectiva,
   tipoProteinaResuelto,
 } from './cocina-prioridad';
 
-function categoriaEsBebida(nombreCategoria: string): boolean {
-  return nombreCategoria.toLowerCase().includes('bebida');
-}
-
-function debeMarcarCocina(
-  nombreCategoria: string,
-  esEmpacable: boolean,
-): boolean {
-  return !categoriaEsBebida(nombreCategoria) && !esEmpacable;
-}
+export {
+  detallePendienteRecogerMesero,
+  pedidoTieneRecogidaPendiente,
+  platosPendientesRecogerPedido,
+};
 
 /** Include mínimo para cocina y mis-pedidos (sin precios ni facturas). */
 export const pedidoVistaOperativaInclude = {
@@ -30,6 +34,8 @@ export const pedidoVistaOperativaInclude = {
   detalles: {
     select: {
       idDetalle: true,
+      idProducto: true,
+      idDetallePadre: true,
       cantidad: true,
       notaCocina: true,
       enviadoCocina: true,
@@ -76,6 +82,8 @@ export function serializarPedidoVistaOperativa(p: PedidoVistaOperativaRow) {
     }
     return {
       id_detalle: d.idDetalle,
+      id_producto: d.idProducto,
+      id_detalle_padre: d.idDetallePadre,
       nombre_producto: d.producto.nombre,
       categoria_nombre: cat,
       tipo_proteina: tipoProteina,
@@ -119,34 +127,4 @@ export function serializarPedidoVistaOperativa(p: PedidoVistaOperativaRow) {
     },
     detalles,
   };
-}
-
-export function detallePendienteRecogerMesero(d: {
-  marcar_cocina: boolean;
-  enviado_cocina?: boolean;
-  listo_cocina?: boolean;
-  es_bebida?: boolean;
-  es_empacable?: boolean;
-}): boolean {
-  return (
-    d.marcar_cocina &&
-    Boolean(d.enviado_cocina) &&
-    !d.listo_cocina &&
-    !d.es_bebida &&
-    !d.es_empacable
-  );
-}
-
-export function pedidoTieneRecogidaPendiente(
-  p: ReturnType<typeof serializarPedidoVistaOperativa>,
-): boolean {
-  return p.detalles.some(detallePendienteRecogerMesero);
-}
-
-export function platosPendientesRecogerPedido(
-  p: ReturnType<typeof serializarPedidoVistaOperativa>,
-): number {
-  return p.detalles
-    .filter(detallePendienteRecogerMesero)
-    .reduce((acc, d) => acc + d.cantidad, 0);
 }

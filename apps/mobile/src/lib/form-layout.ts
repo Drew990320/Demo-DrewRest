@@ -1,4 +1,5 @@
 import { StyleSheet, type ViewStyle } from 'react-native';
+import { colors } from './theme';
 
 /** Campos cortos: cantidad, número de mesa, comensales. */
 export const FORM_FIELD_NARROW = 168;
@@ -69,28 +70,28 @@ export function formFieldStyle(
 export const formStyles = StyleSheet.create({
   label: {
     fontWeight: '700',
-    color: '#5c4033',
+    color: colors.offline,
     fontSize: 13,
     marginBottom: 4,
     textAlign: 'center',
   },
   help: {
-    color: '#6f6e67',
+    color: colors.textMuted,
     fontSize: 13,
     lineHeight: 18,
     marginBottom: 10,
     textAlign: 'center',
   },
   input: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: '#e5e2d8',
+    borderColor: colors.border,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 16,
     marginBottom: 10,
-    color: '#262622',
+    color: colors.text,
   },
   inputMultiline: {
     minHeight: 72,
@@ -108,18 +109,18 @@ export const formStyles = StyleSheet.create({
     padding: 16,
   },
   modalCard: {
-    backgroundColor: '#f6f4ee',
+    backgroundColor: colors.background,
     borderRadius: 16,
     padding: 16,
     width: '100%',
     borderWidth: 1,
-    borderColor: '#e8e4d8',
+    borderColor: colors.border,
   },
   modalTitle: {
     fontSize: 18,
     fontWeight: '900',
     marginBottom: 12,
-    color: '#262622',
+    color: colors.text,
     textAlign: 'center',
   },
   modalActions: {
@@ -151,7 +152,7 @@ export const formStyles = StyleSheet.create({
   /** Título de sección centrado en tarjetas de formulario. */
   sectionTitle: {
     fontWeight: '800',
-    color: '#262622',
+    color: colors.text,
     marginBottom: 8,
     textAlign: 'center',
   },

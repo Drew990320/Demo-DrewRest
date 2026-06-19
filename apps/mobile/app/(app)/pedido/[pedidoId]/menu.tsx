@@ -28,6 +28,7 @@ import {
   writeMenuTodayCache,
 } from '../../../../src/lib/menu-cache';
 import { formatCOP } from '../../../../src/lib/format';
+import { colors } from '../../../../src/lib/theme';
 import {
   scrollHeaderIntoView,
   scrollSectionListToY,
@@ -433,22 +434,22 @@ export default function MenuPedidoScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f6f4ee' },
+  container: { flex: 1, backgroundColor: colors.background },
   listFlex: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: {
     paddingTop: 12,
     paddingBottom: 8,
   },
-  kicker: { color: '#6f6e67', fontWeight: '700', letterSpacing: 0.3 },
-  h1: { fontWeight: '800', color: '#262622', marginTop: 2 },
-  hint: { marginTop: 6, color: '#6f6e67', fontSize: 13, lineHeight: 18 },
-  empty: { padding: 24, color: '#6f6e67' },
+  kicker: { color: colors.textMuted, fontWeight: '700', letterSpacing: 0.3 },
+  h1: { fontWeight: '800', color: colors.text, marginTop: 2 },
+  hint: { marginTop: 6, color: colors.textMuted, fontSize: 13, lineHeight: 18 },
+  empty: { padding: 24, color: colors.textMuted },
   catNavWrap: {
     paddingBottom: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#e5e2d8',
-    backgroundColor: '#faf9f6',
+    borderBottomColor: colors.border,
+    backgroundColor: colors.surfaceMuted,
   },
   catNavInner: {
     flexDirection: 'row',
@@ -461,19 +462,19 @@ const styles = StyleSheet.create({
   sectionWrap: {
     paddingTop: 10,
     paddingBottom: 4,
-    backgroundColor: '#f6f4ee',
+    backgroundColor: colors.background,
   },
   section: {
     fontSize: 13,
     fontWeight: '800',
-    color: '#6f6e67',
+    color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
   menuFooter: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#e5e2d8',
-    backgroundColor: '#faf9f6',
+    borderTopColor: colors.border,
+    backgroundColor: colors.surfaceMuted,
     paddingTop: 4,
     alignItems: 'center',
   },
@@ -481,7 +482,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginBottom: 4,
     fontSize: 11,
-    color: '#6f6e67',
+    color: colors.textMuted,
     textAlign: 'center',
     lineHeight: 16,
     maxWidth: 520,
@@ -493,10 +494,10 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingVertical: 10,
     paddingHorizontal: 12,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderLeftWidth: 1,
     borderRightWidth: 1,
-    borderColor: '#e5e2d8',
+    borderColor: colors.border,
   },
   rowFirst: {
     borderTopWidth: 1,
@@ -505,7 +506,7 @@ const styles = StyleSheet.create({
   },
   rowMid: {
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#ece9df',
+    borderBottomColor: colors.borderLight,
   },
   rowLast: {
     borderBottomWidth: 1,
@@ -516,14 +517,14 @@ const styles = StyleSheet.create({
   name: {
     flex: 1,
     fontSize: 15,
-    color: '#262622',
+    color: colors.text,
     fontWeight: '600',
   },
   price: {
     fontSize: 14,
-    color: '#2f5e4f',
+    color: colors.primary,
     fontWeight: '800',
     flexShrink: 0,
   },
-  chev: { fontSize: 18, color: '#b4b2a9', flexShrink: 0 },
+  chev: { fontSize: 18, color: colors.textHint, flexShrink: 0 },
 });

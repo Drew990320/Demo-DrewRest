@@ -1,16 +1,13 @@
 import { Prisma } from '@prisma/client';
+import {
+  mesaDisponibleEnDiaSemana,
+  type DiasSemanaCamel,
+} from '@la-reserva/shared-domain/dias-semana';
 import { weekdayBogota } from './timezone';
 
-/** Campos de disponibilidad por día (misma forma que el modelo `Mesa`). */
-export type MesaDiasSemana = {
-  disponibleLunes: boolean;
-  disponibleMartes: boolean;
-  disponibleMiercoles: boolean;
-  disponibleJueves: boolean;
-  disponibleViernes: boolean;
-  disponibleSabado: boolean;
-  disponibleDomingo: boolean;
-};
+export type MesaDiasSemana = DiasSemanaCamel;
+
+export { mesaDisponibleEnDiaSemana };
 
 /** 1 = lunes … 7 = domingo (Luxon Bogotá). */
 const DIA_A_CAMPO: Record<number, keyof MesaDiasSemana> = {
@@ -22,15 +19,6 @@ const DIA_A_CAMPO: Record<number, keyof MesaDiasSemana> = {
   6: 'disponibleSabado',
   7: 'disponibleDomingo',
 };
-
-export function mesaDisponibleEnDiaSemana(
-  m: MesaDiasSemana,
-  weekday: number,
-): boolean {
-  const campo = DIA_A_CAMPO[weekday];
-  if (!campo) return false;
-  return Boolean(m[campo]);
-}
 
 export function mesaDisponibleHoyBogota(m: MesaDiasSemana): boolean {
   return mesaDisponibleEnDiaSemana(m, weekdayBogota());

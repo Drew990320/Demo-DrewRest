@@ -39,6 +39,25 @@ import {
   idProductoMazorcaLocal,
   sincronizarLineaMazorcaLocal,
 } from './mazorca-linea-pedido';
+import { categoriaDisponibleEnDiaSnake } from '@la-reserva/shared-domain/dias-semana';
+import {
+  categoriaEsBebida,
+  debeMarcarCocina,
+} from '@la-reserva/shared-domain/cocina-producto';
+import {
+  esMesaVirtualNumero,
+  MESA_MOSTRADOR_NUMERO,
+  MESA_PARA_LLEVAR_NUMERO,
+} from './mesa-label';
+import {
+  type PatchDisponibilidadMesa,
+  validarCambioNumeroMesaAdmin,
+  validarDesactivarUsuario,
+  validarEliminarMesaAdmin,
+  validarNumeroMesaReservado,
+  validarPatchMesaAdmin,
+} from '@la-reserva/shared-domain/mesa-admin-validacion';
+import { agregarVentasResumenDiario } from '@la-reserva/shared-domain/resumen-diario-ventas';
 
 type ApiOptions = RequestInit & { token?: string | null };
 
@@ -47,10 +66,6 @@ type EstadoMesa = 'libre' | 'ocupada' | 'reservada';
 type EstadoPedido = 'abierto' | 'en_cocina' | 'facturado';
 
 const ABIERTOS_LOCAL: EstadoPedido[] = ['abierto', 'en_cocina'];
-
-function esMesaVirtualNumero(numero: number): boolean {
-  return numero === 98 || numero === 99;
-}
 
 type User = {
   id: number;
@@ -169,10 +184,6 @@ function toDateKey(iso: string): string {
   return iso.slice(0, 10);
 }
 
-function isBebida(cat: string) {
-  return cat.toLowerCase().includes('bebida');
-}
-
 function unauthorized(): never {
   throw new Error('Credenciales inválidas');
 }
@@ -240,12 +251,30 @@ function mapMesaPublicLocal(m: Mesa) {
   };
 }
 
-function mapMesaAdminLocal(m: Mesa) {
+function contarPedidosActivosMesa(db: Db, idMesa: number): number {
+  return db.pedidos.filter(
+    (p) => p.id_mesa === idMesa && ABIERTOS_LOCAL.includes(p.estado),
+  ).length;
+}
+
+function contarPedidosActivosUsuario(db: Db, idUsuario: number): number {
+  return db.pedidos.filter(
+    (p) => p.id_usuario === idUsuario && ABIERTOS_LOCAL.includes(p.estado),
+  ).length;
+}
+
+function contarTotalPedidosMesa(db: Db, idMesa: number): number {
+  return db.pedidos.filter((p) => p.id_mesa === idMesa).length;
+}
+
+function mapMesaAdminLocal(m: Mesa, pedidosActivos = 0, totalPedidos = 0) {
   return {
     id_mesa: m.id_mesa,
     numero: m.numero,
     capacidad: m.capacidad,
     estado: m.estado,
+    pedidos_activos: pedidosActivos,
+    total_pedidos: totalPedidos,
     disponible_lunes: m.disponible_lunes,
     disponible_martes: m.disponible_martes,
     disponible_miercoles: m.disponible_miercoles,
@@ -289,14 +318,14 @@ function seedDb(): Db {
     })),
     {
       id_mesa: 16,
-      numero: 99,
+      numero: MESA_MOSTRADOR_NUMERO,
       capacidad: 1,
       estado: 'libre',
       ...d,
     },
     {
       id_mesa: 17,
-      numero: 98,
+      numero: MESA_PARA_LLEVAR_NUMERO,
       capacidad: 1,
       estado: 'libre',
       ...d,
@@ -412,11 +441,11 @@ function normalizeDb(parsed: unknown): Db {
     if (m.disponible_sabado === undefined) m.disponible_sabado = d0.disponible_sabado;
     if (m.disponible_domingo === undefined) m.disponible_domingo = d0.disponible_domingo;
   }
-  if (!mesas.some((m) => m.numero === 98)) {
+  if (!mesas.some((m) => m.numero === MESA_PARA_LLEVAR_NUMERO)) {
     const maxId = mesas.reduce((acc, m) => Math.max(acc, m.id_mesa), 0);
     mesas.push({
       id_mesa: maxId + 1,
-      numero: 98,
+      numero: MESA_PARA_LLEVAR_NUMERO,
       capacidad: 1,
       estado: 'libre',
       ...d0,
@@ -426,7 +455,8 @@ function normalizeDb(parsed: unknown): Db {
   for (const p of pedidos) {
     if (!p.modo_servicio) {
       const mesa = mesas.find((m) => m.id_mesa === p.id_mesa);
-      p.modo_servicio = mesa?.numero === 98 ? 'para_llevar' : 'en_mesa';
+      p.modo_servicio =
+        mesa?.numero === MESA_PARA_LLEVAR_NUMERO ? 'para_llevar' : 'en_mesa';
     }
     if (p.prioridad_cocina_override === undefined) {
       p.prioridad_cocina_override = null;
@@ -560,18 +590,7 @@ function diasCategoriaTodos(): Pick<
 }
 
 function categoriaDisponibleHoyLocal(c: CategoriaLocal): boolean {
-  const w = weekdayLocal();
-  const map: Record<number, keyof CategoriaLocal> = {
-    1: 'disponible_lunes',
-    2: 'disponible_martes',
-    3: 'disponible_miercoles',
-    4: 'disponible_jueves',
-    5: 'disponible_viernes',
-    6: 'disponible_sabado',
-    7: 'disponible_domingo',
-  };
-  const key = map[w];
-  return key ? Boolean(c[key]) : false;
+  return categoriaDisponibleEnDiaSnake(c, weekdayLocal());
 }
 
 function mapCategoriaAdminLocal(c: CategoriaLocal) {
@@ -693,7 +712,7 @@ function serializePedido(db: Db, p: Pedido) {
     const opcionIds = Array.isArray(d.opcion_ids) ? d.opcion_ids : [];
     const pers = prod.opciones.filter((o) => opcionIds.includes(o.id_opcion));
     const marcar =
-      !isBebida(prod.categoria_nombre) && !prod.es_empacable;
+      debeMarcarCocina(prod.categoria_nombre, prod.es_empacable);
     const tipoProteina = tipoProteinaResuelto(
       prod.tipo_proteina,
       prod.categoria_nombre,
@@ -709,7 +728,7 @@ function serializePedido(db: Db, p: Pedido) {
       nombre_producto: prod.nombre,
       categoria_nombre: prod.categoria_nombre,
       tipo_proteina: tipoProteina,
-      es_bebida: isBebida(prod.categoria_nombre),
+      es_bebida: categoriaEsBebida(prod.categoria_nombre),
       es_empacable: Boolean(prod.es_empacable),
       es_plato_principal: Boolean(prod.es_plato_principal),
       es_acompanamiento_mazorca: Boolean(prod.es_acompanamiento_mazorca),
@@ -1029,7 +1048,13 @@ export async function localApi<T = unknown>(
 
   if (pathKey === '/mesas/admin' && method === 'GET') {
     if (actor.rol !== 'admin') unauthorized();
-    return db.mesas.map(mapMesaAdminLocal) as T;
+    return db.mesas.map((m) =>
+      mapMesaAdminLocal(
+        m,
+        contarPedidosActivosMesa(db, m.id_mesa),
+        contarTotalPedidosMesa(db, m.id_mesa),
+      ),
+    ) as T;
   }
 
   if (pathKey === '/mesas/admin' && method === 'POST') {
@@ -1043,9 +1068,13 @@ export async function localApi<T = unknown>(
     if (!Number.isFinite(numero) || numero < 1 || numero > 999) {
       badRequest('Número inválido');
     }
-    if (numero === 98 || numero === 99) {
-      badRequest('Los números 98 y 99 están reservados (para llevar / mostrador).');
+    if (numero === MESA_PARA_LLEVAR_NUMERO || numero === MESA_MOSTRADOR_NUMERO) {
+      badRequest(
+        `Los números ${MESA_PARA_LLEVAR_NUMERO} y ${MESA_MOSTRADOR_NUMERO} están reservados (para llevar / mostrador).`,
+      );
     }
+    const reservado = validarNumeroMesaReservado(numero);
+    if (!reservado.ok) badRequest(reservado.mensaje);
     if (!Number.isFinite(capacidad) || capacidad < 1 || capacidad > 50) {
       badRequest('Capacidad inválida');
     }
@@ -1089,44 +1118,127 @@ export async function localApi<T = unknown>(
     };
     db.mesas.push(nueva);
     await writeDb(db);
-    return mapMesaAdminLocal(nueva) as T;
+    return mapMesaAdminLocal(nueva, 0, 0) as T;
   }
 
   {
     const m = /^\/mesas\/admin\/(\d+)$/.exec(pathKey);
+    if (m && method === 'DELETE') {
+      if (actor.rol !== 'admin') unauthorized();
+      const idMesa = Number(m[1]);
+      const mesa = db.mesas.find((x) => x.id_mesa === idMesa);
+      if (!mesa) badRequest('Mesa no encontrada');
+      const pedidosActivos = contarPedidosActivosMesa(db, idMesa);
+      const totalPedidos = contarTotalPedidosMesa(db, idMesa);
+      const validacion = validarEliminarMesaAdmin({
+        numeroMesa: mesa.numero,
+        pedidosActivos,
+        totalPedidos,
+      });
+      if (!validacion.ok) badRequest(validacion.mensaje);
+      db.mesas = db.mesas.filter((x) => x.id_mesa !== idMesa);
+      await writeDb(db);
+      return { ok: true, id_mesa: idMesa } as T;
+    }
     if (m && method === 'PATCH') {
       if (actor.rol !== 'admin') unauthorized();
       const idMesa = Number(m[1]);
       const mesa = db.mesas.find((x) => x.id_mesa === idMesa);
       if (!mesa) badRequest('Mesa no encontrada');
+      if (body.numero != null) {
+        const numeroNuevo = Number(body.numero);
+        if (!Number.isFinite(numeroNuevo) || numeroNuevo < 1 || numeroNuevo > 999) {
+          badRequest('Número inválido');
+        }
+        if (numeroNuevo !== mesa.numero) {
+          const pedidosActivos = contarPedidosActivosMesa(db, idMesa);
+          const validacionNumero = validarCambioNumeroMesaAdmin({
+            numeroActual: mesa.numero,
+            numeroNuevo,
+            pedidosActivos,
+          });
+          if (!validacionNumero.ok) badRequest(validacionNumero.mensaje);
+          if (db.mesas.some((x) => x.numero === numeroNuevo)) {
+            badRequest('Ya existe una mesa con ese número.');
+          }
+          mesa.numero = numeroNuevo;
+        }
+      }
+      const patchDisponibilidad: PatchDisponibilidadMesa = {};
+      if (body.disponible_lunes !== undefined) {
+        patchDisponibilidad.disponible_lunes = Boolean(body.disponible_lunes);
+      }
+      if (body.disponible_martes !== undefined) {
+        patchDisponibilidad.disponible_martes = Boolean(body.disponible_martes);
+      }
+      if (body.disponible_miercoles !== undefined) {
+        patchDisponibilidad.disponible_miercoles = Boolean(
+          body.disponible_miercoles,
+        );
+      }
+      if (body.disponible_jueves !== undefined) {
+        patchDisponibilidad.disponible_jueves = Boolean(body.disponible_jueves);
+      }
+      if (body.disponible_viernes !== undefined) {
+        patchDisponibilidad.disponible_viernes = Boolean(body.disponible_viernes);
+      }
+      if (body.disponible_sabado !== undefined) {
+        patchDisponibilidad.disponible_sabado = Boolean(body.disponible_sabado);
+      }
+      if (body.disponible_domingo !== undefined) {
+        patchDisponibilidad.disponible_domingo = Boolean(body.disponible_domingo);
+      }
+      if (Object.keys(patchDisponibilidad).length > 0) {
+        const pedidosActivos = contarPedidosActivosMesa(db, idMesa);
+        const validacion = validarPatchMesaAdmin({
+          numeroMesa: mesa.numero,
+          flagsActuales: {
+            disponible_lunes: mesa.disponible_lunes,
+            disponible_martes: mesa.disponible_martes,
+            disponible_miercoles: mesa.disponible_miercoles,
+            disponible_jueves: mesa.disponible_jueves,
+            disponible_viernes: mesa.disponible_viernes,
+            disponible_sabado: mesa.disponible_sabado,
+            disponible_domingo: mesa.disponible_domingo,
+          },
+          patch: patchDisponibilidad,
+          pedidosActivos,
+          weekdayHoy: weekdayLocal(),
+        });
+        if (!validacion.ok) badRequest(validacion.mensaje);
+      }
       if (body.capacidad != null) {
         const c = Number(body.capacidad);
         if (!Number.isFinite(c) || c < 1 || c > 50) badRequest('Capacidad inválida');
         mesa.capacidad = c;
       }
-      if (body.disponible_lunes !== undefined) {
-        mesa.disponible_lunes = Boolean(body.disponible_lunes);
+      if (patchDisponibilidad.disponible_lunes !== undefined) {
+        mesa.disponible_lunes = patchDisponibilidad.disponible_lunes;
       }
-      if (body.disponible_martes !== undefined) {
-        mesa.disponible_martes = Boolean(body.disponible_martes);
+      if (patchDisponibilidad.disponible_martes !== undefined) {
+        mesa.disponible_martes = patchDisponibilidad.disponible_martes;
       }
-      if (body.disponible_miercoles !== undefined) {
-        mesa.disponible_miercoles = Boolean(body.disponible_miercoles);
+      if (patchDisponibilidad.disponible_miercoles !== undefined) {
+        mesa.disponible_miercoles = patchDisponibilidad.disponible_miercoles;
       }
-      if (body.disponible_jueves !== undefined) {
-        mesa.disponible_jueves = Boolean(body.disponible_jueves);
+      if (patchDisponibilidad.disponible_jueves !== undefined) {
+        mesa.disponible_jueves = patchDisponibilidad.disponible_jueves;
       }
-      if (body.disponible_viernes !== undefined) {
-        mesa.disponible_viernes = Boolean(body.disponible_viernes);
+      if (patchDisponibilidad.disponible_viernes !== undefined) {
+        mesa.disponible_viernes = patchDisponibilidad.disponible_viernes;
       }
-      if (body.disponible_sabado !== undefined) {
-        mesa.disponible_sabado = Boolean(body.disponible_sabado);
+      if (patchDisponibilidad.disponible_sabado !== undefined) {
+        mesa.disponible_sabado = patchDisponibilidad.disponible_sabado;
       }
-      if (body.disponible_domingo !== undefined) {
-        mesa.disponible_domingo = Boolean(body.disponible_domingo);
+      if (patchDisponibilidad.disponible_domingo !== undefined) {
+        mesa.disponible_domingo = patchDisponibilidad.disponible_domingo;
       }
       await writeDb(db);
-      return mapMesaAdminLocal(mesa) as T;
+      return mapMesaAdminLocal(
+        mesa,
+        contarPedidosActivosMesa(db, mesa.id_mesa),
+        contarTotalPedidosMesa(db, mesa.id_mesa),
+      ) as T;
     }
   }
 
@@ -1134,8 +1246,8 @@ export async function localApi<T = unknown>(
     return db.mesas
       .filter(
         (m) =>
-          m.numero !== 99 &&
-          m.numero !== 98 &&
+          m.numero !== MESA_MOSTRADOR_NUMERO &&
+          m.numero !== MESA_PARA_LLEVAR_NUMERO &&
           mesaDisponibleHoyLocal(m),
       )
       .map((m) => {
@@ -1170,14 +1282,14 @@ export async function localApi<T = unknown>(
   }
 
   if (path === '/mesas/mostrador' && method === 'GET') {
-    const m = db.mesas.find((x) => x.numero === 99);
+    const m = db.mesas.find((x) => x.numero === MESA_MOSTRADOR_NUMERO);
     if (!m) badRequest('Mostrador no configurado');
     if (!mesaDisponibleHoyLocal(m)) badRequest('Mostrador no disponible hoy');
     return mapMesaPublicLocal(m) as T;
   }
 
   if (path === '/mesas/para-llevar' && method === 'GET') {
-    const m = db.mesas.find((x) => x.numero === 98);
+    const m = db.mesas.find((x) => x.numero === MESA_PARA_LLEVAR_NUMERO);
     if (!m) badRequest('Para llevar no configurado');
     if (!mesaDisponibleHoyLocal(m)) badRequest('Para llevar no disponible hoy');
     return mapMesaPublicLocal(m) as T;
@@ -1217,7 +1329,7 @@ export async function localApi<T = unknown>(
       }
     }
     const modo_servicio: Pedido['modo_servicio'] =
-      mesa.numero === 98 ? 'para_llevar' : 'en_mesa';
+      mesa.numero === MESA_PARA_LLEVAR_NUMERO ? 'para_llevar' : 'en_mesa';
     const p: Pedido = {
       id_pedido: db.seq.pedido++,
       id_mesa: idMesa,
@@ -1395,7 +1507,7 @@ export async function localApi<T = unknown>(
     const pendientes = p.detalles.filter((d) => {
       const prod = db.productos.find((x) => x.id_producto === d.id_producto);
       if (!prod) return false;
-      const marcar = !isBebida(prod.categoria_nombre) && !prod.es_empacable;
+      const marcar = debeMarcarCocina(prod.categoria_nombre, prod.es_empacable);
       return marcar && !(d.enviado_cocina ?? false);
     });
     if (pendientes.length === 0) {
@@ -1406,7 +1518,7 @@ export async function localApi<T = unknown>(
     const esAdicional = p.detalles.some((d) => {
       const prod = db.productos.find((x) => x.id_producto === d.id_producto);
       if (!prod) return false;
-      const marcar = !isBebida(prod.categoria_nombre) && !prod.es_empacable;
+      const marcar = debeMarcarCocina(prod.categoria_nombre, prod.es_empacable);
       return marcar && (d.enviado_cocina ?? false);
     });
     for (const d of pendientes) {
@@ -1444,7 +1556,10 @@ export async function localApi<T = unknown>(
         if (prod.es_acompanamiento_mazorca) {
           badRequest('La cantidad de mazorcas se ajusta con el número de comensales');
         }
-        const marcarCocina = !isBebida(prod.categoria_nombre) && !prod.es_empacable;
+        const marcarCocina = debeMarcarCocina(
+          prod.categoria_nombre,
+          prod.es_empacable,
+        );
         if (
           cantidad > det.cantidad &&
           (det.enviado_cocina ?? false) &&
@@ -1990,7 +2105,7 @@ export async function localApi<T = unknown>(
       const d = p.detalles.find((x) => x.id_detalle === idDetalle);
       if (!d) continue;
       const prod = db.productos.find((x) => x.id_producto === d.id_producto)!;
-      if (isBebida(prod.categoria_nombre)) {
+      if (categoriaEsBebida(prod.categoria_nombre)) {
         badRequest('Las bebidas no se marcan en cocina');
       }
       if (prod.es_empacable) {
@@ -2028,7 +2143,7 @@ export async function localApi<T = unknown>(
       const d = p.detalles.find((x) => x.id_detalle === idDetalle);
       if (!d) continue;
       const prod = db.productos.find((x) => x.id_producto === d.id_producto)!;
-      if (isBebida(prod.categoria_nombre)) {
+      if (categoriaEsBebida(prod.categoria_nombre)) {
         badRequest('Las bebidas no aplican en cocina');
       }
       if (prod.es_empacable) {
@@ -2067,7 +2182,7 @@ export async function localApi<T = unknown>(
       const d = p.detalles.find((x) => x.id_detalle === idDetalle);
       if (!d) continue;
       const prod = db.productos.find((x) => x.id_producto === d.id_producto)!;
-      if (isBebida(prod.categoria_nombre)) {
+      if (categoriaEsBebida(prod.categoria_nombre)) {
         badRequest('Las bebidas no aplican en cocina');
       }
       if (prod.es_empacable) {
@@ -2100,7 +2215,9 @@ export async function localApi<T = unknown>(
       const aplica = (d: PedidoDetalle) => {
         if (!d.enviado_cocina || d.listo_cocina) return false;
         const prod = db.productos.find((x) => x.id_producto === d.id_producto)!;
-        if (isBebida(prod.categoria_nombre) || prod.es_empacable) return false;
+        if (!debeMarcarCocina(prod.categoria_nombre, prod.es_empacable)) {
+          return false;
+        }
         return true;
       };
       let marcadosAhora = 0;
@@ -2168,8 +2285,8 @@ export async function localApi<T = unknown>(
       mesaIds.push(p.id_mesa);
       const mesa = db.mesas.find((m) => m.id_mesa === p.id_mesa);
       const numero = mesa?.numero ?? 0;
-      if (numero === 99) pedidosMostrador += 1;
-      if (numero === 98) pedidosParaLlevar += 1;
+      if (numero === MESA_MOSTRADOR_NUMERO) pedidosMostrador += 1;
+      if (numero === MESA_PARA_LLEVAR_NUMERO) pedidosParaLlevar += 1;
       for (const d of p.detalles) {
         const prod = db.productos.find((x) => x.id_producto === d.id_producto);
         const cat = prod
@@ -2543,6 +2660,26 @@ export async function localApi<T = unknown>(
       .filter((x): x is NonNullable<typeof x> => x !== null)
       .sort((a, b) => a.emitida_en.localeCompare(b.emitida_en));
 
+    const idFacturasDia = new Set(facturas.map((f) => f.id_factura));
+    const lineasVenta = [];
+    for (const p of db.pedidos) {
+      for (const d of p.detalles) {
+        if (d.id_factura == null || !idFacturasDia.has(d.id_factura)) continue;
+        const prod = db.productos.find((x) => x.id_producto === d.id_producto);
+        if (!prod || prod.es_acompanamiento_mazorca) continue;
+        const cat = db.categorias.find((c) => c.id_categoria === prod.id_categoria);
+        lineasVenta.push({
+          id_producto: prod.id_producto,
+          nombre_producto: prod.nombre,
+          categoria_nombre: cat?.nombre ?? 'Sin categoría',
+          es_plato_principal: Boolean(prod.es_plato_principal),
+          cantidad: d.cantidad,
+          subtotal_linea: d.precio_unitario * d.cantidad,
+        });
+      }
+    }
+    const ventas = agregarVentasResumenDiario(lineasVenta);
+
     return {
       fecha: target,
       total_facturado: facturas.reduce((s, f) => s + f.total, 0),
@@ -2553,6 +2690,8 @@ export async function localApi<T = unknown>(
       monto_base_efectivo: montoBaseEfectivo,
       totales_por_metodo: totalesPorMetodo,
       efectivo_esperado_en_caja: montoBaseEfectivo + totalesPorMetodo.efectivo,
+      platos_por_categoria: ventas.platos_por_categoria,
+      items_menu: ventas.items_menu,
     } as T;
   }
 
@@ -2636,6 +2775,15 @@ export async function localApi<T = unknown>(
     const id = Number(path.split('/')[2]);
     const u = db.users.find((x) => x.id === id);
     if (!u) badRequest('Usuario no encontrado');
+    if (typeof body.activo === 'boolean' && body.activo === false) {
+      if (id === actor.id) {
+        badRequest('No puedes desactivar tu propia sesión');
+      }
+      const validacion = validarDesactivarUsuario({
+        pedidosActivos: contarPedidosActivosUsuario(db, id),
+      });
+      if (!validacion.ok) badRequest(validacion.mensaje);
+    }
     if (typeof body.activo === 'boolean') u.activo = body.activo;
     if (typeof body.password === 'string' && body.password.trim()) u.password = body.password.trim();
     await writeDb(db);

@@ -27,6 +27,7 @@ import { useFormFieldStyle } from '../../../../../src/hooks/useFormFieldStyle';
 import { formStyles } from '../../../../../src/lib/form-layout';
 import { formatCOP } from '../../../../../src/lib/format';
 import { appShadow } from '../../../../../src/lib/shadow';
+import { colors } from '../../../../../src/lib/theme';
 
 function alertDialog(title: string, message?: string) {
   void showNotice(title, message, 'info');
@@ -226,7 +227,7 @@ export default function ProductoPersonalizarScreen() {
           style={[styles.input, narrowField]}
           keyboardType="number-pad"
           placeholder="1"
-          placeholderTextColor="#9a988f"
+          placeholderTextColor={colors.textHint}
           value={cantidad}
           onChangeText={setCantidad}
         />
@@ -236,7 +237,7 @@ export default function ProductoPersonalizarScreen() {
           style={[styles.input, styles.multiline, textField]}
           multiline
           placeholder="Ej. poco sal"
-          placeholderTextColor="#9a988f"
+          placeholderTextColor={colors.textHint}
           value={nota}
           onChangeText={setNota}
         />
@@ -293,8 +294,8 @@ export default function ProductoPersonalizarScreen() {
             <Switch
               value={!sinEmpaqueAuto}
               onValueChange={(v) => setSinEmpaqueAuto(!v)}
-              trackColor={{ false: '#d9d5ca', true: '#9ec4b5' }}
-              thumbColor={!sinEmpaqueAuto ? '#2f5e4f' : '#f4f3f4'}
+              trackColor={{ false: colors.borderInput, true: colors.successBorder }}
+              thumbColor={!sinEmpaqueAuto ? colors.primary : colors.borderLight}
             />
           </View>
         </View>
@@ -329,41 +330,41 @@ export default function ProductoPersonalizarScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f6f4ee', padding: 16 },
+  container: { flex: 1, backgroundColor: colors.background, padding: 16 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
   headerCard: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#e5e2d8',
+    borderColor: colors.border,
     marginBottom: 14,
     ...appShadow('elevated'),
   },
-  kicker: { color: '#6f6e67', fontWeight: '700', letterSpacing: 0.3 },
-  h1: { fontSize: 20, fontWeight: '800', color: '#262622', marginTop: 6 },
-  price: { fontSize: 16, color: '#6f6e67', marginTop: 8 },
+  kicker: { color: colors.textMuted, fontWeight: '700', letterSpacing: 0.3 },
+  h1: { fontSize: 20, fontWeight: '800', color: colors.text, marginTop: 6 },
+  price: { fontSize: 16, color: colors.textMuted, marginTop: 8 },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#e5e2d8',
+    borderColor: colors.border,
     marginBottom: 12,
     ...appShadow('soft'),
   },
-  label: { fontWeight: '700', marginBottom: 6, color: '#3d3d3a' },
+  label: { fontWeight: '700', marginBottom: 6, color: colors.text },
   input: {
     borderWidth: 1,
-    borderColor: '#d9d5ca',
+    borderColor: colors.borderInput,
     borderRadius: 12,
     padding: 12,
     marginBottom: 14,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     fontSize: 16,
   },
   multiline: { minHeight: 72, textAlignVertical: 'top' },
-  section: { marginBottom: 10, fontWeight: '800', color: '#262622' },
+  section: { marginBottom: 10, fontWeight: '800', color: colors.text },
   chk: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -371,38 +372,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#eeeae0',
+    borderColor: colors.borderLight,
     marginBottom: 8,
   },
   chkOn: {
-    borderColor: '#2f5e4f',
-    backgroundColor: '#eef4f1',
+    borderColor: colors.primary,
+    backgroundColor: colors.primaryLight,
   },
   chkBox: {
     width: 24,
     height: 24,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#d9d5ca',
+    borderColor: colors.borderInput,
     marginRight: 10,
     textAlign: 'center',
     textAlignVertical: 'center',
-    color: '#2f5e4f',
+    color: colors.primary,
     fontWeight: '900',
     lineHeight: 22,
   },
-  chkLabel: { fontSize: 16, color: '#3d3d3a', flex: 1, fontWeight: '600' },
+  chkLabel: { fontSize: 16, color: colors.text, flex: 1, fontWeight: '600' },
   switchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  switchHint: { fontSize: 13, color: '#6f6e67', marginTop: 4, lineHeight: 18 },
+  switchHint: { fontSize: 13, color: colors.textMuted, marginTop: 4, lineHeight: 18 },
   flowHint: {
     marginTop: 20,
     marginBottom: 8,
     fontSize: 13,
-    color: '#6f6e67',
+    color: colors.textMuted,
     lineHeight: 18,
   },
   addActions: { marginTop: 8, marginBottom: 16 },

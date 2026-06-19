@@ -24,6 +24,7 @@ import {
 } from '../../src/lib/form-validation';
 import { emailMeseroDesdeNombre } from '../../src/lib/email-mesero';
 import { nombreUsuarioDisplay } from '../../src/lib/nombre-usuario-display';
+import { colors } from '../../src/lib/theme';
 
 type UsuarioRow = {
   id: number;
@@ -175,7 +176,11 @@ export default function UsuariosAdminScreen() {
       });
       await load();
     } catch (err) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'No se pudo actualizar');
+      await showNotice(
+        'No se pudo actualizar',
+        err instanceof Error ? err.message : 'No se pudo actualizar',
+        'warning',
+      );
     }
   }
 
@@ -267,7 +272,7 @@ export default function UsuariosAdminScreen() {
         <TextInput
           style={formStyles.input}
           placeholder="Nombre"
-          placeholderTextColor="#9a988f"
+          placeholderTextColor={colors.textHint}
           value={nombre}
           onChangeText={setNombre}
           autoCapitalize="words"
@@ -281,7 +286,7 @@ export default function UsuariosAdminScreen() {
         <TextInput
           style={formStyles.input}
           placeholder="Apellido"
-          placeholderTextColor="#9a988f"
+          placeholderTextColor={colors.textHint}
           value={apellido}
           onChangeText={setApellido}
           autoCapitalize="words"
@@ -290,7 +295,7 @@ export default function UsuariosAdminScreen() {
         <TextInput
           style={formStyles.input}
           placeholder="Mín. 6 caracteres"
-          placeholderTextColor="#9a988f"
+          placeholderTextColor={colors.textHint}
           value={password}
           onChangeText={setPassword}
           secureTextEntry
@@ -322,21 +327,21 @@ export default function UsuariosAdminScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f6f4ee' },
+  container: { flex: 1, backgroundColor: colors.background },
   pad: { paddingTop: 16 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, backgroundColor: '#f6f4ee' },
-  denied: { textAlign: 'center', color: '#6f6e67', marginBottom: 16, fontSize: 16 },
-  intro: { color: '#6f6e67', fontSize: 13, marginBottom: 12, lineHeight: 18 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, backgroundColor: colors.background },
+  denied: { textAlign: 'center', color: colors.textMuted, marginBottom: 16, fontSize: 16 },
+  intro: { color: colors.textMuted, fontSize: 13, marginBottom: 12, lineHeight: 18 },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#e5e2d8',
+    borderColor: colors.border,
   },
-  sectionTitle: { fontWeight: '800', color: '#262622', marginBottom: 8 },
+  sectionTitle: { fontWeight: '800', color: colors.text, marginBottom: 8 },
   emailPreview: {
-    color: '#2f5e4f',
+    color: colors.primary,
     fontSize: 13,
     fontWeight: '700',
     marginBottom: 10,
@@ -349,10 +354,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#ece9df',
+    borderTopColor: colors.borderLight,
   },
   rowMain: { flex: 1, paddingRight: 8 },
-  rowName: { fontWeight: '700', color: '#262622' },
-  rowEmail: { color: '#6f6e67', marginTop: 2, fontSize: 13 },
-  rowMeta: { color: '#6f6e67', marginTop: 4, fontSize: 12 },
+  rowName: { fontWeight: '700', color: colors.text },
+  rowEmail: { color: colors.textMuted, marginTop: 2, fontSize: 13 },
+  rowMeta: { color: colors.textMuted, marginTop: 4, fontSize: 12 },
 });

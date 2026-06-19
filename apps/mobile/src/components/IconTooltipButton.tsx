@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useResponsive } from '../hooks/useResponsive';
 import { blurWebFocus } from '../lib/web-a11y';
+import { colors } from '../lib/theme';
 
 type IonName = ComponentProps<typeof Ionicons>['name'];
 type MciName = ComponentProps<typeof MaterialCommunityIcons>['name'];
@@ -23,6 +24,7 @@ export type IconTooltipVariant =
   | 'primary'
   | 'secondary'
   | 'cocina'
+  | 'money'
   | 'danger';
 
 type Props = {
@@ -104,8 +106,8 @@ function WebFloatingTooltip({
         transform,
         zIndex: 99999,
         maxWidth: 280,
-        backgroundColor: '#262622',
-        color: '#f6f4ee',
+        backgroundColor: colors.text,
+        color: colors.onDark,
         padding: '8px 12px',
         borderRadius: 8,
         fontSize: 12,
@@ -200,38 +202,44 @@ export function IconTooltipButton({
 }
 
 const iconColors: Record<IconTooltipVariant, string> = {
-  default: '#2f5e4f',
-  primary: '#fff',
-  secondary: '#2f5e4f',
-  cocina: '#fff',
-  danger: '#fff',
+  default: colors.primary,
+  primary: colors.onPrimary,
+  secondary: colors.primary,
+  cocina: colors.onPrimary,
+  money: colors.onPrimary,
+  danger: colors.onPrimary,
 };
 
 const variantStyles = StyleSheet.create({
   default: {
-    backgroundColor: '#f0ede4',
+    backgroundColor: colors.backgroundAlt,
     borderWidth: 1,
-    borderColor: '#e3e0d7',
+    borderColor: colors.borderLight,
   },
   primary: {
-    backgroundColor: '#2f5e4f',
+    backgroundColor: colors.primary,
     borderWidth: 1,
-    borderColor: '#24493e',
+    borderColor: colors.primaryDark,
   },
   secondary: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: '#2f5e4f',
+    borderColor: colors.primary,
   },
   cocina: {
-    backgroundColor: '#bc6c25',
+    backgroundColor: colors.cocina,
     borderWidth: 1,
-    borderColor: '#9a5620',
+    borderColor: colors.cocinaDark,
+  },
+  money: {
+    backgroundColor: colors.success,
+    borderWidth: 1,
+    borderColor: colors.successDark,
   },
   danger: {
-    backgroundColor: '#b71c1c',
+    backgroundColor: colors.danger,
     borderWidth: 1,
-    borderColor: '#8e0000',
+    borderColor: colors.dangerDark,
   },
 });
 
@@ -254,15 +262,15 @@ const styles = StyleSheet.create({
     height: 18,
     paddingHorizontal: 4,
     borderRadius: 9,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: '#9a5620',
+    borderColor: colors.cocinaDark,
     alignItems: 'center',
     justifyContent: 'center',
   },
   badgeText: {
     fontSize: 10,
     fontWeight: '900',
-    color: '#9a5620',
+    color: colors.cocinaDark,
   },
 });

@@ -6,6 +6,7 @@ import {
 import {
   detalleCocinaAviso,
   detallePuedeRecogerMesero,
+  type DetalleCocinaLike,
   type DetalleCocinaView,
 } from './cocina-pedido-view';
 
@@ -40,13 +41,13 @@ export function agruparDetallesMesero(
   return agruparLineasPedido(detalles.map(detalleALineaPedido));
 }
 
-export function maxRecogibleDetalle(d: DetalleCocinaView): number {
+export function maxRecogibleDetalle(d: DetalleCocinaLike): number {
   return detallePuedeRecogerMesero(d) ? d.cantidad : 0;
 }
 
-export function maxRecogibleGrupo(
+export function maxRecogibleGrupo<T extends DetalleCocinaLike>(
   g: LineaPedidoGrupo,
-  byId: Map<number, DetalleCocinaView>,
+  byId: Map<number, T>,
 ): number {
   return g.ids_detalle.reduce((s, id) => {
     const d = byId.get(id);
@@ -54,19 +55,19 @@ export function maxRecogibleGrupo(
   }, 0);
 }
 
-function selEfectivaGrupo(
+function selEfectivaGrupo<T extends DetalleCocinaLike>(
   g: LineaPedidoGrupo,
   cantidades: Record<number, number>,
-  byId: Map<number, DetalleCocinaView>,
+  byId: Map<number, T>,
 ): number {
   const hasExplicit = g.ids_detalle.some((id) => (cantidades[id] ?? 0) > 0);
   if (!hasExplicit) return maxRecogibleGrupo(g, byId);
   return g.ids_detalle.reduce((s, id) => s + (cantidades[id] ?? 0), 0);
 }
 
-function escribirSelEnIds(
+function escribirSelEnIds<T extends DetalleCocinaLike>(
   g: LineaPedidoGrupo,
-  byId: Map<number, DetalleCocinaView>,
+  byId: Map<number, T>,
   total: number,
 ): SolicitudRecogidaCocina[] {
   let rest = total;
@@ -85,18 +86,18 @@ function escribirSelEnIds(
   return out;
 }
 
-export function cantidadSeleccionadaGrupoRecogida(
+export function cantidadSeleccionadaGrupoRecogida<T extends DetalleCocinaLike>(
   g: LineaPedidoGrupo,
   cantidades: Record<number, number>,
-  byId: Map<number, DetalleCocinaView>,
+  byId: Map<number, T>,
 ): number {
   return selEfectivaGrupo(g, cantidades, byId);
 }
 
-export function cambiarCantidadGrupoRecogida(
+export function cambiarCantidadGrupoRecogida<T extends DetalleCocinaLike>(
   g: LineaPedidoGrupo,
   delta: number,
-  byId: Map<number, DetalleCocinaView>,
+  byId: Map<number, T>,
   prev: Record<number, number>,
 ): Record<number, number> {
   const max = maxRecogibleGrupo(g, byId);
@@ -109,19 +110,19 @@ export function cambiarCantidadGrupoRecogida(
   return next;
 }
 
-export function distribuirRecogidaEnGrupo(
+export function distribuirRecogidaEnGrupo<T extends DetalleCocinaLike>(
   g: LineaPedidoGrupo,
   cantidades: Record<number, number>,
-  byId: Map<number, DetalleCocinaView>,
+  byId: Map<number, T>,
 ): SolicitudRecogidaCocina[] {
   const total = selEfectivaGrupo(g, cantidades, byId);
   if (total <= 0) return [];
   return escribirSelEnIds(g, byId, total);
 }
 
-export function grupoCocinaAviso(
+export function grupoCocinaAviso<T extends DetalleCocinaLike>(
   g: LineaPedidoGrupo,
-  byId: Map<number, DetalleCocinaView>,
+  byId: Map<number, T>,
 ): boolean {
   return g.ids_detalle.some((id) => {
     const d = byId.get(id);
@@ -129,9 +130,9 @@ export function grupoCocinaAviso(
   });
 }
 
-export function etiquetaEstadoLineaGrupoMesero(
+export function etiquetaEstadoLineaGrupoMesero<T extends DetalleCocinaLike>(
   g: LineaPedidoGrupo,
-  byId: Map<number, DetalleCocinaView>,
+  byId: Map<number, T>,
 ): string {
   const d = byId.get(g.id_detalle);
   if (!d) return '';

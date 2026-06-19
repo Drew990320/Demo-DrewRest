@@ -27,6 +27,7 @@ import {
   registerAppDialogHandlers,
   unregisterAppDialogHandlers,
 } from '../lib/app-dialog';
+import { colors } from '../lib/theme';
 
 type DialogState = AppDialogOptions & {
   finish: () => void;
@@ -44,30 +45,30 @@ function variantMeta(variant: DialogVariant) {
     case 'success':
       return {
         icon: 'checkmark-circle' as const,
-        color: '#2f5e4f',
-        bg: '#e8f5ef',
-        border: '#b8dcc8',
+        color: colors.success,
+        bg: colors.successLight,
+        border: colors.successBorder,
       };
     case 'error':
       return {
         icon: 'close-circle' as const,
-        color: '#9b3b3b',
-        bg: '#fdeeee',
-        border: '#f0c4c4',
+        color: colors.danger,
+        bg: colors.dangerLight,
+        border: colors.dangerBorder,
       };
     case 'warning':
       return {
         icon: 'warning' as const,
-        color: '#a26a2f',
-        bg: '#fff4e6',
-        border: '#f0d4a8',
+        color: colors.warning,
+        bg: colors.warningLight,
+        border: colors.warningBorder,
       };
     default:
       return {
         icon: 'information-circle' as const,
-        color: '#2f5e4f',
-        bg: '#eef3f1',
-        border: '#c8d9d2',
+        color: colors.primary,
+        bg: colors.primaryLight,
+        border: colors.primaryMuted,
       };
   }
 }
@@ -262,7 +263,7 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 20,
     borderWidth: 1,
     paddingHorizontal: 24,
@@ -286,7 +287,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 20,
     fontWeight: '800',
-    color: '#262622',
+    color: colors.text,
     textAlign: 'center',
     lineHeight: 26,
   },
@@ -294,7 +295,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontSize: 15,
     lineHeight: 22,
-    color: '#5c5c56',
+    color: colors.textMuted,
     textAlign: 'center',
   },
   buttons: {
@@ -319,31 +320,31 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   btnPrimary: {
-    backgroundColor: '#2f5e4f',
+    backgroundColor: colors.primary,
   },
   btnDanger: {
-    backgroundColor: '#9b3b3b',
+    backgroundColor: colors.danger,
   },
   btnCancel: {
-    backgroundColor: '#f0ede4',
+    backgroundColor: colors.backgroundAlt,
     borderWidth: 1,
-    borderColor: '#dcd7c8',
+    borderColor: colors.border,
   },
   btnDefault: {
-    backgroundColor: '#efece2',
+    backgroundColor: colors.surfaceMuted,
   },
   btnText: {
     fontWeight: '800',
     fontSize: 15,
-    color: '#262622',
+    color: colors.text,
   },
   btnTextPrimary: {
-    color: '#fff',
+    color: colors.onPrimary,
   },
   btnTextDanger: {
-    color: '#fff',
+    color: colors.onPrimary,
   },
   btnTextCancel: {
-    color: '#5c5c56',
+    color: colors.textMuted,
   },
 });
