@@ -18,10 +18,11 @@ import { ActionIconBar } from '../../../../../src/components/ActionIconBar';
 import { api } from '../../../../../src/lib/api';
 import { readMenuTodayCache, writeMenuTodayCache } from '../../../../../src/lib/menu-cache';
 import { showNotice } from '../../../../../src/lib/app-dialog';
+import { enteroConDefecto } from '../../../../../src/lib/form-validation';
 import {
-  avisarSiEnteroInvalido,
-  avisarSiFaltanObligatorios,
-} from '../../../../../src/lib/form-validation';
+  menuProductoQueryParams,
+  parseColaPersonalizarMenu,
+} from '../../../../../src/lib/menu-agregar-rapido';
 import { productoCobraEmpaqueParaLlevarPorPlatoFuerte } from '../../../../../src/lib/empaque-para-llevar';
 import { useFormFieldStyle } from '../../../../../src/hooks/useFormFieldStyle';
 import { formStyles } from '../../../../../src/lib/form-layout';
@@ -45,21 +46,33 @@ type Producto = {
   opciones: Opcion[];
 };
 
-function menuQueryFromParams(bebidas?: string, paraLlevar?: string): string {
-  const q: string[] = [];
-  if (bebidas === '1' || bebidas === 'true') q.push('bebidas=1');
-  if (paraLlevar === '1' || paraLlevar === 'true') q.push('paraLlevar=1');
-  return q.length ? `?${q.join('&')}` : '';
+function menuQueryFromParams(
+  bebidas?: string,
+  paraLlevar?: string,
+  colaPersonalizar?: string | string[],
+): string {
+  return menuProductoQueryParams({
+    bebidas: bebidas === '1' || bebidas === 'true',
+    paraLlevar: paraLlevar === '1' || paraLlevar === 'true',
+    colaPersonalizar: parseColaPersonalizarMenu(colaPersonalizar),
+  });
 }
 
 export default function ProductoPersonalizarScreen() {
-  const { pedidoId, productoId, paraLlevar, bebidas } = useLocalSearchParams<{
+  const { pedidoId, productoId, paraLlevar, bebidas, colaPersonalizar } =
+    useLocalSearchParams<{
     pedidoId: string;
     productoId: string;
     paraLlevar?: string;
     bebidas?: string;
+    colaPersonalizar?: string;
   }>();
   const esParaLlevar = paraLlevar === '1' || paraLlevar === 'true';
+  const esBebidas = bebidas === '1' || bebidas === 'true';
+  const colaRestante = useMemo(
+    () => parseColaPersonalizarMenu(colaPersonalizar),
+    [colaPersonalizar],
+  );
   const pid = Number(productoId);
   const { token } = useAuth();
   const router = useRouter();
@@ -126,18 +139,7 @@ export default function ProductoPersonalizarScreen() {
   }
 
   async function ejecutarAgregarLinea(): Promise<{ id_mesa: number }> {
-    if (
-      await avisarSiFaltanObligatorios(
-        [{ etiqueta: 'Cantidad', valor: cantidad }],
-        showNotice,
-      )
-    ) {
-      throw new Error('cantidad');
-    }
-    if (await avisarSiEnteroInvalido('Cantidad', cantidad, 1, showNotice)) {
-      throw new Error('cantidad');
-    }
-    const q = parseInt(cantidad, 10);
+    const q = enteroConDefecto(cantidad, 1);
     const body: Record<string, unknown> = {
       id_producto: pid,
       cantidad: q,
@@ -171,10 +173,21 @@ export default function ProductoPersonalizarScreen() {
     setBusy(true);
     try {
       await ejecutarAgregarLinea();
+      if (colaRestante.length > 0) {
+        router.replace(
+          `/(app)/pedido/${pedidoId}/producto/${colaRestante[0]}${menuProductoQueryParams(
+            {
+              bebidas: esBebidas,
+              paraLlevar: esParaLlevar,
+              colaPersonalizar: colaRestante.slice(1),
+            },
+          )}`,
+        );
+        return;
+      }
       const suf = menuQueryFromParams(bebidas, paraLlevar);
       router.replace(`/(app)/pedido/${pedidoId}/menu${suf}`);
     } catch (e) {
-      if (e instanceof Error && e.message === 'cantidad') return;
       alertDialog('Error', e instanceof Error ? e.message : 'No se pudo agregar');
     } finally {
       setBusy(false);
@@ -187,7 +200,6 @@ export default function ProductoPersonalizarScreen() {
       const ped = await ejecutarAgregarLinea();
       router.replace(`/(app)/mesa/${ped.id_mesa}`);
     } catch (e) {
-      if (e instanceof Error && e.message === 'cantidad') return;
       alertDialog('Error', e instanceof Error ? e.message : 'No se pudo agregar');
     } finally {
       setBusy(false);
@@ -217,16 +229,22 @@ export default function ProductoPersonalizarScreen() {
     >
       <View style={styles.headerCard}>
         <Text style={styles.kicker}>Producto</Text>
+        {colaRestante.length > 0 ? (
+          <Text style={styles.colaHint}>
+            Personalización en lote · {colaRestante.length + 1} plato(s) en esta
+            tanda
+          </Text>
+        ) : null}
         <Text style={styles.h1}>{producto.nombre}</Text>
         <Text style={styles.price}>{formatCOP(producto.precio)} c/u</Text>
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.label}>Cantidad</Text>
+        <Text style={styles.label}>Cantidad (opcional; 1 por defecto)</Text>
         <TextInput
           style={[styles.input, narrowField]}
           keyboardType="number-pad"
-          placeholder="1"
+          placeholder="1 (opcional)"
           placeholderTextColor={colors.textHint}
           value={cantidad}
           onChangeText={setCantidad}
@@ -310,7 +328,11 @@ export default function ProductoPersonalizarScreen() {
           {
             key: 'seguir',
             icon: busy ? 'hourglass-outline' : 'add-circle-outline',
-            label: busy ? 'Agregando…' : 'Agregar y seguir con el menú',
+            label: busy
+              ? 'Agregando…'
+              : colaRestante.length > 0
+                ? `Agregar y siguiente (${colaRestante.length} más)`
+                : 'Agregar y seguir con el menú',
             variant: 'primary',
             disabled: busy,
             onPress: agregarYSeguirEnMenu,
@@ -342,6 +364,12 @@ const styles = StyleSheet.create({
     ...appShadow('elevated'),
   },
   kicker: { color: colors.textMuted, fontWeight: '700', letterSpacing: 0.3 },
+  colaHint: {
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
+  },
   h1: { fontSize: 20, fontWeight: '800', color: colors.text, marginTop: 6 },
   price: { fontSize: 16, color: colors.textMuted, marginTop: 8 },
   card: {

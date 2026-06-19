@@ -1,5 +1,6 @@
 import { connectSocket, getSocket } from './socket';
 import { tituloLugarMesa } from './mesa-label';
+import { mensajeListosParaRecoger } from '@la-reserva/shared-domain/cocina-vista';
 
 export type CocinaLlamaTipoListo = 'entrada' | 'plato' | 'mixto';
 
@@ -15,16 +16,21 @@ export type CocinaLlamaMeseroPayload = {
   mesaNumero: number;
   idMesero: number;
   meseroNombre: string;
+  /** Platos de cocina (sin mazorcas). */
   platosListos: number;
-  /** entrada = mazorcas; plato = resto de cocina; mixto = ambos en la misma llamada */
+  /** Mazorcas / entradas listas. */
+  entradasListos?: number;
+  /** @deprecated Usar platosListos + entradasListos */
   tipo_listo?: CocinaLlamaTipoListo;
   at: string;
 };
 
 export function tituloCocinaLlamaMesero(
-  tipo: CocinaLlamaTipoListo = 'plato',
+  platos: number,
+  entradas: number,
 ): string {
-  if (tipo === 'entrada') return 'Entradas listas';
+  if (platos > 0 && entradas > 0) return 'Platos y mazorcas listos';
+  if (entradas > 0) return 'Mazorcas listas';
   return 'Cocina te llama';
 }
 
@@ -32,21 +38,21 @@ export function mensajeCocinaLlamaMesero(
   payload: CocinaLlamaMeseroPayload,
   opts?: { incluirMesa?: boolean },
 ): string {
-  const tipo = payload.tipo_listo ?? 'plato';
   const lugar =
     opts?.incluirMesa !== false
       ? ` · ${tituloLugarMesa(payload.mesaNumero)}`
       : '';
   const pedido = ` · pedido #${payload.pedidoId}`;
 
-  if (tipo === 'entrada') {
-    return `Las entradas ya están listas${lugar}${pedido}`;
-  }
-  if (tipo === 'mixto') {
-    return `Platos y entradas listos para recoger${lugar}${pedido}`;
-  }
-  const n = payload.platosListos;
-  return `${n} ${n === 1 ? 'plato listo' : 'platos listos'} para recoger${lugar}${pedido}`;
+  const entradas =
+    payload.entradasListos ??
+    (payload.tipo_listo === 'entrada' ? payload.platosListos : 0);
+  const platos =
+    payload.tipo_listo === 'entrada' && payload.entradasListos == null
+      ? 0
+      : payload.platosListos;
+
+  return mensajeListosParaRecoger(platos, entradas, `${lugar}${pedido}`);
 }
 
 export type CocinaFaltaPlatoPayload = {

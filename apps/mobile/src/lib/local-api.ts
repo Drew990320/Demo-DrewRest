@@ -7,11 +7,12 @@ import type { Producto } from './local-api-types';
 import {
   inferirTipoProteina,
   ordenarPedidosCocina,
-  prioridadAutomaticaDesdeTipos,
+  prioridadAutomaticaDesdeDetalles,
   prioridadCocinaEfectiva,
   tipoProteinaResuelto,
   type TipoProteina,
 } from './cocina-prioridad';
+import { ordenarPedidosCocinaPorLlegada } from './cocina-pedido-view';
 import {
   PRECIO_EMPAQUE_PARA_LLEVAR_COP,
   productoCobraEmpaqueParaLlevarPorPlatoFuerte,
@@ -58,6 +59,10 @@ import {
   validarPatchMesaAdmin,
 } from '@la-reserva/shared-domain/mesa-admin-validacion';
 import { agregarVentasResumenDiario } from '@la-reserva/shared-domain/resumen-diario-ventas';
+import {
+  pedidoDebeTenerLineaMazorca,
+  validarTransferenciaPedido,
+} from '@la-reserva/shared-domain/transferencia-pedido';
 
 type ApiOptions = RequestInit & { token?: string | null };
 
@@ -705,7 +710,6 @@ function serializePedido(db: Db, p: Pedido) {
   const facturasPed = db.facturas
     .filter((f) => f.id_pedido === p.id_pedido)
     .sort((a, b) => a.emitida_en.localeCompare(b.emitida_en));
-  const tiposEnCocina: TipoProteina[] = [];
   const detalles = p.detalles.map((d) => {
     const prod = db.productos.find((x) => x.id_producto === d.id_producto);
     if (!prod) badRequest(`Producto #${d.id_producto} no encontrado`);
@@ -718,9 +722,6 @@ function serializePedido(db: Db, p: Pedido) {
       prod.categoria_nombre,
       prod.nombre,
     );
-    if (marcar) {
-      tiposEnCocina.push(tipoProteina);
-    }
     return {
       id_detalle: d.id_detalle,
       id_producto: d.id_producto,
@@ -758,7 +759,13 @@ function serializePedido(db: Db, p: Pedido) {
   const ultimaFactura = facturas.length ? facturas[facturas.length - 1] : null;
   const pendientes = detalles.filter((d) => !d.cobrado);
   const totalPendiente = pendientes.reduce((s, d) => s + d.subtotal_linea, 0);
-  const prioridadAuto = prioridadAutomaticaDesdeTipos(tiposEnCocina);
+  const prioridadAuto = prioridadAutomaticaDesdeDetalles(
+    detalles.map((d) => ({
+      categoria_nombre: d.categoria_nombre,
+      nombre_producto: d.nombre_producto,
+      marcar_cocina: d.marcar_cocina,
+    })),
+  );
   const override = p.prioridad_cocina_override ?? null;
   const { nivel: prioridadCocina, origen: prioridadCocinaOrigen } =
     prioridadCocinaEfectiva(prioridadAuto, override);
@@ -2067,35 +2074,77 @@ export async function localApi<T = unknown>(
     const idPedido = Number(path.split('/')[2]);
     const p = db.pedidos.find((x) => x.id_pedido === idPedido);
     if (!p) badRequest('Pedido no encontrado');
+    if (p.estado === 'facturado' || db.facturas.some((f) => f.id_pedido === idPedido)) {
+      badRequest('No se puede transferir un pedido con cobros registrados');
+    }
+    if (!ABIERTOS_LOCAL.includes(p.estado)) {
+      badRequest('El pedido no se puede transferir');
+    }
+
     const numMesaNueva = Number(body.mesa_numero_nuevo ?? 0);
     const mesaNueva = db.mesas.find((m) => m.numero === numMesaNueva);
     if (!mesaNueva) badRequest('Mesa destino no encontrada');
-    const destinoVirtual = esMesaVirtualNumero(mesaNueva.numero);
-    if (!destinoVirtual) {
-      if (mesaNueva.estado !== 'libre') badRequest('Mesa destino no está libre');
-      if (
-        db.pedidos.some(
-          (x) =>
-            x.id_mesa === mesaNueva.id_mesa && ABIERTOS_LOCAL.includes(x.estado),
-        )
-      ) {
-        badRequest('La mesa destino ya tiene un pedido abierto');
-      }
+    const mesaOrigen = db.mesas.find((m) => m.id_mesa === p.id_mesa);
+    if (!mesaOrigen) badRequest('Mesa origen no encontrada');
+    if (mesaNueva.id_mesa === p.id_mesa) {
+      badRequest('La mesa destino debe ser diferente');
     }
+    if (!mesaDisponibleHoyLocal(mesaNueva)) {
+      badRequest('La mesa destino no está disponible hoy');
+    }
+
+    const pedidoEnDestino = db.pedidos.find(
+      (x) =>
+        x.id_mesa === mesaNueva.id_mesa && ABIERTOS_LOCAL.includes(x.estado),
+    );
+    const destinoLibre =
+      mesaNueva.estado === 'libre' && pedidoEnDestino == null;
+
+    const validacion = validarTransferenciaPedido({
+      origen_mesa_numero: mesaOrigen.numero,
+      destino_mesa_numero: mesaNueva.numero,
+      destino_libre: destinoLibre,
+    });
+    if (validacion.accion === 'rechazar') {
+      badRequest(validacion.mensaje);
+    }
+
     const idAnterior = p.id_mesa;
-    const mesaOrigen = db.mesas.find((m) => m.id_mesa === idAnterior);
+
     p.id_mesa = mesaNueva.id_mesa;
-    if (!destinoVirtual) {
-      mesaNueva.estado = 'ocupada';
-    }
+    p.modo_servicio = 'en_mesa';
+    mesaNueva.estado = 'ocupada';
+
     const restOrigen = db.pedidos.filter(
       (x) => x.id_mesa === idAnterior && ABIERTOS_LOCAL.includes(x.estado),
     ).length;
-    if (mesaOrigen && restOrigen === 0) {
+    if (mesaOrigen && restOrigen === 0 && !esMesaVirtualNumero(mesaOrigen.numero)) {
       mesaOrigen.estado = 'libre';
     }
+
+    const ctx = p.detalles.map((d) => {
+      const prod = db.productos.find((x) => x.id_producto === d.id_producto);
+      return {
+        es_bebida: prod ? categoriaEsBebida(prod.categoria_nombre) : false,
+        es_acompanamiento_mazorca: Boolean(prod?.es_acompanamiento_mazorca),
+        es_empacable: Boolean(prod?.es_empacable),
+        categoria_nombre: prod?.categoria_nombre ?? '',
+        id_detalle_padre: d.id_detalle_padre,
+      };
+    });
+    const errMz = sincronizarLineaMazorcaLocal(
+      p,
+      mesaNueva.numero,
+      idProductoMazorcaLocal(db.productos),
+      () => db.seq.detalle++,
+      pedidoDebeTenerLineaMazorca(mesaNueva.numero, ctx),
+    );
+    if (errMz) badRequest(errMz);
+
     await writeDb(db);
-    return serializePedido(db, p) as T;
+    const pedidoFinal = db.pedidos.find((x) => x.id_pedido === idPedido);
+    if (!pedidoFinal) badRequest('Pedido no encontrado tras transferir');
+    return serializePedido(db, pedidoFinal) as T;
   }
 
   if (path.startsWith('/pedidos/detalles/') && path.endsWith('/cocina') && method === 'PATCH') {
@@ -2278,6 +2327,7 @@ export async function localApi<T = unknown>(
     let pedidosParaLlevar = 0;
     let platosSinPasarCocina = 0;
     let platosParaRecoger = 0;
+    let mazorcasParaRecoger = 0;
     const mesaIds: number[] = [];
     const pedidoIds: number[] = [];
     for (const p of rows) {
@@ -2306,7 +2356,11 @@ export async function localApi<T = unknown>(
           !esBebida &&
           !esEmpacable
         ) {
-          platosParaRecoger += d.cantidad;
+          if (prod?.es_acompanamiento_mazorca) {
+            mazorcasParaRecoger += d.cantidad;
+          } else {
+            platosParaRecoger += d.cantidad;
+          }
         }
       }
     }
@@ -2315,6 +2369,7 @@ export async function localApi<T = unknown>(
       pedidos_para_llevar: pedidosParaLlevar,
       platos_sin_pasar_cocina: platosSinPasarCocina,
       platos_para_recoger: platosParaRecoger,
+      mazorcas_para_recoger: mazorcasParaRecoger,
       mesa_ids: mesaIds,
       pedido_ids: pedidoIds,
     } as T;
@@ -2401,7 +2456,7 @@ export async function localApi<T = unknown>(
   if (path === '/pedidos/cocina' && method === 'GET') {
     if (actor.rol !== 'admin' && actor.rol !== 'chef') unauthorized();
     const rows = db.pedidos.filter((p) => p.estado === 'en_cocina');
-    const serializados = ordenarPedidosCocina(
+    const serializados = ordenarPedidosCocinaPorLlegada(
       rows.map((p) => serializePedidoOperativo(db, p)),
     );
     return { pedidos: serializados } as T;

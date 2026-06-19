@@ -1,4 +1,4 @@
-import { Prisma, TipoProteina } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import {
   categoriaEsBebida,
   debeMarcarCocina,
@@ -9,7 +9,7 @@ import {
   pedidoTieneRecogidaPendiente,
 } from '@la-reserva/shared-domain/cocina-vista';
 import {
-  prioridadAutomaticaDesdeTipos,
+  prioridadAutomaticaDesdeDetalles,
   prioridadCocinaEfectiva,
   tipoProteinaResuelto,
 } from './cocina-prioridad';
@@ -68,7 +68,6 @@ export type PedidoVistaOperativaRow = Prisma.PedidoGetPayload<{
 
 /** Serializa pedido para UI operativa (cocina / mesero) sin datos de cobro. */
 export function serializarPedidoVistaOperativa(p: PedidoVistaOperativaRow) {
-  const tiposEnCocina: TipoProteina[] = [];
   const detalles = p.detalles.map((d) => {
     const cat = d.producto.categoria.nombre;
     const marcar = debeMarcarCocina(cat, d.producto.esEmpacable);
@@ -77,9 +76,6 @@ export function serializarPedidoVistaOperativa(p: PedidoVistaOperativaRow) {
       cat,
       d.producto.nombre,
     );
-    if (marcar) {
-      tiposEnCocina.push(tipoProteina);
-    }
     return {
       id_detalle: d.idDetalle,
       id_producto: d.idProducto,
@@ -103,7 +99,13 @@ export function serializarPedidoVistaOperativa(p: PedidoVistaOperativaRow) {
       })),
     };
   });
-  const prioridadAuto = prioridadAutomaticaDesdeTipos(tiposEnCocina);
+  const prioridadAuto = prioridadAutomaticaDesdeDetalles(
+    detalles.map((d) => ({
+      categoria_nombre: d.categoria_nombre,
+      nombre_producto: d.nombre_producto,
+      marcar_cocina: d.marcar_cocina,
+    })),
+  );
   const override = p.prioridadCocinaOverride ?? null;
   const { nivel: prioridadCocina, origen: prioridadCocinaOrigen } =
     prioridadCocinaEfectiva(prioridadAuto, override);

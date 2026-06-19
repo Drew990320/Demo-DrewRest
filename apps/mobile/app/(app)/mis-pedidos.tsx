@@ -24,10 +24,10 @@ import {
   mesasActivasDePedidos,
   normalizarPedidoCocinaView,
   platosSinEnviarCocina,
-  totalPlatosEsperandoRecogida,
   totalPlatosSinEnviarCocina,
+  totalEsperandoRecogidaPorTipo,
+  mensajeListosParaRecoger,
   type PedidoCocinaView,
-  resumenItemsMesero,
 } from '../../src/lib/cocina-pedido-view';
 import type { LineaPedidoGrupo } from '../../src/lib/pedido-detalle-group';
 import {
@@ -182,12 +182,21 @@ export default function MisPedidosScreen() {
     useSeleccionPedido(itemsOrdenados);
 
   const mesasLista = useMemo(() => mesasActivasDePedidos(items), [items]);
-  const resumenItems = useMemo(() => resumenItemsMesero(items), [items]);
   const totalSinCocina = useMemo(() => totalPlatosSinEnviarCocina(items), [items]);
-  const totalParaRecoger = useMemo(
-    () => totalPlatosEsperandoRecogida(items),
+  const recogidaPorTipo = useMemo(
+    () => totalEsperandoRecogidaPorTipo(items),
     [items],
   );
+  const mensajeRecoger = useMemo(
+    () =>
+      mensajeListosParaRecoger(
+        recogidaPorTipo.platos,
+        recogidaPorTipo.entradas,
+      ),
+    [recogidaPorTipo],
+  );
+  const hayParaRecoger =
+    recogidaPorTipo.platos + recogidaPorTipo.entradas > 0;
 
   function grupoKey(idPedido: number, g: LineaPedidoGrupo): string {
     return `${idPedido}:${g.ids_detalle.join('-')}`;
@@ -336,12 +345,11 @@ export default function MisPedidosScreen() {
         </Text>
       </View>
 
-      {totalParaRecoger > 0 ? (
+      {hayParaRecoger ? (
         <View style={styles.alertaRecoger}>
           <Text style={styles.alertaRecogerTitle}>Cocina te está esperando</Text>
           <Text style={styles.alertaRecogerSub}>
-            Tienes {totalParaRecoger}{' '}
-            {totalParaRecoger === 1 ? 'plato listo' : 'platos listos'} para recoger.
+            {mensajeRecoger.charAt(0).toUpperCase() + mensajeRecoger.slice(1)}.
             Confírmalos en mesa cuando los hayas llevado al comensal.
           </Text>
         </View>
@@ -371,28 +379,6 @@ export default function MisPedidosScreen() {
           </Text>
         </View>
       ) : null}
-
-      <View style={styles.headerCard}>
-        <Text style={styles.kicker}>Todo lo que pediste</Text>
-        <Text style={styles.h1}>Resumen por ítem</Text>
-        <Text style={styles.sub}>
-          Cantidad total de cada producto en tus mesas activas (incluye lo que aún no va a cocina).
-        </Text>
-        {resumenItems.length === 0 ? (
-          <Text style={styles.empty}>No tienes ítems en pedidos activos.</Text>
-        ) : (
-          <View style={styles.totalesWrap}>
-            {resumenItems.map((row) => (
-              <View key={row.nombre} style={styles.totalRow}>
-                <Text style={styles.totalRowTitle}>
-                  {row.nombre} — total: {row.total}
-                </Text>
-                <Text style={styles.totalRowMeta}>Mesas: {row.mesasLabel}</Text>
-              </View>
-            ))}
-          </View>
-        )}
-      </View>
 
       <View style={styles.headerCard}>
         <Text style={styles.kicker}>Seguimiento</Text>
@@ -633,17 +619,6 @@ const styles = StyleSheet.create({
   sub: { marginTop: 4, color: colors.textMuted, fontSize: 13, lineHeight: 18 },
   empty: { color: colors.textMuted, marginTop: 8 },
   chipsCard: { marginBottom: 12 },
-  totalesWrap: { marginTop: 10, gap: 8 },
-  totalRow: {
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surfaceMuted,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  totalRowTitle: { color: colors.text, fontWeight: '800', fontSize: 14 },
-  totalRowMeta: { color: colors.textMuted, marginTop: 4, fontSize: 12 },
   card: {
     backgroundColor: colors.surface,
     borderRadius: 16,

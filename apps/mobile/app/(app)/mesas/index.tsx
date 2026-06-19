@@ -26,6 +26,7 @@ import {
 } from '../../../src/hooks/useResponsive';
 import { useRefetchOnSync } from '../../../src/hooks/useRefetchOnSync';
 import type { MisActivosResumen } from '../../../src/lib/mis-activos-resumen';
+import { mensajeListosParaRecoger } from '../../../src/lib/cocina-pedido-view';
 import {
   puedeTomarPedidos,
   puedeVerCocina,
@@ -70,6 +71,7 @@ export default function MesasScreen() {
   const [pedidosParaLlevar, setPedidosParaLlevar] = useState(0);
   const [platosSinPasarCocina, setPlatosSinPasarCocina] = useState(0);
   const [platosParaRecoger, setPlatosParaRecoger] = useState(0);
+  const [mazorcasParaRecoger, setMazorcasParaRecoger] = useState(0);
   const [platosAyudaCompaneros, setPlatosAyudaCompaneros] = useState(0);
 
   const cardWidth = gridItemWidth(r.contentWidth, r.gridColumns, r.gridGap);
@@ -94,6 +96,7 @@ export default function MesasScreen() {
       setPedidosParaLlevar(0);
       setPlatosSinPasarCocina(0);
       setPlatosParaRecoger(0);
+      setMazorcasParaRecoger(0);
       setPlatosAyudaCompaneros(0);
       return;
     }
@@ -114,12 +117,14 @@ export default function MesasScreen() {
       setPedidosParaLlevar(raw.pedidos_para_llevar ?? 0);
       setPlatosSinPasarCocina(raw.platos_sin_pasar_cocina ?? 0);
       setPlatosParaRecoger(raw.platos_para_recoger ?? 0);
+      setMazorcasParaRecoger(raw.mazorcas_para_recoger ?? 0);
       setPlatosAyudaCompaneros(ayuda.platos_para_recoger ?? 0);
     } catch {
       setPedidosMostrador(0);
       setPedidosParaLlevar(0);
       setPlatosSinPasarCocina(0);
       setPlatosParaRecoger(0);
+      setMazorcasParaRecoger(0);
       setPlatosAyudaCompaneros(0);
     }
   }, [token, tomaPedidos, user?.id]);
@@ -155,6 +160,12 @@ export default function MesasScreen() {
       setRefreshing(false);
     }
   }
+
+  const hayParaRecoger = platosParaRecoger + mazorcasParaRecoger > 0;
+  const mensajeRecoger = mensajeListosParaRecoger(
+    platosParaRecoger,
+    mazorcasParaRecoger,
+  );
 
   function estadoColor(estado: string) {
     if (estado === 'libre') return colors.mesaLibre;
@@ -313,7 +324,7 @@ export default function MesasScreen() {
         </View>
       </AnimatedEnter>
 
-      {platosParaRecoger > 0 && puedeVerMisPedidos(user?.rol) ? (
+      {hayParaRecoger && puedeVerMisPedidos(user?.rol) ? (
         <AnimatedEnter index={1}>
         <Pressable
           style={styles.alertaRecoger}
@@ -321,8 +332,7 @@ export default function MesasScreen() {
         >
           <Text style={styles.alertaRecogerTitle}>Ve a recoger en cocina</Text>
           <Text style={styles.alertaRecogerSub}>
-            Cocina tiene {platosParaRecoger}{' '}
-            {platosParaRecoger === 1 ? 'plato listo' : 'platos listos'} esperándote.
+            Cocina tiene {mensajeRecoger} esperándote.
             Toca aquí para ver tus pedidos.
           </Text>
         </Pressable>

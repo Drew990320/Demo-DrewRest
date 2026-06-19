@@ -56,6 +56,10 @@ describe('mazorca-linea-pedido', () => {
     it('no usa línea de mazorca en mesa para llevar (98)', () => {
       expect(pedidoUsaLineaMazorca(MESA_PARA_LLEVAR_NUMERO)).toBe(false);
     });
+
+    it('no usa línea de mazorca en mostrador (99)', () => {
+      expect(pedidoUsaLineaMazorca(99)).toBe(false);
+    });
   });
 
   describe('esDetalleMazorcaAcompanamiento', () => {
@@ -207,7 +211,35 @@ describe('mazorca-linea-pedido', () => {
           idProducto: MAZORCA_ID,
           cantidad: 2,
           precioUnitario: 0,
+          enviadoCocina: false,
+        },
+      });
+    });
+
+    it('crea línea pendiente al subir comensales sobre mazorca ya enviada a cocina', async () => {
+      const { tx, detallePedido } = mockTx([
+        {
+          idDetalle: 7,
+          cantidad: 2,
           enviadoCocina: true,
+          listoParaRecoger: false,
+          listoCocina: false,
+        },
+      ]);
+      await sincronizarLineaMazorcaAcompanamiento(tx, {
+        idPedido: 1,
+        numComensales: 4,
+        mesaNumero: 5,
+        estadoPedido: 'en_cocina',
+      });
+      expect(detallePedido.update).not.toHaveBeenCalled();
+      expect(detallePedido.create).toHaveBeenCalledWith({
+        data: {
+          idPedido: 1,
+          idProducto: MAZORCA_ID,
+          cantidad: 2,
+          precioUnitario: 0,
+          enviadoCocina: false,
         },
       });
     });

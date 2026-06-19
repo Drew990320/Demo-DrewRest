@@ -73,6 +73,10 @@
     "./resumen-diario-ventas": {
       "types": "./dist/resumen-diario-ventas.d.ts",
       "default": "./dist/resumen-diario-ventas.js"
+    },
+    "./transferencia-pedido": {
+      "types": "./dist/transferencia-pedido.d.ts",
+      "default": "./dist/transferencia-pedido.js"
     }
   },
   "scripts": {

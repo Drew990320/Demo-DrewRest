@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
+  Alert,
   Platform,
   Pressable,
   ScrollView,
@@ -13,14 +14,20 @@ import {
   type NativeSyntheticEvent,
   type SectionListData,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ActionIconBar } from '../../../../src/components/ActionIconBar';
 import { IconTooltipButton } from '../../../../src/components/IconTooltipButton';
 import { useAuth } from '../../../../src/context/AuthContext';
 import { AccionIcon, AdminIcon } from '../../../../src/lib/app-icons';
+import { showBriefNotice } from '../../../../src/lib/app-dialog';
 import { formStyles } from '../../../../src/lib/form-layout';
 import { categoriaMenuIcon } from '../../../../src/lib/categoria-menu-icon';
+import {
+  menuProductoQueryParams,
+  productoTieneOpcionesPersonalizacion,
+} from '../../../../src/lib/menu-agregar-rapido';
 import { useResponsive } from '../../../../src/hooks/useResponsive';
 import { api } from '../../../../src/lib/api';
 import {
@@ -49,7 +56,7 @@ type MenuSection = SectionListData<Producto, { title: string }>;
 
 /** Alturas estimadas para scroll por offset (SectionList + web). */
 const EST_SECTION_HEADER = 42;
-const EST_ROW = 50;
+const EST_ROW = 54;
 const EST_SECTION_GAP = 8;
 
 function buildSectionOffsets(sections: MenuSection[]): number[] {
@@ -88,6 +95,10 @@ export default function MenuPedidoScreen() {
   const [loading, setLoading] = useState(true);
   const [idMesaPedido, setIdMesaPedido] = useState<number | null>(null);
   const [activeSection, setActiveSection] = useState(0);
+  const [agregandoRapidoId, setAgregandoRapidoId] = useState<number | null>(null);
+  const [modoSeleccion, setModoSeleccion] = useState(false);
+  const [seleccionIds, setSeleccionIds] = useState<Set<number>>(() => new Set());
+  const [agregandoLote, setAgregandoLote] = useState(false);
   const programmaticScroll = useRef(false);
   const scrollYRef = useRef(0);
   const measuredSectionY = useRef<Record<number, number>>({});
@@ -169,6 +180,128 @@ export default function MenuPedidoScreen() {
     [sections],
   );
 
+  const productoById = useMemo(() => {
+    const map = new Map<number, Producto>();
+    for (const section of sections) {
+      for (const p of section.data) {
+        map.set(p.id_producto, p);
+      }
+    }
+    return map;
+  }, [sections]);
+
+  const seleccionados = useMemo(
+    () =>
+      Array.from(seleccionIds)
+        .map((id) => productoById.get(id))
+        .filter((p): p is Producto => p != null),
+    [seleccionIds, productoById],
+  );
+
+  const seleccionConPersonalizacion = useMemo(
+    () => seleccionados.filter(productoTieneOpcionesPersonalizacion).length,
+    [seleccionados],
+  );
+
+  function salirModoSeleccion() {
+    setModoSeleccion(false);
+    setSeleccionIds(new Set());
+  }
+
+  function toggleSeleccion(id: number) {
+    setSeleccionIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function postDetalleUnitario(idProducto: number) {
+    await api(`/pedidos/${pedidoId}/detalles`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify({
+        id_producto: idProducto,
+        cantidad: 1,
+        opcion_ids: [],
+      }),
+    });
+  }
+
+  async function agregarSeleccionEstandar() {
+    if (seleccionados.length === 0 || agregandoLote) return;
+    setAgregandoLote(true);
+    let ok = 0;
+    try {
+      for (const item of seleccionados) {
+        try {
+          await postDetalleUnitario(item.id_producto);
+          ok++;
+        } catch {
+          /* sigue con el resto */
+        }
+      }
+      if (ok > 0) {
+        void showBriefNotice(
+          'Agregados',
+          `${ok} ítem(s) al pedido (estándar)`,
+          'success',
+        );
+      }
+      if (ok < seleccionados.length) {
+        Alert.alert(
+          'Aviso',
+          `Se agregaron ${ok} de ${seleccionados.length}. Revisa los que faltaron.`,
+        );
+      }
+      salirModoSeleccion();
+    } finally {
+      setAgregandoLote(false);
+    }
+  }
+
+  async function personalizarSeleccionYAgregar() {
+    const conPers = seleccionados.filter(productoTieneOpcionesPersonalizacion);
+    if (conPers.length === 0 || agregandoLote) return;
+    const sinPers = seleccionados.filter(
+      (p) => !productoTieneOpcionesPersonalizacion(p),
+    );
+
+    setAgregandoLote(true);
+    try {
+      let ok = 0;
+      for (const item of sinPers) {
+        try {
+          await postDetalleUnitario(item.id_producto);
+          ok++;
+        } catch {
+          /* sigue */
+        }
+      }
+      if (ok > 0) {
+        void showBriefNotice(
+          'Agregados',
+          `${ok} ítem(s) sin personalizar`,
+          'success',
+        );
+      }
+      const [first, ...rest] = conPers;
+      salirModoSeleccion();
+      router.push(
+        `/(app)/pedido/${pedidoId}/producto/${first.id_producto}${menuProductoQueryParams(
+          {
+            bebidas: soloBebidas,
+            paraLlevar: soloParaLlevar,
+            colaPersonalizar: rest.map((p) => p.id_producto),
+          },
+        )}`,
+      );
+    } finally {
+      setAgregandoLote(false);
+    }
+  }
+
   useEffect(() => {
     measuredSectionY.current = {};
     headerRefs.current.clear();
@@ -246,8 +379,11 @@ export default function MenuPedidoScreen() {
 
   function renderProductRow(item: Producto, index: number, total: number) {
     const last = index === total - 1;
+    const agregando = agregandoRapidoId === item.id_producto;
+    const personalizable = productoTieneOpcionesPersonalizacion(item);
+    const seleccionado = seleccionIds.has(item.id_producto);
     return (
-      <Pressable
+      <View
         key={String(item.id_producto)}
         style={[
           styles.row,
@@ -255,27 +391,161 @@ export default function MenuPedidoScreen() {
           index === 0 && styles.rowFirst,
           last && styles.rowLast,
           !last && styles.rowMid,
+          modoSeleccion && seleccionado && styles.rowSelected,
         ]}
-        onPress={() => openProducto(item)}
       >
-        <Text style={styles.name} numberOfLines={2}>
-          {item.nombre}
-        </Text>
-        <Text style={styles.price}>{formatCOP(item.precio)}</Text>
-        <Text style={styles.chev}>›</Text>
-      </Pressable>
+        {modoSeleccion ? (
+          <Pressable
+            style={styles.rowCheck}
+            onPress={() => toggleSeleccion(item.id_producto)}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: seleccionado }}
+          >
+            <Text style={styles.checkBox}>{seleccionado ? '✓' : ''}</Text>
+          </Pressable>
+        ) : null}
+        <Pressable
+          style={styles.rowMain}
+          onPress={() =>
+            modoSeleccion
+              ? toggleSeleccion(item.id_producto)
+              : openProducto(item)
+          }
+          accessibilityRole="button"
+          accessibilityLabel={`${item.nombre}, ${formatCOP(item.precio)}`}
+        >
+          <Text style={styles.name} numberOfLines={2}>
+            {item.nombre}
+          </Text>
+          <Text style={styles.price}>{formatCOP(item.precio)}</Text>
+          {!modoSeleccion ? <Text style={styles.chev}>›</Text> : null}
+        </Pressable>
+        {!modoSeleccion ? (
+          <IconTooltipButton
+            icon={agregando ? 'hourglass-outline' : 'add-circle-outline'}
+            label={
+              agregando
+                ? 'Agregando…'
+                : personalizable
+                  ? 'Agregar 1 estándar (sin opciones)'
+                  : 'Agregar 1 al pedido'
+            }
+            variant="primary"
+            size={22}
+            fixedSize
+            disabled={agregando}
+            onPress={() => agregarRapido(item)}
+            style={styles.quickAddBtn}
+          />
+        ) : null}
+      </View>
     );
   }
 
-  const listBottomPad = idMesaPedido != null ? 8 : r.contentPadding;
+  const selectionBarVisible = modoSeleccion;
+  const listBottomPad =
+    (idMesaPedido != null ? 8 : r.contentPadding) +
+    (selectionBarVisible ? 72 : 0);
 
   function openProducto(item: Producto) {
-    const q: string[] = [];
-    if (soloBebidas) q.push('bebidas=1');
-    if (soloParaLlevar) q.push('paraLlevar=1');
-    const suffix = q.length ? `?${q.join('&')}` : '';
     router.push(
-      `/(app)/pedido/${pedidoId}/producto/${item.id_producto}${suffix}`,
+      `/(app)/pedido/${pedidoId}/producto/${item.id_producto}${menuProductoQueryParams(
+        { bebidas: soloBebidas, paraLlevar: soloParaLlevar },
+      )}`,
+    );
+  }
+
+  async function agregarRapido(item: Producto) {
+    if (agregandoRapidoId != null) return;
+    setAgregandoRapidoId(item.id_producto);
+    try {
+      await postDetalleUnitario(item.id_producto);
+      void showBriefNotice('Agregado', `${item.nombre} × 1`, 'success');
+    } catch (e) {
+      Alert.alert(
+        'Error',
+        e instanceof Error ? e.message : 'No se pudo agregar al pedido',
+      );
+    } finally {
+      setAgregandoRapidoId(null);
+    }
+  }
+
+  function activarModoUno() {
+    if (modoSeleccion) salirModoSeleccion();
+  }
+
+  function activarModoVarios() {
+    if (!modoSeleccion) setModoSeleccion(true);
+  }
+
+  const hintModoActivo = useMemo(() => {
+    if (modoSeleccion) {
+      return 'Marca los ítems y confirma con los botones de abajo.';
+    }
+    if (soloBebidas) {
+      return '+ al instante · toca la fila para cantidad o nota.';
+    }
+    if (soloParaLlevar) {
+      return '+ estándar · toca el plato para empaque, notas u opciones.';
+    }
+    return '+ agrega 1 al instante · toca el plato para personalizar.';
+  }, [modoSeleccion, soloBebidas, soloParaLlevar]);
+
+  function renderModosSeleccion() {
+    return (
+      <View style={styles.modesBlock}>
+        <Text style={styles.modesLabel}>Modos de selección</Text>
+        <View style={styles.modesRow}>
+          <Pressable
+            style={[
+              styles.modeBtn,
+              !modoSeleccion && styles.modeBtnActive,
+            ]}
+            onPress={activarModoUno}
+            accessibilityRole="button"
+            accessibilityState={{ selected: !modoSeleccion }}
+          >
+            <Ionicons
+              name="add-circle-outline"
+              size={20}
+              color={!modoSeleccion ? colors.surface : colors.primary}
+            />
+            <Text
+              style={[
+                styles.modeBtnText,
+                !modoSeleccion && styles.modeBtnTextActive,
+              ]}
+            >
+              Uno a uno
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[
+              styles.modeBtn,
+              modoSeleccion && styles.modeBtnActive,
+            ]}
+            onPress={activarModoVarios}
+            accessibilityRole="button"
+            accessibilityState={{ selected: modoSeleccion }}
+          >
+            <Ionicons
+              name="checkbox-outline"
+              size={20}
+              color={modoSeleccion ? colors.surface : colors.primary}
+            />
+            <Text
+              style={[
+                styles.modeBtnText,
+                modoSeleccion && styles.modeBtnTextActive,
+              ]}
+            >
+              Varios
+            </Text>
+          </Pressable>
+        </View>
+        <Text style={styles.modeHint}>{hintModoActivo}</Text>
+      </View>
     );
   }
 
@@ -312,17 +582,7 @@ export default function MenuPedidoScreen() {
         <Text style={[styles.h1, { fontSize: r.fontSize.h1 }]}>
           {soloBebidas ? 'Solo bebidas' : 'Disponible hoy'}
         </Text>
-        {soloBebidas ? (
-          <Text style={styles.hint}>
-            Venta en mostrador: agua, gaseosas, cervezas…
-          </Text>
-        ) : null}
-        {soloParaLlevar && !soloBebidas ? (
-          <Text style={styles.hint}>
-            Para llevar: empaque automático $1.000 por plato fuerte (se puede
-            quitar al personalizar).
-          </Text>
-        ) : null}
+        {renderModosSeleccion()}
       </View>
 
       {sections.length > 1 ? (
@@ -395,6 +655,51 @@ export default function MenuPedidoScreen() {
         />
       )}
 
+      {selectionBarVisible ? (
+        <View
+          style={[
+            styles.selectionBar,
+            { paddingHorizontal: r.contentPadding },
+          ]}
+        >
+          <Text style={styles.selectionCount}>
+            {seleccionados.length === 0
+              ? 'Selecciona ítems del menú'
+              : `${seleccionados.length} seleccionado(s)`}
+          </Text>
+          <ActionIconBar
+            style={styles.selectionActions}
+            actions={[
+              {
+                key: 'agregar',
+                icon: agregandoLote ? 'hourglass-outline' : 'cart-outline',
+                label: agregandoLote
+                  ? 'Agregando…'
+                  : seleccionados.length > 0
+                    ? `Agregar ${seleccionados.length}`
+                    : 'Agregar',
+                variant: 'primary',
+                disabled:
+                  seleccionados.length === 0 || agregandoLote,
+                onPress: agregarSeleccionEstandar,
+              },
+              {
+                key: 'personalizar',
+                icon: 'options-outline',
+                label:
+                  seleccionConPersonalizacion > 0
+                    ? `Personalizar (${seleccionConPersonalizacion})`
+                    : 'Personalizar',
+                variant: 'secondary',
+                disabled:
+                  seleccionConPersonalizacion === 0 || agregandoLote,
+                onPress: personalizarSeleccionYAgregar,
+              },
+            ]}
+          />
+        </View>
+      ) : null}
+
       {idMesaPedido != null ? (
         <View
           style={[
@@ -438,15 +743,95 @@ const styles = StyleSheet.create({
   listFlex: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: {
-    paddingTop: 12,
+    paddingTop: 8,
+    paddingBottom: 6,
+    alignItems: 'center',
+  },
+  kicker: {
+    color: colors.textMuted,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+    textAlign: 'center',
+  },
+  h1: {
+    fontWeight: '800',
+    color: colors.text,
+    marginTop: 2,
+    textAlign: 'center',
+  },
+  modesBlock: {
+    marginTop: 10,
+    width: '100%',
+    maxWidth: 340,
+    alignItems: 'center',
+  },
+  modesLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  modesRow: {
+    flexDirection: 'row',
+    gap: 8,
+    width: '100%',
+  },
+  modeBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    backgroundColor: colors.surface,
+  },
+  modeBtnActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  modeBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  modeBtnTextActive: {
+    color: colors.surface,
+  },
+  modeHint: {
+    marginTop: 8,
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.textMuted,
+    textAlign: 'center',
+  },
+  selectionBar: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingTop: 8,
     paddingBottom: 8,
   },
-  kicker: { color: colors.textMuted, fontWeight: '700', letterSpacing: 0.3 },
-  h1: { fontWeight: '800', color: colors.text, marginTop: 2 },
-  hint: { marginTop: 6, color: colors.textMuted, fontSize: 13, lineHeight: 18 },
+  selectionCount: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  selectionActions: {
+    justifyContent: 'center',
+  },
   empty: { padding: 24, color: colors.textMuted },
   catNavWrap: {
-    paddingBottom: 8,
+    paddingTop: 4,
+    paddingBottom: 6,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
     backgroundColor: colors.surfaceMuted,
@@ -491,13 +876,43 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    gap: 6,
+    paddingVertical: 6,
+    paddingLeft: 12,
+    paddingRight: 8,
     backgroundColor: colors.surface,
     borderLeftWidth: 1,
     borderRightWidth: 1,
     borderColor: colors.border,
+  },
+  rowSelected: {
+    backgroundColor: colors.surfaceMuted,
+  },
+  rowCheck: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  checkBox: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: colors.primary,
+  },
+  rowMain: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 4,
+    minHeight: 40,
+  },
+  quickAddBtn: {
+    flexShrink: 0,
   },
   rowFirst: {
     borderTopWidth: 1,

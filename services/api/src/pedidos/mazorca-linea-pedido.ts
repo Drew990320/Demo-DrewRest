@@ -62,6 +62,8 @@ export async function sincronizarLineaMazorcaAcompanamiento(
     numComensales: number;
     mesaNumero: number;
     estadoPedido: EstadoPedido;
+    /** Si no se indica, depende del número de mesa (no en 98/99). */
+    usaLineaMazorca?: boolean;
   },
 ): Promise<void> {
   const productoId = await idProductoMazorcaAcompanamiento(tx);
@@ -78,8 +80,11 @@ export async function sincronizarLineaMazorcaAcompanamiento(
     },
   });
 
+  const usaLinea =
+    params.usaLineaMazorca ?? pedidoUsaLineaMazorca(params.mesaNumero);
+
   const plan = planificarSyncMazorca({
-    usa_linea_mazorca: pedidoUsaLineaMazorca(params.mesaNumero),
+    usa_linea_mazorca: usaLinea,
     num_comensales: params.numComensales,
     lineas: toLineasSync(lineas),
   });
@@ -96,6 +101,23 @@ export async function sincronizarLineaMazorcaAcompanamiento(
       return;
     case 'subir':
       if (plan.modo === 'editar') {
+        const linea = lineas.find((l) => l.idDetalle === plan.id_detalle);
+        if (
+          linea?.enviadoCocina &&
+          plan.nueva_cantidad > linea.cantidad
+        ) {
+          const delta = plan.nueva_cantidad - linea.cantidad;
+          await tx.detallePedido.create({
+            data: {
+              idPedido: params.idPedido,
+              idProducto: productoId,
+              cantidad: delta,
+              precioUnitario: 0,
+              enviadoCocina: false,
+            },
+          });
+          return;
+        }
         await tx.detallePedido.update({
           where: { idDetalle: plan.id_detalle },
           data: { cantidad: plan.nueva_cantidad },
@@ -108,7 +130,7 @@ export async function sincronizarLineaMazorcaAcompanamiento(
           idProducto: productoId,
           cantidad: plan.cantidad,
           precioUnitario: 0,
-          enviadoCocina: params.estadoPedido === 'en_cocina',
+          enviadoCocina: false,
         },
       });
       return;

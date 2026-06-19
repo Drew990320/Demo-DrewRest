@@ -11,5 +11,6 @@ export * from './factura-lineas-group';
 export * from './mazorca-linea-pedido';
 export * from './mazorca-pedido';
 export * from './resumen-diario-ventas';
+export * from './transferencia-pedido';
 export * from './mesa-label';
 export * from './usuario-display';

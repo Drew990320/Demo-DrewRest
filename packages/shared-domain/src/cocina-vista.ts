@@ -189,6 +189,53 @@ export type PlatoPendienteResumen = {
   esCerdo: boolean;
 };
 
+/** Cola FIFO por hora de creación del pedido (sin prioridad alta/baja). */
+export function ordenarPedidosCocinaPorLlegada<
+  T extends { creado_en: Date | string },
+>(pedidos: T[]): T[] {
+  return [...pedidos].sort((a, b) => {
+    const ta =
+      typeof a.creado_en === 'string'
+        ? new Date(a.creado_en).getTime()
+        : a.creado_en.getTime();
+    const tb =
+      typeof b.creado_en === 'string'
+        ? new Date(b.creado_en).getTime()
+        : b.creado_en.getTime();
+    return ta - tb;
+  });
+}
+
+export function mesasEnOrdenDeLlegada(
+  pedidos: { mesa_numero: number; creado_en: Date | string }[],
+): number[] {
+  const seen = new Set<number>();
+  const out: number[] = [];
+  for (const p of ordenarPedidosCocinaPorLlegada(pedidos)) {
+    if (!seen.has(p.mesa_numero)) {
+      seen.add(p.mesa_numero);
+      out.push(p.mesa_numero);
+    }
+  }
+  return out;
+}
+
+export function ordenarMesasPorCola(
+  mesas: number[],
+  colaMesas: number[],
+): number[] {
+  const rank = new Map(colaMesas.map((m, i) => [m, i]));
+  return [...mesas].sort(
+    (a, b) => (rank.get(a) ?? 999) - (rank.get(b) ?? 999) || a - b,
+  );
+}
+
+export function porcionesVisiblesEnCocina(pedido: PedidoCocinaLike): number {
+  return pedido.detalles
+    .filter(detalleVisibleEnCocina)
+    .reduce((acc, d) => acc + d.cantidad, 0);
+}
+
 function detalleEsperandoRecogida(d: DetalleCocinaLike): boolean {
   return (
     d.marcar_cocina &&
@@ -210,6 +257,68 @@ export function totalPlatosEsperandoRecogida(
   pedidos: PedidoCocinaLike[],
 ): number {
   return pedidos.reduce((acc, p) => acc + platosEsperandoRecogida(p), 0);
+}
+
+/** Separa platos de cocina y mazorcas (entradas) en conteos de recogida. */
+export function conteoRecogidaPorTipo(
+  detalles: DetalleCocinaLike[],
+  incluir: (d: DetalleCocinaLike) => boolean,
+): { platos: number; entradas: number } {
+  let platos = 0;
+  let entradas = 0;
+  for (const d of detalles) {
+    if (!incluir(d)) continue;
+    if (d.es_acompanamiento_mazorca) entradas += d.cantidad;
+    else platos += d.cantidad;
+  }
+  return { platos, entradas };
+}
+
+export function conteoEsperandoRecogidaPorTipo(
+  pedido: PedidoCocinaLike,
+): { platos: number; entradas: number } {
+  return conteoRecogidaPorTipo(pedido.detalles, detalleEsperandoRecogida);
+}
+
+export function totalEsperandoRecogidaPorTipo(
+  pedidos: PedidoCocinaLike[],
+): { platos: number; entradas: number } {
+  return pedidos.reduce(
+    (acc, p) => {
+      const c = conteoEsperandoRecogidaPorTipo(p);
+      return { platos: acc.platos + c.platos, entradas: acc.entradas + c.entradas };
+    },
+    { platos: 0, entradas: 0 },
+  );
+}
+
+/** Texto para avisos al mesero (notificación / banner). */
+export function mensajeListosParaRecoger(
+  platos: number,
+  entradas: number,
+  sufijo = '',
+): string {
+  const parts: string[] = [];
+  if (platos > 0) {
+    parts.push(`${platos} ${platos === 1 ? 'plato' : 'platos'}`);
+  }
+  if (entradas > 0) {
+    parts.push(`${entradas} ${entradas === 1 ? 'mazorca' : 'mazorcas'}`);
+  }
+  if (parts.length === 0) return `Listo para recoger${sufijo}`;
+  const cuerpo =
+    parts.length === 2 ? `${parts[0]} y ${parts[1]}` : parts[0]!;
+  const verbo =
+    platos > 0 && entradas > 0
+      ? 'listos'
+      : entradas > 0
+        ? entradas === 1
+          ? 'lista'
+          : 'listas'
+        : platos === 1
+          ? 'listo'
+          : 'listos';
+  return `${cuerpo} ${verbo} para recoger${sufijo}`;
 }
 
 function detalleSinEnviarCocina(d: DetalleCocinaLike): boolean {
@@ -234,6 +343,7 @@ export function etiquetaPlatoPendiente(nombre: string, total: number): string {
 
 export function agruparPlatosPendientes(
   items: PedidoCocinaLike[],
+  colaMesas?: number[],
 ): PlatoPendienteResumen[] {
   const porPlato = new Map<
     string,
@@ -259,7 +369,9 @@ export function agruparPlatosPendientes(
     .map(([nombre, v]) => ({
       nombre,
       total: v.total,
-      mesas: Array.from(v.mesas).sort((a, b) => a - b),
+      mesas: colaMesas?.length
+        ? ordenarMesasPorCola(Array.from(v.mesas), colaMesas)
+        : Array.from(v.mesas).sort((a, b) => a - b),
       esCerdo: v.esCerdo,
     }))
     .sort((a, b) => b.total - a.total || a.nombre.localeCompare(b.nombre, 'es'));

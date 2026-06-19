@@ -57,6 +57,17 @@ export async function avisarSiEnteroInvalido(
   return false;
 }
 
+/** Entero ≥ min; vacío o inválido → `defecto` (p. ej. 1 al abrir mesa o agregar ítem). */
+export function enteroConDefecto(
+  valor: string,
+  defecto: number,
+  min = 1,
+): number {
+  const n = parseInt(String(valor ?? '').trim(), 10);
+  if (!Number.isFinite(n) || n < min) return defecto;
+  return n;
+}
+
 /** Monto COP desde dígitos; vacío o ≤ 0 es inválido cuando el campo es obligatorio. */
 export async function avisarSiMontoCOPInvalido(
   etiqueta: string,

@@ -60,9 +60,17 @@ export {
   resumenItemsMesero,
   totalPlatosEsperandoRecogida,
   totalPlatosSinEnviarCocina,
+  totalEsperandoRecogidaPorTipo,
+  mensajeListosParaRecoger,
+  mesasEnOrdenDeLlegada,
+  ordenarMesasPorCola,
+  ordenarPedidosCocinaPorLlegada,
+  porcionesVisiblesEnCocina,
   type LineaCocinaGrupo,
   type PlatoPendienteResumen,
 } from '@la-reserva/shared-domain/cocina-vista';
+
+export { ordenarPedidosCocina } from '@la-reserva/shared-domain/cocina-prioridad';
 
 function detalleMapById(
   detalles: DetalleCocinaView[],

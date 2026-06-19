@@ -76,12 +76,14 @@ export function crearLineaMazorcaInicialLocal(
 export function sincronizarLineaMazorcaLocal(
   pedido: PedidoRow,
   mesaNumero: number,
-  productoId: number,
+  productoId: number | undefined,
   nextDetalleId: () => number,
+  usaLineaMazorca?: boolean,
 ): string | null {
+  if (productoId == null) return null;
   const lineas = lineasMazorca(pedido, productoId);
   const plan = planificarSyncMazorca({
-    usa_linea_mazorca: pedidoUsaLineaMazorca(mesaNumero),
+    usa_linea_mazorca: usaLineaMazorca ?? pedidoUsaLineaMazorca(mesaNumero),
     num_comensales: pedido.num_comensales,
     lineas: lineas.map((l) => ({
       id_detalle: l.id_detalle,
@@ -102,6 +104,24 @@ export function sincronizarLineaMazorcaLocal(
     case 'subir':
       if (plan.modo === 'editar') {
         const editable = pedido.detalles.find((d) => d.id_detalle === plan.id_detalle);
+        if (
+          editable?.enviado_cocina &&
+          editable.cantidad < plan.nueva_cantidad
+        ) {
+          const delta = plan.nueva_cantidad - editable.cantidad;
+          pedido.detalles.push({
+            id_detalle: nextDetalleId(),
+            id_producto: productoId,
+            cantidad: delta,
+            precio_unitario: 0,
+            enviado_cocina: false,
+            listo_para_recoger: false,
+            listo_cocina: false,
+            id_detalle_padre: null,
+            nota_cocina: null,
+          });
+          return null;
+        }
         if (editable) editable.cantidad = plan.nueva_cantidad;
         return null;
       }
@@ -110,7 +130,7 @@ export function sincronizarLineaMazorcaLocal(
         id_producto: productoId,
         cantidad: plan.cantidad,
         precio_unitario: 0,
-        enviado_cocina: pedido.estado === 'en_cocina',
+        enviado_cocina: false,
         listo_para_recoger: false,
         listo_cocina: false,
         id_detalle_padre: null,

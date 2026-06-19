@@ -2,7 +2,7 @@ import {
   contarPorcionesPendientesCocina,
   inferirTipoProteina,
   ordenarPedidosCocina,
-  prioridadAutomaticaDesdeTipos,
+  prioridadAutomaticaDesdeDetalles,
   prioridadCocinaEfectiva,
   tipoProteinaResuelto,
 } from './cocina-prioridad';
@@ -35,17 +35,73 @@ describe('cocina-prioridad', () => {
     });
   });
 
-  describe('prioridadAutomaticaDesdeTipos', () => {
-    it('devuelve alta si no hay platos', () => {
-      expect(prioridadAutomaticaDesdeTipos([])).toBe('alta');
+  describe('prioridadAutomaticaDesdeDetalles', () => {
+    const det = (
+      categoria: string,
+      nombre: string,
+      marcar = true,
+    ) => ({
+      categoria_nombre: categoria,
+      nombre_producto: nombre,
+      marcar_cocina: marcar,
     });
 
-    it('baja prioridad si hay cerdo', () => {
-      expect(prioridadAutomaticaDesdeTipos(['pollo', 'cerdo'])).toBe('baja');
+    it('alta si solo hay mazorcas, entradas o adicionales', () => {
+      expect(
+        prioridadAutomaticaDesdeDetalles([
+          det('Entradas y adicionales', 'Chorizo'),
+          det('Acompañamientos', 'Mazorca'),
+        ]),
+      ).toBe('alta');
     });
 
-    it('alta prioridad sin cerdo', () => {
-      expect(prioridadAutomaticaDesdeTipos(['pollo', 'res'])).toBe('alta');
+    it('alta con plato fuerte pollo o res sin cerdo', () => {
+      expect(
+        prioridadAutomaticaDesdeDetalles([
+          det('Platos fuertes - Pollo', 'Pechuga a la plancha'),
+          det('Entradas y adicionales', 'Chorizo'),
+        ]),
+      ).toBe('alta');
+      expect(
+        prioridadAutomaticaDesdeDetalles([
+          det('Platos fuertes - Res / Mixto', 'Chata'),
+        ]),
+      ).toBe('alta');
+    });
+
+    it('baja con plato fuerte cerdo', () => {
+      expect(
+        prioridadAutomaticaDesdeDetalles([
+          det('Platos fuertes - Cerdo', 'Bondiola'),
+        ]),
+      ).toBe('baja');
+    });
+
+    it('baja con parrillada aunque sea categoría res/mixto', () => {
+      expect(
+        prioridadAutomaticaDesdeDetalles([
+          det(
+            'Platos fuertes - Res / Mixto',
+            'Parrillada mixta (cortes de lomo, costilla y chorizo)',
+          ),
+        ]),
+      ).toBe('baja');
+    });
+
+    it('baja con picada o para compartir', () => {
+      expect(
+        prioridadAutomaticaDesdeDetalles([
+          det('Para compartir', 'Picada La Reserva'),
+        ]),
+      ).toBe('baja');
+    });
+
+    it('ignora líneas que no van a cocina', () => {
+      expect(
+        prioridadAutomaticaDesdeDetalles([
+          det('Platos fuertes - Cerdo', 'Bondiola', false),
+        ]),
+      ).toBe('alta');
     });
   });
 

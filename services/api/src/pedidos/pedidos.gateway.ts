@@ -117,6 +117,7 @@ export class PedidosGateway implements OnGatewayConnection {
     idMesero: number;
     meseroNombre: string;
     platosListos: number;
+    entradasListos?: number;
     tipo_listo?: 'entrada' | 'plato' | 'mixto';
     at: string;
   }) {

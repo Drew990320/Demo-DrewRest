@@ -22,9 +22,12 @@ export function usePedidoNotificaciones() {
 
     const unsubLlama = subscribeCocinaLlamaMesero((payload) => {
       if (payload.idMesero !== idMesero) return;
-      const tipo = payload.tipo_listo ?? 'plato';
       void showBriefNotice(
-        tituloCocinaLlamaMesero(tipo),
+        tituloCocinaLlamaMesero(
+          payload.platosListos,
+          payload.entradasListos ??
+            (payload.tipo_listo === 'entrada' ? payload.platosListos : 0),
+        ),
         mensajeCocinaLlamaMesero(payload),
         'info',
       );

@@ -30,6 +30,7 @@ import { formatCOP } from '../../../src/lib/format';
 import { useFormFieldStyle } from '../../../src/hooks/useFormFieldStyle';
 import { appShadow } from '../../../src/lib/shadow';
 import { tituloLugarMesa } from '../../../src/lib/mesa-label';
+import { TransferirPedidoPanel } from '../../../src/components/TransferirPedidoPanel';
 import {
   batchAfectaMesa,
   joinPedidoRooms,
@@ -43,10 +44,7 @@ import {
   etiquetaEstadoLineaPedido,
   type LineaPedidoGrupo,
 } from '../../../src/lib/pedido-detalle-group';
-import {
-  avisarSiEnteroInvalido,
-  avisarSiFaltanObligatorios,
-} from '../../../src/lib/form-validation';
+import { enteroConDefecto } from '../../../src/lib/form-validation';
 import {
   esDetalleMazorcaAcompanamiento,
   pedidoUsaLineaMazorca,
@@ -86,9 +84,8 @@ type MesaRow = {
   estado: string;
 };
 
-function placeholderComensalesMesa(numero: number | undefined): string {
-  if (numero === 98 || numero === 99) return '1';
-  return '2';
+function placeholderComensalesMesa(_numero: number | undefined): string {
+  return '1 (opcional)';
 }
 
 export default function MesaDetailScreen() {
@@ -111,15 +108,18 @@ export default function MesaDetailScreen() {
   const lineasAgrupadas = useMemo(() => {
     if (!pedido) return [];
     const padres = pedido.detalles.filter((d) => d.id_detalle_padre == null);
-    return agruparLineasPedido(padres, { soloEstadoVisible: true });
-  }, [pedido]);
+    const lineas = agruparLineasPedido(padres, { soloEstadoVisible: true });
+    if (mesa && pedidoUsaLineaMazorca(mesa.numero)) {
+      return lineas.filter((d) => !esDetalleMazorcaAcompanamiento(d));
+    }
+    return lineas;
+  }, [pedido, mesa]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [comensales, setComensales] = useState('');
   const [busy, setBusy] = useState(false);
   const [busyPasarCocina, setBusyPasarCocina] = useState(false);
   const [busyReimprimir, setBusyReimprimir] = useState(false);
-  const [mesaDestino, setMesaDestino] = useState('');
   const [historialOpen, setHistorialOpen] = useState(false);
   const [historialRows, setHistorialRows] = useState<
     {
@@ -205,24 +205,7 @@ export default function MesaDetailScreen() {
   }
 
   async function abrirMesa() {
-    const etiquetaComensales =
-      mesa?.numero === 99
-        ? 'Personas (mazorcas)'
-        : mesa?.numero === 98
-          ? 'Comensales (referencia)'
-          : 'Número de comensales';
-    if (
-      await avisarSiFaltanObligatorios(
-        [{ etiqueta: etiquetaComensales, valor: comensales }],
-        showNotice,
-      )
-    ) {
-      return;
-    }
-    if (await avisarSiEnteroInvalido(etiquetaComensales, comensales, 1, showNotice)) {
-      return;
-    }
-    const n = parseInt(comensales, 10);
+    const n = enteroConDefecto(comensales, 1);
     setBusy(true);
     try {
       await api('/pedidos', {
@@ -577,44 +560,6 @@ export default function MesaDetailScreen() {
     }
   }
 
-  async function transferirPedido() {
-    if (!pedido) return;
-    if (
-      await avisarSiFaltanObligatorios(
-        [{ etiqueta: 'Mesa destino', valor: mesaDestino }],
-        showNotice,
-      )
-    ) {
-      return;
-    }
-    const mesaNumeroNuevo = parseInt(mesaDestino, 10);
-    if (
-      await avisarSiEnteroInvalido('Mesa destino', mesaDestino, 1, showNotice)
-    ) {
-      return;
-    }
-    const ok = await confirmAction(
-      'Transferir pedido',
-      `¿Mover el pedido a la mesa ${mesaNumeroNuevo}? La mesa actual quedará libre.`,
-    );
-    if (!ok) return;
-
-    setBusy(true);
-    try {
-      await api(`/pedidos/${pedido.id_pedido}/transferir`, {
-        method: 'POST',
-        token,
-        body: JSON.stringify({ mesa_numero_nuevo: mesaNumeroNuevo }),
-      });
-      setMesaDestino('');
-      router.replace('/(app)/mesas');
-    } catch (e) {
-      Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo transferir');
-    } finally {
-      setBusy(false);
-    }
-  }
-
   if (!authLoading && !puedeTomar) {
     return <PantallaSoloMeseros />;
   }
@@ -689,10 +634,10 @@ export default function MesaDetailScreen() {
         <View style={styles.box}>
           <Text style={styles.label}>
             {mesa.numero === 99
-              ? 'Personas (para mazorcas; suele ser 1)'
+              ? 'Personas (opcional; 1 por defecto)'
               : mesa.numero === 98
-                ? 'Comensales (referencia; suele ser 1)'
-                : 'Número de comensales'}
+                ? 'Comensales (opcional; 1 por defecto)'
+                : 'Número de comensales (opcional; 1 por defecto)'}
           </Text>
           <TextInput
             style={[styles.input, narrowField]}
@@ -970,26 +915,18 @@ export default function MesaDetailScreen() {
             todo: platos, bebidas y empaques.
           </Text>
 
-          <View style={styles.transferBox}>
-            <Text style={styles.transferLabel}>Transferir a otra mesa</Text>
-            <View style={styles.transferRow}>
-              <TextInput
-                style={[styles.input, styles.transferInput, narrowField]}
-              placeholder="Mesa destino (1–15)"
-                placeholderTextColor={colors.textHint}
-                keyboardType="number-pad"
-                value={mesaDestino}
-                onChangeText={setMesaDestino}
-              />
-              <IconTooltipButton
-                icon="swap-horizontal-outline"
-                label="Transferir pedido"
-                variant="secondary"
-                onPress={transferirPedido}
-                disabled={busy}
-              />
-            </View>
-          </View>
+          {!esMesaVirtual && pedido && mesa ? (
+            <TransferirPedidoPanel
+              pedidoId={pedido.id_pedido}
+              mesaOrigenId={mesa.id_mesa}
+              mesaOrigenNumero={mesa.numero}
+              token={token}
+              disabled={busy}
+              onTransferido={(idMesa) =>
+                router.replace(`/(app)/mesa/${idMesa}`)
+              }
+            />
+          ) : null}
 
           {esMesaVirtual ? (
             <View style={styles.otroTicketBox}>
@@ -1067,22 +1004,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     backgroundColor: colors.surface,
   },
-  transferBox: {
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.borderLight,
-  },
-  transferLabel: { fontWeight: '800', color: colors.text, marginBottom: 8 },
-  transferRow: { flexDirection: 'row', gap: 10, alignItems: 'center' },
-  transferInput: { marginBottom: 0, flexGrow: 0, flexShrink: 1 },
-  transferBtn: {
-    backgroundColor: colors.primaryDark,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-  },
-  transferBtnText: { color: colors.surface, fontWeight: '900' },
   primary: {
     backgroundColor: colors.primary,
     padding: 14,

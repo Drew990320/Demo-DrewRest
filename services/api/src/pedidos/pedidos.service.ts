@@ -12,7 +12,6 @@ import {
   MetodoPago,
   Prisma,
   PrioridadCocina,
-  TipoProteina,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PedidosGateway } from './pedidos.gateway';
@@ -40,9 +39,16 @@ import {
 } from '@la-reserva/shared-domain/cocina-producto';
 import { agregarVentasResumenDiario } from '@la-reserva/shared-domain/resumen-diario-ventas';
 import {
-  ordenarPedidosCocina,
+  pedidoDebeTenerLineaMazorca,
+  validarTransferenciaPedido,
+} from '@la-reserva/shared-domain/transferencia-pedido';
+import {
+  ordenarPedidosCocinaPorLlegada,
+} from '@la-reserva/shared-domain/cocina-vista';
+import {
   contarPorcionesPendientesCocina,
-  prioridadAutomaticaDesdeTipos,
+  ordenarPedidosCocina,
+  prioridadAutomaticaDesdeDetalles,
   prioridadCocinaEfectiva,
   tipoProteinaResuelto,
 } from './cocina-prioridad';
@@ -101,14 +107,50 @@ const facturasInclude = {
   orderBy: { emitidaEn: 'asc' as const },
 };
 
-function tipoListoCocinaLlama(
-  detalles: Array<{ producto: { esAcompanamientoMazorca: boolean } }>,
-): 'entrada' | 'plato' | 'mixto' {
-  if (detalles.length === 0) return 'plato';
-  const hayEntrada = detalles.some((d) => d.producto.esAcompanamientoMazorca);
-  const hayPlato = detalles.some((d) => !d.producto.esAcompanamientoMazorca);
-  if (hayEntrada && hayPlato) return 'mixto';
-  if (hayEntrada) return 'entrada';
+function detalleAplicaLlamadaMesero(d: {
+  enviadoCocina: boolean;
+  listoCocina: boolean;
+  listoParaRecoger: boolean;
+  producto: {
+    categoria: { nombre: string };
+    esEmpacable: boolean;
+  };
+}): boolean {
+  if (!d.enviadoCocina || d.listoCocina) return false;
+  if (categoriaEsBebida(d.producto.categoria.nombre)) return false;
+  if (d.producto.esEmpacable) return false;
+  return debeMarcarCocina(
+    d.producto.categoria.nombre,
+    d.producto.esEmpacable,
+  );
+}
+
+function conteoLlamaMesero(
+  detalles: Array<{
+    cantidad: number;
+    enviadoCocina: boolean;
+    listoCocina: boolean;
+    listoParaRecoger: boolean;
+    producto: {
+      categoria: { nombre: string };
+      esEmpacable: boolean;
+      esAcompanamientoMazorca: boolean;
+    };
+  }>,
+): { platos: number; entradas: number } {
+  let platos = 0;
+  let entradas = 0;
+  for (const d of detalles) {
+    if (!detalleAplicaLlamadaMesero(d)) continue;
+    if (d.producto.esAcompanamientoMazorca) entradas += d.cantidad;
+    else platos += d.cantidad;
+  }
+  return { platos, entradas };
+}
+
+function tipoListoCocinaLlama(platos: number, entradas: number): 'entrada' | 'plato' | 'mixto' {
+  if (platos > 0 && entradas > 0) return 'mixto';
+  if (entradas > 0) return 'entrada';
   return 'plato';
 }
 
@@ -997,7 +1039,7 @@ export class PedidosService {
       orderBy: { creadoEn: 'asc' },
     });
     const serializados = rows.map(serializarPedidoVistaOperativa);
-    const todos = ordenarPedidosCocina(serializados);
+    const todos = ordenarPedidosCocinaPorLlegada(serializados);
     return { pedidos: todos };
   }
 
@@ -1042,6 +1084,7 @@ export class PedidosService {
             producto: {
               select: {
                 esEmpacable: true,
+                esAcompanamientoMazorca: true,
                 categoria: { select: { nombre: true } },
               },
             },
@@ -1054,6 +1097,7 @@ export class PedidosService {
     let pedidosParaLlevar = 0;
     let platosSinPasarCocina = 0;
     let platosParaRecoger = 0;
+    let mazorcasParaRecoger = 0;
     const mesaIds: number[] = [];
     const pedidoIds: number[] = [];
 
@@ -1080,7 +1124,11 @@ export class PedidosService {
           !esBebida &&
           !esEmpacable
         ) {
-          platosParaRecoger += d.cantidad;
+          if (d.producto.esAcompanamientoMazorca) {
+            mazorcasParaRecoger += d.cantidad;
+          } else {
+            platosParaRecoger += d.cantidad;
+          }
         }
       }
     }
@@ -1090,6 +1138,7 @@ export class PedidosService {
       pedidos_para_llevar: pedidosParaLlevar,
       platos_sin_pasar_cocina: platosSinPasarCocina,
       platos_para_recoger: platosParaRecoger,
+      mazorcas_para_recoger: mazorcasParaRecoger,
       mesa_ids: mesaIds,
       pedido_ids: pedidoIds,
     };
@@ -1178,14 +1227,16 @@ export class PedidosService {
     this.emit(det.pedido.idPedido, det.pedido.idMesa, det.pedido.idUsuario);
     if (listo) {
       const mesero = det.pedido.usuario;
+      const esMz = det.producto.esAcompanamientoMazorca;
       this.gateway.emitCocinaLlamaMesero({
         pedidoId: det.pedido.idPedido,
         mesaId: det.pedido.idMesa,
         mesaNumero: det.pedido.mesa.numero,
         idMesero: mesero.idUsuario,
         meseroNombre: `${mesero.nombre} ${mesero.apellido}`.trim(),
-        platosListos: det.producto.esAcompanamientoMazorca ? det.cantidad : 1,
-        tipo_listo: det.producto.esAcompanamientoMazorca ? 'entrada' : 'plato',
+        platosListos: esMz ? 0 : det.cantidad,
+        entradasListos: esMz ? det.cantidad : 0,
+        tipo_listo: esMz ? 'entrada' : 'plato',
         at: new Date().toISOString(),
       });
     }
@@ -1464,15 +1515,7 @@ export class PedidosService {
       throw new ConflictException('El pedido ya no está activo');
     }
 
-    const aplicaLlamada = (d: (typeof pedido.detalles)[number]) => {
-      if (!d.enviadoCocina || d.listoCocina) return false;
-      if (categoriaEsBebida(d.producto.categoria.nombre)) return false;
-      if (d.producto.esEmpacable) return false;
-      return debeMarcarCocina(
-        d.producto.categoria.nombre,
-        d.producto.esEmpacable,
-      );
-    };
+    const aplicaLlamada = detalleAplicaLlamadaMesero;
 
     const pendientesMarcar = pedido.detalles.filter(
       (d) => aplicaLlamada(d) && !d.listoParaRecoger,
@@ -1486,17 +1529,16 @@ export class PedidosService {
       });
     }
 
-    const platosListos = pedido.detalles
-      .filter((d) => aplicaLlamada(d))
-      .reduce((acc, d) => acc + d.cantidad, 0);
+    const lineasListas = pedido.detalles.filter((d) => aplicaLlamada(d));
+    const { platos: platosListos, entradas: entradasListos } =
+      conteoLlamaMesero(lineasListas);
 
-    if (platosListos === 0) {
+    if (platosListos + entradasListos === 0) {
       throw new BadRequestException(
         'No hay platos de cocina pendientes de recoger en este pedido',
       );
     }
 
-    const lineasListas = pedido.detalles.filter((d) => aplicaLlamada(d));
     const mesero = pedido.usuario;
     this.emit(idPedido, pedido.idMesa, pedido.idUsuario);
     this.gateway.emitCocinaLlamaMesero({
@@ -1506,12 +1548,14 @@ export class PedidosService {
       idMesero: mesero.idUsuario,
       meseroNombre: `${mesero.nombre} ${mesero.apellido}`.trim(),
       platosListos,
-      tipo_listo: tipoListoCocinaLlama(lineasListas),
+      entradasListos,
+      tipo_listo: tipoListoCocinaLlama(platosListos, entradasListos),
       at: new Date().toISOString(),
     });
     return {
       id_pedido: idPedido,
       platos_listos: platosListos,
+      entradas_listos: entradasListos,
       marcados_ahora: pendientesMarcar.reduce((a, d) => a + d.cantidad, 0),
       mesero: {
         id: mesero.idUsuario,
@@ -1571,7 +1615,7 @@ export class PedidosService {
   }
 
   async obtenerPorId(idPedido: number) {
-    const p = await this.prisma.pedido.findUnique({
+    let p = await this.prisma.pedido.findUnique({
       where: { idPedido },
       include: {
         mesa: true,
@@ -1586,6 +1630,46 @@ export class PedidosService {
     if (!p) {
       throw new NotFoundException('Pedido no encontrado');
     }
+
+    const ctxMazorca = p.detalles.map((d) => ({
+      es_bebida: categoriaEsBebida(d.producto.categoria.nombre),
+      es_acompanamiento_mazorca: d.producto.esAcompanamientoMazorca,
+      es_empacable: d.producto.esEmpacable,
+      categoria_nombre: d.producto.categoria.nombre,
+      listo_para_recoger: d.listoParaRecoger,
+      id_detalle_padre: d.idDetallePadre,
+    }));
+    const debeMz = pedidoDebeTenerLineaMazorca(p.mesa.numero, ctxMazorca);
+    const tieneMz = p.detalles.some((d) =>
+      esDetalleMazorcaAcompanamiento(d.producto),
+    );
+    if (tieneMz && !debeMz) {
+      await this.prisma.$transaction(async (tx) => {
+        await sincronizarLineaMazorcaAcompanamiento(tx, {
+          idPedido,
+          numComensales: p!.numComensales,
+          mesaNumero: p!.mesa.numero,
+          estadoPedido: p!.estado,
+          usaLineaMazorca: false,
+        });
+      });
+      p = await this.prisma.pedido.findUnique({
+        where: { idPedido },
+        include: {
+          mesa: true,
+          usuario: { include: { rol: true } },
+          detalles: {
+            include: detalleInclude,
+            orderBy: { idDetalle: 'asc' },
+          },
+          facturas: facturasInclude,
+        },
+      });
+      if (!p) {
+        throw new NotFoundException('Pedido no encontrado');
+      }
+    }
+
     const serialized = this.serializarPedido(p);
     const configRow = await this.obtenerConfigDescuentosRow();
     const config = this.mapConfigDescuentos(configRow);
@@ -1808,6 +1892,34 @@ export class PedidosService {
           detalleJson: { lineas: lineasAgregadas },
         },
       });
+
+      if (debeMarcarCocina(producto.categoria.nombre, producto.esEmpacable)) {
+        const mesa = await tx.mesa.findUnique({
+          where: { idMesa: pedido.idMesa },
+          select: { numero: true },
+        });
+        if (mesa) {
+          const todos = await tx.detallePedido.findMany({
+            where: { idPedido },
+            include: { producto: { include: { categoria: true } } },
+          });
+          const ctx = todos.map((d) => ({
+            es_bebida: categoriaEsBebida(d.producto.categoria.nombre),
+            es_acompanamiento_mazorca: d.producto.esAcompanamientoMazorca,
+            es_empacable: d.producto.esEmpacable,
+            categoria_nombre: d.producto.categoria.nombre,
+            listo_para_recoger: d.listoParaRecoger,
+            id_detalle_padre: d.idDetallePadre,
+          }));
+          await sincronizarLineaMazorcaAcompanamiento(tx, {
+            idPedido,
+            numComensales: pedido.numComensales,
+            mesaNumero: mesa.numero,
+            estadoPedido: pedido.estado,
+            usaLineaMazorca: pedidoDebeTenerLineaMazorca(mesa.numero, ctx),
+          });
+        }
+      }
     });
 
     await this.notificarCompaneroAgregoItems(
@@ -2851,7 +2963,7 @@ export class PedidosService {
     return { ok: true };
   }
 
-  /** Transfiere el pedido a otra mesa libre (visible hoy) y libera la mesa anterior. */
+  /** Transfiere el pedido a otra mesa libre (no 98 ni 99). */
   async transferir(idPedido: number, dto: TransferirPedidoDto) {
     const mesaNumero = dto.mesa_numero_nuevo;
     const idMesaFromDto = dto.id_mesa_nueva;
@@ -2863,7 +2975,15 @@ export class PedidosService {
 
     const pedido = await this.prisma.pedido.findUnique({
       where: { idPedido },
-      include: { facturas: facturasInclude },
+      include: {
+        facturas: facturasInclude,
+        mesa: true,
+        detalles: {
+          include: {
+            producto: { include: { categoria: true } },
+          },
+        },
+      },
     });
     if (!pedido) {
       throw new NotFoundException('Pedido no encontrado');
@@ -2876,6 +2996,7 @@ export class PedidosService {
     if (!ABIERTOS.includes(pedido.estado)) {
       throw new ConflictException('El pedido no se puede transferir');
     }
+
     const mesaNueva = mesaNumero
       ? await this.prisma.mesa.findUnique({ where: { numero: mesaNumero } })
       : await this.prisma.mesa.findUnique({ where: { idMesa: idMesaFromDto! } });
@@ -2888,40 +3009,70 @@ export class PedidosService {
     if (!mesaDisponibleHoyBogota(mesaNueva)) {
       throw new ConflictException('La mesa destino no está disponible hoy');
     }
-    const destinoVirtual = this.esMesaVirtualNumero(mesaNueva.numero);
-    if (!destinoVirtual) {
-      if (mesaNueva.estado !== 'libre') {
-        throw new ConflictException('La mesa destino no está libre');
-      }
-      const otro = await this.prisma.pedido.findFirst({
-        where: { idMesa: mesaNueva.idMesa, estado: { in: ABIERTOS } },
-      });
-      if (otro) {
-        throw new ConflictException('La mesa destino ya tiene un pedido abierto');
-      }
+
+    const pedidoEnDestino = await this.prisma.pedido.findFirst({
+      where: { idMesa: mesaNueva.idMesa, estado: { in: ABIERTOS } },
+    });
+    const destinoLibre =
+      mesaNueva.estado === 'libre' && pedidoEnDestino == null;
+
+    const validacion = validarTransferenciaPedido({
+      origen_mesa_numero: pedido.mesa.numero,
+      destino_mesa_numero: mesaNueva.numero,
+      destino_libre: destinoLibre,
+    });
+    if (validacion.accion === 'rechazar') {
+      throw new ConflictException(validacion.mensaje);
     }
 
     const mesaAnteriorId = pedido.idMesa;
+
     await this.prisma.$transaction(async (tx) => {
       await tx.pedido.update({
         where: { idPedido },
-        data: { idMesa: mesaNueva.idMesa },
+        data: { idMesa: mesaNueva.idMesa, modoServicio: 'en_mesa' },
       });
-      if (!destinoVirtual) {
-        await tx.mesa.update({
-          where: { idMesa: mesaNueva.idMesa },
-          data: { estado: 'ocupada' },
-        });
-      }
+
+      await tx.mesa.update({
+        where: { idMesa: mesaNueva.idMesa },
+        data: { estado: 'ocupada' },
+      });
+
       const restantesOrigen = await tx.pedido.count({
         where: { idMesa: mesaAnteriorId, estado: { in: ABIERTOS } },
       });
-      if (restantesOrigen === 0) {
+      if (
+        restantesOrigen === 0 &&
+        !this.esMesaVirtualNumero(pedido.mesa.numero)
+      ) {
         await tx.mesa.update({
           where: { idMesa: mesaAnteriorId },
           data: { estado: 'libre' },
         });
       }
+
+      const detallesPostMovimiento = await tx.detallePedido.findMany({
+        where: { idPedido },
+        include: { producto: { include: { categoria: true } } },
+      });
+      const detallesMazorcaCtx = detallesPostMovimiento.map((d) => ({
+        es_bebida: categoriaEsBebida(d.producto.categoria.nombre),
+        es_acompanamiento_mazorca: d.producto.esAcompanamientoMazorca,
+        es_empacable: d.producto.esEmpacable,
+        categoria_nombre: d.producto.categoria.nombre,
+        id_detalle_padre: d.idDetallePadre,
+      }));
+
+      await sincronizarLineaMazorcaAcompanamiento(tx, {
+        idPedido,
+        numComensales: pedido.numComensales,
+        mesaNumero: mesaNueva.numero,
+        estadoPedido: pedido.estado,
+        usaLineaMazorca: pedidoDebeTenerLineaMazorca(
+          mesaNueva.numero,
+          detallesMazorcaCtx,
+        ),
+      });
     });
 
     this.emit(idPedido, mesaAnteriorId, pedido.idUsuario);
@@ -2990,7 +3141,6 @@ export class PedidosService {
     }>,
   ) {
     const catBebida = (nombre: string) => categoriaEsBebida(nombre);
-    const tiposEnCocina: TipoProteina[] = [];
     const detalles = p.detalles.map((d) => {
       const marcar = debeMarcarCocina(
         d.producto.categoria.nombre,
@@ -3001,9 +3151,6 @@ export class PedidosService {
         d.producto.categoria.nombre,
         d.producto.nombre,
       );
-      if (marcar) {
-        tiposEnCocina.push(tipoProteina);
-      }
       return {
         id_detalle: d.idDetalle,
         id_producto: d.idProducto,
@@ -3032,7 +3179,13 @@ export class PedidosService {
         })),
       };
     });
-    const prioridadAuto = prioridadAutomaticaDesdeTipos(tiposEnCocina);
+    const prioridadAuto = prioridadAutomaticaDesdeDetalles(
+      detalles.map((d) => ({
+        categoria_nombre: d.categoria_nombre,
+        nombre_producto: d.nombre_producto,
+        marcar_cocina: d.marcar_cocina,
+      })),
+    );
     const override = p.prioridadCocinaOverride ?? null;
     const { nivel: prioridadCocina, origen: prioridadCocinaOrigen } =
       prioridadCocinaEfectiva(prioridadAuto, override);

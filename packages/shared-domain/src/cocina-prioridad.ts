@@ -45,11 +45,58 @@ export function tipoProteinaResuelto(
   return inferirTipoProteina(categoriaNombre, nombreProducto);
 }
 
-export function prioridadAutomaticaDesdeTipos(
-  tiposEnPlatosCocina: TipoProteina[],
+export function esCategoriaPlatoFuerte(categoriaNombre: string): boolean {
+  return categoriaNombre.toLowerCase().startsWith('platos fuertes');
+}
+
+/** Parrilladas, picadas y categoría para compartir → prioridad baja. */
+export function esParrilladaPicadaOCompartir(
+  categoriaNombre: string,
+  nombreProducto: string,
+): boolean {
+  const c = categoriaNombre.toLowerCase();
+  const n = nombreProducto.toLowerCase();
+  if (c.includes('para compartir') || c.includes('picada')) return true;
+  return n.includes('parrillada') || n.includes('picada');
+}
+
+export function esPlatoFuerteCerdo(categoriaNombre: string): boolean {
+  return categoriaNombre.toLowerCase().includes('cerdo');
+}
+
+export type DetallePrioridadCocinaLike = {
+  categoria_nombre: string;
+  nombre_producto: string;
+  marcar_cocina?: boolean;
+};
+
+/**
+ * Prioridad automática solo según platos fuertes (no entradas, mazorcas, etc.).
+ * Alta: hay plato fuerte pollo/res sin cerdo, parrillada ni picada.
+ * Baja: plato fuerte cerdo, parrillada, picada o para compartir.
+ */
+export function prioridadAutomaticaDesdeDetalles(
+  detalles: DetallePrioridadCocinaLike[],
 ): PrioridadCocinaNivel {
-  if (tiposEnPlatosCocina.length === 0) return 'alta';
-  if (tiposEnPlatosCocina.some((t) => t === 'cerdo')) return 'baja';
+  for (const d of detalles) {
+    if (!d.marcar_cocina) continue;
+    const cat = d.categoria_nombre;
+    const nombre = d.nombre_producto;
+
+    if (esParrilladaPicadaOCompartir(cat, nombre)) {
+      return 'baja';
+    }
+
+    if (!esCategoriaPlatoFuerte(cat)) continue;
+
+    if (
+      esPlatoFuerteCerdo(cat) ||
+      inferirTipoProteina(cat, nombre) === 'cerdo'
+    ) {
+      return 'baja';
+    }
+  }
+
   return 'alta';
 }
 

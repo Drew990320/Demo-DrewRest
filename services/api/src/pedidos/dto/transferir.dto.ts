@@ -6,7 +6,7 @@ export class TransferirPedidoDto {
   @IsInt()
   id_mesa_nueva?: number;
 
-  /** Recomendado: número visible de mesa (1–15). */
+  /** Recomendado: número visible de mesa (no 98 ni 99). */
   @IsOptional()
   @IsInt()
   mesa_numero_nuevo?: number;

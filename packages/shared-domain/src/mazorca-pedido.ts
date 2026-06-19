@@ -1,6 +1,6 @@
-import { MESA_PARA_LLEVAR_NUMERO } from './mesa-label';
+import { MESA_MOSTRADOR_NUMERO, MESA_PARA_LLEVAR_NUMERO } from './mesa-label';
 
-/** Mesa 98 (para llevar): comensales solo referencia; sin línea de mazorca. */
+/** Mesas 98 (para llevar) y 99 (mostrador): sin línea automática de mazorca. */
 export { MESA_PARA_LLEVAR_NUMERO as MESA_SIN_LINEA_MAZORCA } from './mesa-label';
 
 export const NOMBRE_MAZORCA_ACOMPANAMIENTO = 'Mazorca (acompañamiento)';
@@ -9,7 +9,10 @@ export const NOMBRE_MAZORCA_ACOMPANAMIENTO = 'Mazorca (acompañamiento)';
 export const NOMBRE_PRODUCTO_MAZORCA = NOMBRE_MAZORCA_ACOMPANAMIENTO;
 
 export function pedidoUsaLineaMazorca(mesaNumero: number): boolean {
-  return mesaNumero !== MESA_PARA_LLEVAR_NUMERO;
+  return (
+    mesaNumero !== MESA_PARA_LLEVAR_NUMERO &&
+    mesaNumero !== MESA_MOSTRADOR_NUMERO
+  );
 }
 
 export function esDetalleMazorcaAcompanamiento(d: {
