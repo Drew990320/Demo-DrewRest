@@ -65,4 +65,20 @@ describe('agregarVentasResumenDiario', () => {
     expect(res.platos_por_categoria).toEqual([]);
     expect(res.items_menu).toEqual([]);
   });
+
+  it('omite cuotas pendientes de reparto', () => {
+    const res = agregarVentasResumenDiario([
+      {
+        id_producto: 100,
+        nombre_producto: 'Saldo pendiente reparto (Persona +2)',
+        categoria_nombre: 'Ajustes',
+        es_plato_principal: false,
+        es_cuota_pendiente_reparto: true,
+        cantidad: 1,
+        subtotal_linea: 1800,
+      },
+    ]);
+    expect(res.platos_por_categoria).toEqual([]);
+    expect(res.items_menu).toEqual([]);
+  });
 });

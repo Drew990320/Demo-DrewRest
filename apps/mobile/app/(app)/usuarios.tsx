@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -13,12 +11,15 @@ import { useRouter } from 'expo-router';
 import { ActionIconBar } from '../../src/components/ActionIconBar';
 import { FormModal } from '../../src/components/FormModal';
 import { IconTooltipButton } from '../../src/components/IconTooltipButton';
+import { ScreenLoading } from '../../src/components/ScreenLoading';
+import { ScreenScroll } from '../../src/components/ScreenScroll';
 import { useAuth } from '../../src/context/AuthContext';
 import { useResponsive } from '../../src/hooks/useResponsive';
 import { api } from '../../src/lib/api';
 import { AdminIcon } from '../../src/lib/app-icons';
 import { formStyles } from '../../src/lib/form-layout';
 import { confirmAppDialog, showNotice } from '../../src/lib/app-dialog';
+import { manejarErrorAccion, manejarErrorOperacion } from '../../src/lib/recurso-disponible';
 import {
   avisarSiFaltanObligatorios,
 } from '../../src/lib/form-validation';
@@ -79,7 +80,11 @@ export default function UsuariosAdminScreen() {
     (async () => {
       try {
         await load();
-      } catch {
+      } catch (e) {
+        await manejarErrorOperacion(e, {
+          title: 'Usuarios',
+          message: 'No se pudo cargar la lista de usuarios.',
+        });
         setRows([]);
       } finally {
         setLoading(false);
@@ -91,6 +96,11 @@ export default function UsuariosAdminScreen() {
     setRefreshing(true);
     try {
       await load();
+    } catch (e) {
+      await manejarErrorOperacion(e, {
+        title: 'Usuarios',
+        message: 'No se pudo actualizar la lista.',
+      });
     } finally {
       setRefreshing(false);
     }
@@ -150,11 +160,7 @@ export default function UsuariosAdminScreen() {
         'success',
       );
     } catch (err) {
-      await showNotice(
-        'Error',
-        err instanceof Error ? err.message : 'No se pudo crear',
-        'error',
-      );
+      await manejarErrorAccion(err, 'crear el mesero');
     } finally {
       setSaving(false);
     }
@@ -176,11 +182,10 @@ export default function UsuariosAdminScreen() {
       });
       await load();
     } catch (err) {
-      await showNotice(
-        'No se pudo actualizar',
-        err instanceof Error ? err.message : 'No se pudo actualizar',
-        'warning',
-      );
+      await manejarErrorOperacion(err, {
+        title: 'No se pudo actualizar',
+        message: 'Revisa si el usuario tiene pedidos activos.',
+      });
     }
   }
 
@@ -204,26 +209,18 @@ export default function UsuariosAdminScreen() {
   }
 
   if (loading || !user) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
+    return <ScreenLoading />;
   }
 
   return (
     <>
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={[
-          styles.pad,
-          { paddingHorizontal: r.contentPadding, paddingBottom: 32 },
-        ]}
+      <ScreenScroll
+        contentPadding={r.contentPadding}
+        contentContainerStyle={styles.pad}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         <Text style={[styles.intro, formStyles.adminIntro]}>
-          Activa o desactiva el acceso del equipo. Los meseros nuevos reciben un correo
-          automático a partir del nombre.
+          Acceso del equipo. Los meseros nuevos reciben correo automático.
         </Text>
         <ActionIconBar
           style={formStyles.screenActions}
@@ -261,7 +258,7 @@ export default function UsuariosAdminScreen() {
             </View>
           ))}
         </View>
-      </ScrollView>
+      </ScreenScroll>
 
       <FormModal visible={modal} title="Nuevo mesero" onClose={closeModal}>
         <Text style={formStyles.help}>

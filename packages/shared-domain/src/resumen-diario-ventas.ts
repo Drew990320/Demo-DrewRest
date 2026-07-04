@@ -4,6 +4,7 @@ export type LineaVentaResumen = {
   categoria_nombre: string;
   es_plato_principal: boolean;
   es_acompanamiento_mazorca?: boolean;
+  es_cuota_pendiente_reparto?: boolean;
   cantidad: number;
   subtotal_linea: number;
 };
@@ -36,6 +37,7 @@ export function agregarVentasResumenDiario(
 
   for (const l of lineas) {
     if (l.es_acompanamiento_mazorca) continue;
+    if (l.es_cuota_pendiente_reparto) continue;
 
     const prevProd = byProducto.get(l.id_producto);
     if (prevProd) {

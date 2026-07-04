@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { colors } from '../lib/theme';
 import {
   Pressable,
@@ -18,6 +19,7 @@ type Props<T extends PedidoChip> = {
   label?: string;
   minPedidos?: number;
   formatChip?: (pedido: T) => string;
+  renderChip?: (pedido: T, selected: boolean) => ReactNode;
   style?: StyleProp<ViewStyle>;
 };
 
@@ -28,6 +30,7 @@ export function PedidosActivosChips<T extends PedidoChip>({
   label = 'Pedidos activos en esta cola',
   minPedidos = 2,
   formatChip,
+  renderChip,
   style,
 }: Props<T>) {
   if (pedidos.length < minPedidos) return null;
@@ -48,9 +51,13 @@ export function PedidosActivosChips<T extends PedidoChip>({
               style={[styles.chip, on && styles.chipOn]}
               onPress={() => onSelect(p.id_pedido)}
             >
-              <Text style={[styles.chipText, on && styles.chipTextOn]}>
-                {formatChip ? formatChip(p) : `#${p.id_pedido}`}
-              </Text>
+              {renderChip ? (
+                renderChip(p, on)
+              ) : (
+                <Text style={[styles.chipText, on && styles.chipTextOn]}>
+                  {formatChip ? formatChip(p) : `#${p.id_pedido}`}
+                </Text>
+              )}
             </Pressable>
           );
         })}
@@ -70,12 +77,17 @@ const styles = StyleSheet.create({
   label: { fontWeight: '600', marginBottom: 8, color: colors.text },
   row: { flexDirection: 'row', gap: 8, paddingVertical: 4 },
   chip: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
+    minHeight: 44,
+    minWidth: 88,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.borderInput,
     backgroundColor: colors.surfaceMuted,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   chipOn: {
     borderColor: colors.primary,

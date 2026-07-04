@@ -10,8 +10,8 @@
     "export:web": "expo export --platform web"
   },
   "dependencies": {
-    "@la-reserva/shared-domain": "file:../../packages/shared-domain",
     "@expo/vector-icons": "^15.0.2",
+    "@la-reserva/shared-domain": "file:../../packages/shared-domain",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/datetimepicker": "8.6.0",
     "@react-native-community/netinfo": "11.5.2",
@@ -22,14 +22,15 @@
     "expo-router": "~55.0.10",
     "expo-secure-store": "~55.0.11",
     "expo-status-bar": "~55.0.5",
-    "lodash": "^4.17.23",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-native": "0.83.4",
     "react-native-calendars": "^1.1314.0",
+    "react-native-qrcode-svg": "^6.3.21",
     "react-native-reanimated": "4.2.1",
     "react-native-safe-area-context": "~5.6.2",
     "react-native-screens": "~4.23.0",
+    "react-native-svg": "15.15.3",
     "react-native-web": "^0.21.0",
     "react-native-worklets": "0.7.4",
     "socket.io-client": "^4.8.3"

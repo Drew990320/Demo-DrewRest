@@ -1,4 +1,5 @@
 import { io, Socket } from 'socket.io-client';
+import { Platform } from 'react-native';
 import { API_URL } from './config';
 
 let socket: Socket | null = null;
@@ -71,10 +72,17 @@ export function connectSocket(token?: string | null): Socket | null {
 
   socket = io(API_URL, {
     auth: { token: resolved },
-    transports: ['websocket', 'polling'],
+    // En web/LAN el WebSocket a veces falla (firewall); polling primero reduce errores en consola.
+    transports:
+      Platform.OS === 'web'
+        ? ['polling', 'websocket']
+        : ['websocket', 'polling'],
     autoConnect: true,
     reconnectionAttempts: 12,
     reconnectionDelay: 1500,
+    // Evita que todos los tablets reconecten a la vez tras un reinicio del API.
+    reconnectionDelayMax: 10_000,
+    randomizationFactor: 0.5,
     timeout: 10000,
   });
 

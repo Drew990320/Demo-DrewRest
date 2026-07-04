@@ -7,21 +7,36 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
 import type { JwtPayload } from '../auth/jwt.strategy';
+import {
+  getCachedAuthUser,
+  setCachedAuthUser,
+} from '../auth/auth-user-cache';
+import { invalidateMenuHoyCache } from '../common/menu-hoy-cache';
+import { PrismaService } from '../prisma/prisma.service';
 
 type SocketUser = {
   idUsuario: number;
   rol: string;
 };
 
+export type ConfigScope = 'menu' | 'mesas' | 'categorias';
+
 @WebSocketGateway({
   cors: { origin: '*' },
   transports: ['websocket', 'polling'],
+  maxHttpBufferSize: 256 * 1024,
+  pingTimeout: 20_000,
+  pingInterval: 25_000,
+  connectTimeout: 10_000,
 })
 export class PedidosGateway implements OnGatewayConnection {
   @WebSocketServer()
   server!: Server;
 
-  constructor(private readonly jwt: JwtService) {}
+  constructor(
+    private readonly jwt: JwtService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   private extractToken(client: Socket): string | null {
     const auth = client.handshake.auth?.token;
@@ -45,10 +60,22 @@ export class PedidosGateway implements OnGatewayConnection {
     try {
       const payload = await this.jwt.verifyAsync<JwtPayload>(token);
       const idUsuario = Number(payload.sub);
-      if (!Number.isFinite(idUsuario) || !payload.rol) {
+      if (!Number.isFinite(idUsuario)) {
         return null;
       }
-      return { idUsuario, rol: payload.rol };
+      const cached = getCachedAuthUser(idUsuario);
+      if (cached?.activo) {
+        return { idUsuario: cached.idUsuario, rol: cached.rol.nombre };
+      }
+      const user = await this.prisma.usuario.findUnique({
+        where: { idUsuario },
+        include: { rol: true },
+      });
+      if (!user?.activo) {
+        return null;
+      }
+      setCachedAuthUser(user);
+      return { idUsuario: user.idUsuario, rol: user.rol.nombre };
     } catch {
       return null;
     }
@@ -56,6 +83,7 @@ export class PedidosGateway implements OnGatewayConnection {
 
   private joinRoleRooms(client: Socket, user: SocketUser): void {
     void client.join(`rol:${user.rol}`);
+    void client.join(`usuario:${user.idUsuario}`);
     if (user.rol === 'mesero' || user.rol === 'admin') {
       void client.join(`mesero:${user.idUsuario}`);
     }
@@ -110,6 +138,29 @@ export class PedidosGateway implements OnGatewayConnection {
     this.server.to('rol:admin').emit('mesas:updated', payload);
   }
 
+  emitConfigActualizada(scope: ConfigScope) {
+    if (scope === 'menu') {
+      invalidateMenuHoyCache();
+    }
+    const payload = { scope, at: new Date().toISOString() };
+    for (const rol of ['admin', 'mesero', 'chef'] as const) {
+      this.server.to(`rol:${rol}`).emit('config:actualizada', payload);
+    }
+  }
+
+  emitAuthSesionInvalidada(
+    idUsuario: number,
+    motivo: 'desactivado' | 'credenciales',
+    mensaje?: string,
+  ) {
+    const payload = {
+      motivo,
+      mensaje,
+      at: new Date().toISOString(),
+    };
+    this.server.to(`usuario:${idUsuario}`).emit('auth:sesion-invalidada', payload);
+  }
+
   emitCocinaLlamaMesero(payload: {
     pedidoId: number;
     mesaId: number;
@@ -147,6 +198,7 @@ export class PedidosGateway implements OnGatewayConnection {
     idMeseroQuienAgrego: number;
     meseroQuienAgregoNombre: string;
     lineas: { nombre_producto: string; cantidad: number }[];
+    accion?: 'agregado' | 'quitado' | 'reducido';
     at: string;
   }) {
     this.server

@@ -12,6 +12,9 @@ import { PrismaModule } from './prisma/prisma.module';
 import { CategoriasModule } from './categorias/categorias.module';
 import { ProductosModule } from './productos/productos.module';
 import { UsuariosModule } from './usuarios/usuarios.module';
+import { MeserosOperativosModule } from './meseros-operativos/meseros-operativos.module';
+import { PermisosModule } from './permisos/permisos.module';
+import { SistemaController } from './sistema/sistema.controller';
 
 @Module({
   imports: [
@@ -35,8 +38,10 @@ import { UsuariosModule } from './usuarios/usuarios.module';
     ProductosModule,
     CategoriasModule,
     UsuariosModule,
+    MeserosOperativosModule,
+    PermisosModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, SistemaController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

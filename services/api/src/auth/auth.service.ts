@@ -1,6 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+import type { Usuario } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { nombreUsuarioPublico } from '../usuarios/usuario-display';
@@ -44,5 +45,19 @@ export class AuthService {
         rol: user.rol.nombre,
       },
     };
+  }
+
+  async verifyPassword(user: Usuario, password: string) {
+    const row = await this.prisma.usuario.findUnique({
+      where: { idUsuario: user.idUsuario },
+    });
+    if (!row?.activo) {
+      throw new UnauthorizedException('Contraseña incorrecta');
+    }
+    const ok = await bcrypt.compare(password, row.passwordHash);
+    if (!ok) {
+      throw new UnauthorizedException('Contraseña incorrecta');
+    }
+    return { ok: true };
   }
 }

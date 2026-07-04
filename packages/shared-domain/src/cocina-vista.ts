@@ -1,4 +1,16 @@
 import { tituloLugarMesa } from './mesa-label';
+import {
+  ordenTipoLineaCocina,
+  tipoLineaCocina,
+  type TipoLineaCocina,
+} from './cocina-producto';
+
+export type { TipoLineaCocina };
+export {
+  etiquetaTipoLineaCocina,
+  ordenTipoLineaCocina,
+  tipoLineaCocina,
+} from './cocina-producto';
 
 export type DetalleCocinaLike = {
   id_detalle: number;
@@ -14,6 +26,7 @@ export type DetalleCocinaLike = {
   listo_para_recoger?: boolean;
   es_bebida?: boolean;
   es_empacable?: boolean;
+  es_plato_principal?: boolean;
   es_acompanamiento_mazorca?: boolean;
   marcar_cocina: boolean;
   listo_cocina: boolean;
@@ -46,13 +59,11 @@ export function ordenarDetallesCocina<T extends DetalleCocinaLike>(
   detalles: T[],
 ): T[] {
   const visibles = detalles.filter(detalleVisibleEnCocina);
-  const skip = (d: DetalleCocinaLike) => d.es_bebida || d.es_empacable;
   return [...visibles].sort((a, b) => {
-    if (a.es_acompanamiento_mazorca !== b.es_acompanamiento_mazorca) {
-      return a.es_acompanamiento_mazorca ? -1 : 1;
-    }
-    if (skip(a) === skip(b)) return a.id_detalle - b.id_detalle;
-    return skip(a) ? 1 : -1;
+    const ta = ordenTipoLineaCocina(tipoLineaCocina(a));
+    const tb = ordenTipoLineaCocina(tipoLineaCocina(b));
+    if (ta !== tb) return ta - tb;
+    return a.id_detalle - b.id_detalle;
   });
 }
 
@@ -187,7 +198,55 @@ export type PlatoPendienteResumen = {
   total: number;
   mesas: number[];
   esCerdo: boolean;
+  tipo: TipoLineaCocina;
 };
+
+export function conteoPorTipoEnCocina(
+  pedidos: PedidoCocinaLike[],
+): Record<TipoLineaCocina, number> {
+  const out: Record<TipoLineaCocina, number> = {
+    plato: 0,
+    entrada: 0,
+    adicional: 0,
+    mazorca: 0,
+    sopa: 0,
+  };
+  for (const pedido of pedidos) {
+    for (const d of pedido.detalles) {
+      if (!detalleVisibleEnCocina(d)) continue;
+      out[tipoLineaCocina(d)] += d.cantidad;
+    }
+  }
+  return out;
+}
+
+export function textoResumenTiposCocina(
+  conteo: Record<TipoLineaCocina, number>,
+): string {
+  const parts: string[] = [];
+  if (conteo.plato > 0) {
+    parts.push(`${conteo.plato} ${conteo.plato === 1 ? 'plato' : 'platos'}`);
+  }
+  if (conteo.entrada > 0) {
+    parts.push(
+      `${conteo.entrada} ${conteo.entrada === 1 ? 'entrada' : 'entradas'}`,
+    );
+  }
+  if (conteo.adicional > 0) {
+    parts.push(
+      `${conteo.adicional} ${conteo.adicional === 1 ? 'adicional' : 'adicionales'}`,
+    );
+  }
+  if (conteo.mazorca > 0) {
+    parts.push(
+      `${conteo.mazorca} ${conteo.mazorca === 1 ? 'mazorca' : 'mazorcas'}`,
+    );
+  }
+  if (conteo.sopa > 0) {
+    parts.push(`${conteo.sopa} ${conteo.sopa === 1 ? 'sopa' : 'sopas'}`);
+  }
+  return parts.join(' · ');
+}
 
 /** Cola FIFO por hora de creación del pedido (sin prioridad alta/baja). */
 export function ordenarPedidosCocinaPorLlegada<
@@ -347,17 +406,19 @@ export function agruparPlatosPendientes(
 ): PlatoPendienteResumen[] {
   const porPlato = new Map<
     string,
-    { total: number; mesas: Set<number>; esCerdo: boolean }
+    { total: number; mesas: Set<number>; esCerdo: boolean; tipo: TipoLineaCocina }
   >();
   for (const pedido of items) {
     for (const d of pedido.detalles) {
       if (!detalleVisibleEnCocina(d)) continue;
       const nombre = (d.nombre_producto ?? '').trim() || 'Plato';
       const esCerdo = (d.tipo_proteina ?? '').toLowerCase() === 'cerdo';
+      const tipo = tipoLineaCocina(d);
       const prev = porPlato.get(nombre) ?? {
         total: 0,
         mesas: new Set<number>(),
         esCerdo,
+        tipo,
       };
       prev.total += d.cantidad;
       prev.mesas.add(pedido.mesa_numero);
@@ -373,8 +434,14 @@ export function agruparPlatosPendientes(
         ? ordenarMesasPorCola(Array.from(v.mesas), colaMesas)
         : Array.from(v.mesas).sort((a, b) => a - b),
       esCerdo: v.esCerdo,
+      tipo: v.tipo,
     }))
-    .sort((a, b) => b.total - a.total || a.nombre.localeCompare(b.nombre, 'es'));
+    .sort((a, b) => {
+      const ta = ordenTipoLineaCocina(a.tipo);
+      const tb = ordenTipoLineaCocina(b.tipo);
+      if (ta !== tb) return ta - tb;
+      return b.total - a.total || a.nombre.localeCompare(b.nombre, 'es');
+    });
 }
 
 export function mesasActivasDePedidos(

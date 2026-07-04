@@ -11,6 +11,7 @@ import {
   maxRecogibleGrupo,
 } from '../lib/recogida-parcial';
 import { detallePuedeRecogerMesero } from '../lib/cocina-pedido-view';
+import { notaCocinaVisibleUsuario } from '../lib/nota-cocina-ui';
 import { colors, status } from '../lib/theme';
 
 type Props = {
@@ -59,6 +60,7 @@ export function PedidoRecogidaGrupos({
         const busy = busyGrupoKey === gKey;
         const busyFalta = busyGrupoKey === `${gKey}:falta`;
         const sel = cantidadSeleccionadaGrupoRecogida(g, cantidades, byId);
+        const notaVisible = notaCocinaVisibleUsuario(g.nota_cocina);
 
         if (soloRecogibles && !puedeRecoger) return null;
 
@@ -144,8 +146,8 @@ export function PedidoRecogidaGrupos({
                 </View>
               </View>
             ) : null}
-            {g.nota_cocina ? (
-              <Text style={styles.nota}>Nota: {g.nota_cocina}</Text>
+            {notaVisible ? (
+              <Text style={styles.nota}>Nota: {notaVisible}</Text>
             ) : null}
             {g.personalizaciones.length > 0 ? (
               <Text style={styles.pers}>

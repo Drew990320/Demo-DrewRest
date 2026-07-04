@@ -1,5 +1,11 @@
 import { connectSocket, getSocket } from './socket';
 import { tituloLugarMesa } from './mesa-label';
+import { notifyConfigUpdated, type ConfigUpdatedPayload } from './config-sync';
+import {
+  notifyUnauthorized,
+  parseUnauthorizedMessage,
+} from './auth-session';
+import type { CompaneroModificaPedidoAccion } from '@la-reserva/shared-domain/companero-pedido';
 import { mensajeListosParaRecoger } from '@la-reserva/shared-domain/cocina-vista';
 
 export type CocinaLlamaTipoListo = 'entrada' | 'plato' | 'mixto';
@@ -74,6 +80,7 @@ export type CompaneroAgregoItemsPayload = {
   idMeseroQuienAgrego: number;
   meseroQuienAgregoNombre: string;
   lineas: { nombre_producto: string; cantidad: number }[];
+  accion?: CompaneroModificaPedidoAccion;
   at: string;
 };
 
@@ -205,20 +212,24 @@ export function ensurePedidoSocketSync(): void {
       }
     });
     s.on('mesero:companero-agrego', (payload: CompaneroAgregoItemsPayload) => {
-      const clave = `${payload.pedidoId}:${payload.idMeseroDueno}:${payload.at}`;
-      if (dedupeEvento(clave, ultimoCompaneroAgrego)) {
-        return;
-      }
-      for (const fn of companeroAgregoListeners) {
-        try {
-          fn(payload);
-        } catch {
-          // ignore
-        }
-      }
+      dispatchCompaneroModificoPedido(payload);
     });
     s.on('connect', () => {
       rejoinRooms();
+    });
+    s.on('config:actualizada', (payload: ConfigUpdatedPayload) => {
+      if (payload?.scope) {
+        notifyConfigUpdated(payload.scope);
+      }
+    });
+    s.on('auth:sesion-invalidada', (payload: { motivo?: string; mensaje?: string }) => {
+      const reason =
+        payload.motivo === 'desactivado' ||
+        payload.motivo === 'credenciales' ||
+        payload.motivo === 'expirado'
+          ? payload.motivo
+          : parseUnauthorizedMessage(payload.mensaje ?? '');
+      void notifyUnauthorized(reason, payload.mensaje);
     });
   }
   rejoinRooms();
@@ -269,6 +280,23 @@ export function subscribeCocinaFaltaPlato(
   return () => {
     cocinaFaltaPlatoListeners.delete(listener);
   };
+}
+
+export function dispatchCompaneroModificoPedido(
+  payload: CompaneroAgregoItemsPayload,
+): void {
+  const accion = payload.accion ?? 'agregado';
+  const clave = `${payload.pedidoId}:${payload.idMeseroDueno}:${accion}:${payload.at}`;
+  if (dedupeEvento(clave, ultimoCompaneroAgrego)) {
+    return;
+  }
+  for (const fn of companeroAgregoListeners) {
+    try {
+      fn(payload);
+    } catch {
+      // ignore
+    }
+  }
 }
 
 export function subscribeCompaneroAgregoItems(

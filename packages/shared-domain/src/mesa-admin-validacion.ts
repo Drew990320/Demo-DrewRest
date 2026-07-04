@@ -1,5 +1,9 @@
 import type { DiasSemanaSnake } from './dias-semana';
-import { esMesaVirtualNumero } from './mesa-label';
+import {
+  esMesaVirtualNumero,
+  resolverMesasVirtuales,
+  type MesasVirtualesConfig,
+} from './mesa-label';
 
 export const CAMPOS_DISPONIBILIDAD_MESA = [
   'disponible_lunes',
@@ -39,25 +43,41 @@ export function aplicarPatchDisponibilidadMesa(
   return { ...actual, ...patch };
 }
 
+function msgNumerosReservados(mesasVirtuales?: MesasVirtualesConfig): string {
+  const r = resolverMesasVirtuales(mesasVirtuales);
+  return `Los números ${r.numero_mesa_para_llevar} (para llevar) y ${r.numero_mesa_mostrador} (mostrador) están reservados.`;
+}
+
+function msgMesasSistema(mesasVirtuales?: MesasVirtualesConfig): string {
+  const r = resolverMesasVirtuales(mesasVirtuales);
+  return `Las mesas ${r.numero_mesa_para_llevar} (para llevar) y ${r.numero_mesa_mostrador} (mostrador) son del sistema y no se pueden modificar.`;
+}
+
 export function validarPatchMesaAdmin(opts: {
   numeroMesa: number;
   flagsActuales: DiasSemanaSnake;
   patch: PatchDisponibilidadMesa;
   pedidosActivos: number;
   weekdayHoy: number;
+  mesasVirtuales?: MesasVirtualesConfig;
 }): ValidacionAdminResult {
-  const { numeroMesa, flagsActuales, patch, pedidosActivos, weekdayHoy } =
-    opts;
+  const {
+    numeroMesa,
+    flagsActuales,
+    patch,
+    pedidosActivos,
+    weekdayHoy,
+    mesasVirtuales,
+  } = opts;
 
   const algunaDesactivacion = CAMPOS_DISPONIBILIDAD_MESA.some(
     (k) => patch[k] === false,
   );
-  if (algunaDesactivacion && esMesaVirtualNumero(numeroMesa)) {
-    return {
-      ok: false,
-      mensaje:
-        'Las mesas 98 (para llevar) y 99 (mostrador) son del sistema y no se pueden desactivar.',
-    };
+  if (
+    algunaDesactivacion &&
+    esMesaVirtualNumero(numeroMesa, mesasVirtuales)
+  ) {
+    return { ok: false, mensaje: msgMesasSistema(mesasVirtuales) };
   }
 
   if (pedidosActivos <= 0) {
@@ -105,12 +125,12 @@ export function validarDesactivarUsuario(opts: {
   };
 }
 
-const MSG_NUMEROS_RESERVADOS =
-  'Los números 98 (para llevar) y 99 (mostrador) están reservados.';
-
-export function validarNumeroMesaReservado(numero: number): ValidacionAdminResult {
-  if (esMesaVirtualNumero(numero)) {
-    return { ok: false, mensaje: MSG_NUMEROS_RESERVADOS };
+export function validarNumeroMesaReservado(
+  numero: number,
+  mesasVirtuales?: MesasVirtualesConfig,
+): ValidacionAdminResult {
+  if (esMesaVirtualNumero(numero, mesasVirtuales)) {
+    return { ok: false, mensaje: msgNumerosReservados(mesasVirtuales) };
   }
   return { ok: true };
 }
@@ -119,19 +139,16 @@ export function validarCambioNumeroMesaAdmin(opts: {
   numeroActual: number;
   numeroNuevo: number;
   pedidosActivos: number;
+  mesasVirtuales?: MesasVirtualesConfig;
 }): ValidacionAdminResult {
-  const { numeroActual, numeroNuevo, pedidosActivos } = opts;
+  const { numeroActual, numeroNuevo, pedidosActivos, mesasVirtuales } = opts;
   if (numeroNuevo === numeroActual) {
     return { ok: true };
   }
-  if (esMesaVirtualNumero(numeroActual)) {
-    return {
-      ok: false,
-      mensaje:
-        'Las mesas 98 y 99 son del sistema; no se puede cambiar su número.',
-    };
+  if (esMesaVirtualNumero(numeroActual, mesasVirtuales)) {
+    return { ok: false, mensaje: msgMesasSistema(mesasVirtuales) };
   }
-  const reservado = validarNumeroMesaReservado(numeroNuevo);
+  const reservado = validarNumeroMesaReservado(numeroNuevo, mesasVirtuales);
   if (!reservado.ok) {
     return reservado;
   }
@@ -151,14 +168,11 @@ export function validarEliminarMesaAdmin(opts: {
   numeroMesa: number;
   pedidosActivos: number;
   totalPedidos: number;
+  mesasVirtuales?: MesasVirtualesConfig;
 }): ValidacionAdminResult {
-  const { numeroMesa, pedidosActivos, totalPedidos } = opts;
-  if (esMesaVirtualNumero(numeroMesa)) {
-    return {
-      ok: false,
-      mensaje:
-        'Las mesas 98 (para llevar) y 99 (mostrador) son del sistema y no se pueden eliminar.',
-    };
+  const { numeroMesa, pedidosActivos, totalPedidos, mesasVirtuales } = opts;
+  if (esMesaVirtualNumero(numeroMesa, mesasVirtuales)) {
+    return { ok: false, mensaje: msgMesasSistema(mesasVirtuales) };
   }
   if (pedidosActivos > 0) {
     return {

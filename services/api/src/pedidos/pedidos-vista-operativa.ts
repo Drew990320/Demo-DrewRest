@@ -45,9 +45,21 @@ export const pedidoVistaOperativaInclude = {
         select: {
           nombre: true,
           esEmpacable: true,
+          esPlatoPrincipal: true,
           esAcompanamientoMazorca: true,
           tipoProteina: true,
-          categoria: { select: { nombre: true } },
+          categoria: {
+            select: {
+              nombre: true,
+              esBebida: true,
+              cobraEmpaqueParaLlevar: true,
+              participaDescuentoSopas: true,
+              esLineaEmpaque: true,
+              visibleEnMostrador: true,
+              tipoLineaCocinaDefault: true,
+              esPlatoPrincipalDefault: true,
+            },
+          },
         },
       },
       personalizaciones: {
@@ -69,11 +81,11 @@ export type PedidoVistaOperativaRow = Prisma.PedidoGetPayload<{
 /** Serializa pedido para UI operativa (cocina / mesero) sin datos de cobro. */
 export function serializarPedidoVistaOperativa(p: PedidoVistaOperativaRow) {
   const detalles = p.detalles.map((d) => {
-    const cat = d.producto.categoria.nombre;
+    const cat = d.producto.categoria;
     const marcar = debeMarcarCocina(cat, d.producto.esEmpacable);
     const tipoProteina = tipoProteinaResuelto(
       d.producto.tipoProteina,
-      cat,
+      cat.nombre,
       d.producto.nombre,
     );
     return {
@@ -81,10 +93,11 @@ export function serializarPedidoVistaOperativa(p: PedidoVistaOperativaRow) {
       id_producto: d.idProducto,
       id_detalle_padre: d.idDetallePadre,
       nombre_producto: d.producto.nombre,
-      categoria_nombre: cat,
+      categoria_nombre: cat.nombre,
       tipo_proteina: tipoProteina,
       es_bebida: categoriaEsBebida(cat),
       es_empacable: d.producto.esEmpacable,
+      es_plato_principal: d.producto.esPlatoPrincipal,
       es_acompanamiento_mazorca: d.producto.esAcompanamientoMazorca,
       marcar_cocina: marcar,
       enviado_cocina: d.enviadoCocina,

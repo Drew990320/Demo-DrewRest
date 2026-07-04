@@ -19,7 +19,7 @@ export function categoriaMenuIcon(nombre: string): CategoriaMenuIconName {
 
   if (n.includes('empaque')) return 'food-takeout-box-outline';
   if (n.includes('infantil')) return 'human-child';
-  if (n.includes('compartir') || n.includes('picada')) return 'share-variant';
+  if (n.includes('compartir') || n.includes('picada')) return 'tray-full';
   if (n.includes('sopa')) return 'pot-steam-outline';
   if (n.includes('entrada') || n.includes('adicional')) {
     return 'silverware-fork-knife';

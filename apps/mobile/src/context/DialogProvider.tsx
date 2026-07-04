@@ -113,7 +113,7 @@ function AppDialogOverlay({
             ]}
           >
             <View style={[styles.iconCircle, { backgroundColor: meta.bg }]}>
-              <Ionicons name={meta.icon} size={36} color={meta.color} />
+              <Ionicons name={meta.icon} size={28} color={meta.color} />
             </View>
             <Text style={styles.title}>{state.title}</Text>
             {!!state.message?.trim() && (
@@ -245,12 +245,12 @@ export function useAppDialog() {
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(38, 38, 34, 0.45)',
+    backgroundColor: 'rgba(61, 54, 48, 0.32)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
     ...Platform.select({
-      web: { backdropFilter: 'blur(2px)' } as object,
+      web: { backdropFilter: 'blur(4px)' } as object,
       default: {},
     }),
   },
@@ -264,35 +264,35 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: colors.surface,
-    borderRadius: 20,
-    borderWidth: 1,
-    paddingHorizontal: 24,
-    paddingTop: 28,
-    paddingBottom: 20,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 22,
+    paddingTop: 24,
+    paddingBottom: 18,
     alignItems: 'center',
     width: '100%',
     ...appShadow('dialog'),
   },
   cardBrief: {
-    paddingBottom: 28,
+    paddingBottom: 24,
   },
   iconCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 14,
   },
   title: {
-    fontSize: 20,
-    fontWeight: '800',
+    fontSize: 18,
+    fontWeight: '700',
     color: colors.text,
     textAlign: 'center',
-    lineHeight: 26,
+    lineHeight: 24,
   },
   message: {
-    marginTop: 10,
+    marginTop: 8,
     fontSize: 15,
     lineHeight: 22,
     color: colors.textMuted,
@@ -301,7 +301,7 @@ const styles = StyleSheet.create({
   buttons: {
     flexDirection: 'row',
     gap: 10,
-    marginTop: 22,
+    marginTop: 20,
     width: '100%',
     justifyContent: 'center',
   },
@@ -309,12 +309,12 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
   },
   btn: {
-    paddingVertical: 13,
-    paddingHorizontal: 18,
-    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 110,
+    minWidth: 100,
   },
   btnFlex: {
     flex: 1,
@@ -334,7 +334,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceMuted,
   },
   btnText: {
-    fontWeight: '800',
+    fontWeight: '700',
     fontSize: 15,
     color: colors.text,
   },

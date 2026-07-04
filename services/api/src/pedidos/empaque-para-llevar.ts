@@ -9,5 +9,5 @@ export {
   productoCobraEmpaqueParaLlevarPorPlatoFuerte,
 };
 
-export const precioEmpaqueParaLlevarDecimal = () =>
-  new Prisma.Decimal(PRECIO_EMPAQUE_PARA_LLEVAR_COP);
+export const precioEmpaqueParaLlevarDecimal = (monto?: number) =>
+  new Prisma.Decimal(monto ?? PRECIO_EMPAQUE_PARA_LLEVAR_COP);

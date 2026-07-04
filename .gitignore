@@ -16,6 +16,11 @@ build/
 .env
 .env.*.local
 
+# Licencias: clave privada y archivos emitidos (nunca empaquetar ni subir)
+scripts/license-keys/private.pem
+license.key
+**/license.key
+
 # Logs & OS
 *.log
 npm-debug.log*

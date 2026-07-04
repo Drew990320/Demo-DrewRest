@@ -1,25 +1,31 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../../src/context/AuthContext';
 import { PantallaSoloMeseros } from '../../src/components/PantallaSoloMeseros';
 import { useRequiereTomarPedidos } from '../../src/hooks/usePuedeTomarPedidos';
-import { ActionIconBar } from '../../src/components/ActionIconBar';
-import { PedidoIcon } from '../../src/lib/app-icons';
-import { IconTooltipButton } from '../../src/components/IconTooltipButton';
 import { PedidosActivosChips } from '../../src/components/PedidosActivosChips';
+import {
+  PanelPedidoVirtualActivo,
+  type PedidoVirtualDetalle,
+} from '../../src/components/PanelPedidoVirtualActivo';
+import { PanelNuevoTicketVirtual } from '../../src/components/PanelNuevoTicketVirtual';
+import { ScreenLoading } from '../../src/components/ScreenLoading';
+import { ScreenScroll } from '../../src/components/ScreenScroll';
+import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { api } from '../../src/lib/api';
 import { useSeleccionPedido } from '../../src/hooks/useSeleccionPedido';
+import { useRefetchOnSync } from '../../src/hooks/useRefetchOnSync';
+import { ordenarPedidosCocinaPorLlegada } from '../../src/lib/cocina-pedido-view';
+import { batchAfectaMesa, joinPedidoRooms } from '../../src/lib/pedido-sync';
 import { colors } from '../../src/lib/theme';
+import { manejarErrorAccion, manejarErrorOperacion } from '../../src/lib/recurso-disponible';
+import { useMesasVirtuales } from '../../src/hooks/useMesasVirtuales';
 
 type ParaLlevarMesa = {
   id_mesa: number;
@@ -27,30 +33,55 @@ type ParaLlevarMesa = {
   estado: string;
 };
 
-type PedidoActivo = { id_pedido: number };
-
 export default function ParaLlevarScreen() {
   const { token } = useAuth();
   const { ok: puedeTomar, loading: authLoading } = useRequiereTomarPedidos();
-  const router = useRouter();
   const [mesa, setMesa] = useState<ParaLlevarMesa | null>(null);
-  const [activos, setActivos] = useState<PedidoActivo[]>([]);
+  const [activos, setActivos] = useState<PedidoVirtualDetalle[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const mv = useMesasVirtuales();
 
   const load = useCallback(async () => {
     const m = await api<ParaLlevarMesa>('/mesas/para-llevar', { token });
     setMesa(m);
-    const list = await api<PedidoActivo[]>(
+    const list = await api<PedidoVirtualDetalle[]>(
       `/pedidos/activos-por-mesa/${m.id_mesa}`,
       { token, cacheKey: `activos_mesa_${m.id_mesa}` },
     );
     setActivos(list ?? []);
+    return m;
   }, [token]);
 
+  const activosOrdenados = useMemo(
+    () => ordenarPedidosCocinaPorLlegada(activos),
+    [activos],
+  );
+
   const { selectedId, setSelectedId, selected: pedidoSeleccionado } =
-    useSeleccionPedido(activos);
+    useSeleccionPedido(activosOrdenados);
+
+  useEffect(() => {
+    if (mesa?.id_mesa == null) return;
+    joinPedidoRooms({ mesaId: mesa.id_mesa });
+  }, [mesa?.id_mesa]);
+
+  useRefetchOnSync(
+    async () => {
+      try {
+        await load();
+      } catch {
+        // ignore
+      }
+    },
+    {
+      enabled: mesa?.id_mesa != null,
+      source: 'pedido',
+      filter: (batch) =>
+        mesa?.id_mesa != null && batchAfectaMesa(batch, mesa.id_mesa),
+    },
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -58,8 +89,9 @@ export default function ParaLlevarScreen() {
       (async () => {
         try {
           await load();
-        } catch {
+        } catch (e) {
           if (!cancelled) setMesa(null);
+          await manejarErrorOperacion(e);
         } finally {
           if (!cancelled) setLoading(false);
         }
@@ -74,6 +106,8 @@ export default function ParaLlevarScreen() {
     setRefreshing(true);
     try {
       await load();
+    } catch (e) {
+      await manejarErrorOperacion(e);
     } finally {
       setRefreshing(false);
     }
@@ -91,12 +125,12 @@ export default function ParaLlevarScreen() {
           num_comensales: 1,
         }),
       });
-      router.push(`/(app)/pedido/${created.id_pedido}/menu?paraLlevar=1`);
+      await load();
+      if (created?.id_pedido) {
+        setSelectedId(created.id_pedido);
+      }
     } catch (e) {
-      Alert.alert(
-        'Error',
-        e instanceof Error ? e.message : 'No se pudo abrir el pedido',
-      );
+      await manejarErrorAccion(e, 'abrir el pedido');
     } finally {
       setBusy(false);
     }
@@ -107,96 +141,61 @@ export default function ParaLlevarScreen() {
   }
 
   if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
+    return <ScreenLoading />;
   }
 
   if (!mesa) {
     return (
       <View style={styles.center}>
         <Text style={styles.err}>
-          No está configurada la mesa virtual para llevar (n.º 98) en el servidor.
-          Ejecuta el seed o crea esa mesa en la base de datos.
+          No está configurada la mesa {mv.resueltas.etiqueta_para_llevar.toLowerCase()}{' '}
+          (n.º {mv.resueltas.numero_mesa_para_llevar}) en el servidor. Ejecuta el
+          seed o créala en Configuración.
         </Text>
       </View>
     );
   }
 
   return (
-    <ScrollView
-      style={styles.container}
+    <ScreenScroll
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
-      <View style={styles.headerCard}>
-        <Text style={styles.kicker}>Sin mesa física</Text>
-        <Text style={styles.h1}>Pedidos para llevar</Text>
-        <Text style={styles.sub}>
-          Pedidos para recoger: por cada plato fuerte se suma un empaque a $1.000
-          por unidad (se puede quitar al personalizar). Varios pedidos abiertos a
-          la vez; cobra cada uno aparte.
-        </Text>
-      </View>
+      <ScreenHeader
+        eyebrow="Sin mesa física"
+        title={mv.resueltas.etiqueta_para_llevar}
+        subtitle="Pedidos en orden de llegada (el primero es el más antiguo). Empaque automático en platos fuertes ($1.000/u)."
+      />
 
       <View style={styles.card}>
-        <Text style={styles.estado}>
-          Estado:{' '}
-          <Text style={{ fontWeight: '800' }}>
-            {mesa.estado === 'libre' ? 'disponible' : 'ocupada'}
-          </Text>
-        </Text>
-
-        <IconTooltipButton
-          icon={PedidoIcon.nuevoParaLlevar}
-          label="Nuevo pedido para llevar"
-          variant="primary"
-          onPress={nuevoPedido}
-          disabled={busy}
+        <PanelNuevoTicketVirtual
+          mesaNumero={mesa.numero}
+          modo={activos.length > 0 ? 'otro' : 'inicial'}
+          busy={busy}
+          onAbrir={nuevoPedido}
         />
 
-        {activos.length > 0 && pedidoSeleccionado && (
+        {activos.length > 0 && pedidoSeleccionado ? (
           <>
             <PedidosActivosChips
-              pedidos={activos}
+              pedidos={activosOrdenados}
               selectedId={selectedId}
               onSelect={setSelectedId}
               label="Pedidos activos en esta cola"
+              minPedidos={1}
               style={styles.chipsBox}
             />
-            <View style={styles.pedidoRow}>
-              <Text style={styles.pedidoId}>#{pedidoSeleccionado.id_pedido}</Text>
-              <ActionIconBar
-                actions={[
-                  {
-                    key: 'ver',
-                    icon: PedidoIcon.verPedido,
-                    label: 'Ver / cobrar',
-                    variant: 'secondary',
-                    onPress: () =>
-                      router.push(
-                        `/(app)/mesa/${mesa.id_mesa}?pedido=${pedidoSeleccionado.id_pedido}`,
-                      ),
-                  },
-                  {
-                    key: 'menu',
-                    icon: PedidoIcon.agregarMenu,
-                    label: 'Ir al menú',
-                    onPress: () =>
-                      router.push(
-                        `/(app)/pedido/${pedidoSeleccionado.id_pedido}/menu?paraLlevar=1`,
-                      ),
-                  },
-                ]}
-              />
-            </View>
+            <PanelPedidoVirtualActivo
+              pedido={pedidoSeleccionado}
+              modo="para_llevar"
+              token={token}
+              onRefresh={load}
+            />
           </>
-        )}
+        ) : null}
       </View>
-    </ScrollView>
+    </ScreenScroll>
   );
 }
 
@@ -204,17 +203,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background, padding: 16 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
   err: { color: colors.textMuted, textAlign: 'center' },
-  headerCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: 12,
-  },
-  kicker: { color: colors.textMuted, fontWeight: '700' },
-  h1: { fontSize: 22, fontWeight: '800', color: colors.text, marginTop: 4 },
-  sub: { marginTop: 8, color: colors.textMuted, lineHeight: 20 },
   card: {
     backgroundColor: colors.surface,
     borderRadius: 16,
@@ -223,47 +211,9 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     gap: 12,
   },
-  estado: { color: colors.text, marginBottom: 4 },
   chipsBox: {
     marginTop: 8,
     backgroundColor: colors.surfaceMuted,
     borderColor: colors.borderLight,
   },
-  sectionLabel: { fontWeight: '800', color: colors.text, marginTop: 8 },
-  pedidoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    paddingVertical: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.borderLight,
-  },
-  pedidoId: { fontWeight: '900', color: colors.primary, fontSize: 16 },
-  pedidoActions: { flexDirection: 'row', gap: 8, flexShrink: 1 },
-  primary: {
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  primaryText: { color: colors.surface, fontWeight: '900' },
-  secondary: {
-    backgroundColor: colors.backgroundAlt,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    alignItems: 'center',
-  },
-  secondaryText: { color: colors.text, fontWeight: '800', fontSize: 13 },
-  tertiary: {
-    borderWidth: 1,
-    borderColor: colors.primary,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    alignItems: 'center',
-  },
-  tertiaryText: { color: colors.primary, fontWeight: '800', fontSize: 13 },
-  disabled: { opacity: 0.6 },
 });

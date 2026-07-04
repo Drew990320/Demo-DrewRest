@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -12,14 +10,26 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
 import { AnimatedEnter } from '../../src/components/AnimatedEnter';
 import { ActionIconBar } from '../../src/components/ActionIconBar';
+import { EmptyState } from '../../src/components/EmptyState';
 import { PedidoRecogidaGrupos } from '../../src/components/PedidoRecogidaGrupos';
+import { LugarPedidoIcon } from '../../src/components/LugarPedidoIcon';
 import { PedidosActivosChips } from '../../src/components/PedidosActivosChips';
+import {
+  PanelPedidoVirtualActivo,
+  modoPanelPedidoDesdeMesa,
+  type PedidoVirtualDetalle,
+} from '../../src/components/PanelPedidoVirtualActivo';
+import { ScreenLoading } from '../../src/components/ScreenLoading';
+import { ScreenScroll } from '../../src/components/ScreenScroll';
+import { ScreenHeader } from '../../src/components/ScreenHeader';
+import { useConfigOperativa } from '../../src/hooks/useConfigOperativa';
 import { api } from '../../src/lib/api';
-import { AdminIcon } from '../../src/lib/app-icons';
+import { AdminIcon, PedidoIcon } from '../../src/lib/app-icons';
 import { showNotice } from '../../src/lib/app-dialog';
 import {
   normalizarPedidoCocinaView,
   nombreMeseroPedido,
+  ordenarPedidosCocinaPorLlegada,
   platosPendientesRecogerPedido,
   type PedidoCocinaView,
 } from '../../src/lib/cocina-pedido-view';
@@ -28,13 +38,18 @@ import {
   cambiarCantidadGrupoRecogida,
   distribuirRecogidaEnGrupo,
 } from '../../src/lib/recogida-parcial';
-import { tituloLugarMesa } from '../../src/lib/mesa-label';
+import {
+  esMesaVirtualNumero,
+  tituloLugarMesa,
+} from '../../src/lib/mesa-label';
 import { appShadow } from '../../src/lib/shadow';
 import { puedeVerMisPedidos } from '../../src/hooks/usePuedeTomarPedidos';
 import { useSeleccionPedido } from '../../src/hooks/useSeleccionPedido';
 import { batchAfectaMisPedidos, joinPedidoRooms } from '../../src/lib/pedido-sync';
 import { useRefetchOnSync } from '../../src/hooks/useRefetchOnSync';
 import { colors } from '../../src/lib/theme';
+import { manejarErrorAccion, manejarErrorOperacion } from '../../src/lib/recurso-disponible';
+import { alertarSiSinPapel } from '../../src/lib/alarma-impresora';
 
 type AyudaCompanerosResponse = {
   pedidos: PedidoCocinaView[];
@@ -43,6 +58,7 @@ type AyudaCompanerosResponse = {
 
 export default function AyudaCompanerosScreen() {
   const { token, user } = useAuth();
+  const { config: opConfig } = useConfigOperativa();
   const router = useRouter();
   const puedeVer = puedeVerMisPedidos(user?.rol);
   const [items, setItems] = useState<PedidoCocinaView[]>([]);
@@ -50,9 +66,15 @@ export default function AyudaCompanerosScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [busyGrupoKey, setBusyGrupoKey] = useState<string | null>(null);
+  const [reimprimiendoId, setReimprimiendoId] = useState<number | null>(null);
   const [cantidadesRecogida, setCantidadesRecogida] = useState<
     Record<number, Record<number, number>>
   >({});
+  const [pedidoCompleto, setPedidoCompleto] = useState<PedidoVirtualDetalle | null>(
+    null,
+  );
+  const [loadingDetalle, setLoadingDetalle] = useState(false);
+  const pedidoIdRef = useRef<number | null>(null);
   const syncIdsRef = useRef({
     mesaIds: new Set<number>(),
     pedidoIds: new Set<number>(),
@@ -77,6 +99,36 @@ export default function AyudaCompanerosScreen() {
     };
   }, [token, user?.id, puedeVer]);
 
+  const cargarDetallePedido = useCallback(
+    async (idPedido: number) => {
+      setLoadingDetalle(true);
+      try {
+        const p = await api<PedidoVirtualDetalle>(`/pedidos/${idPedido}`, {
+          token,
+        });
+        setPedidoCompleto(p);
+      } catch {
+        setPedidoCompleto(null);
+      } finally {
+        setLoadingDetalle(false);
+      }
+    },
+    [token],
+  );
+
+  const refreshPedidoSeleccionado = useCallback(
+    async (idPedido?: number | null) => {
+      await load();
+      const id = idPedido ?? pedidoIdRef.current;
+      if (id != null) {
+        await cargarDetallePedido(id);
+      } else {
+        setPedidoCompleto(null);
+      }
+    },
+    [load, cargarDetallePedido],
+  );
+
   useEffect(() => {
     if (!user) return;
     if (!puedeVer) {
@@ -86,6 +138,11 @@ export default function AyudaCompanerosScreen() {
     (async () => {
       try {
         await load();
+      } catch (e) {
+        await manejarErrorOperacion(e, {
+          title: 'Ayuda a compañeros',
+          message: 'No se pudieron cargar los pedidos.',
+        });
       } finally {
         setLoading(false);
       }
@@ -97,37 +154,109 @@ export default function AyudaCompanerosScreen() {
     joinPedidoRooms({ cocina: true });
   }, [puedeVer]);
 
-  useRefetchOnSync(load, {
-    enabled: puedeVer,
-    source: 'pedido',
-    filter: (batch) =>
-      batchAfectaMisPedidos(
-        batch,
-        syncIdsRef.current.mesaIds,
-        syncIdsRef.current.pedidoIds,
-      ),
-  });
+  useRefetchOnSync(
+    async () => {
+      try {
+        await refreshPedidoSeleccionado();
+      } catch {
+        /* sincronización en segundo plano */
+      }
+    },
+    {
+      enabled: puedeVer,
+      source: 'pedido',
+      filter: (batch) =>
+        batchAfectaMisPedidos(
+          batch,
+          syncIdsRef.current.mesaIds,
+          syncIdsRef.current.pedidoIds,
+        ),
+    },
+  );
 
   async function onRefresh() {
     setRefreshing(true);
     try {
-      await load();
+      await refreshPedidoSeleccionado();
+    } catch (e) {
+      await manejarErrorOperacion(e, {
+        title: 'Ayuda a compañeros',
+        message: 'No se pudo actualizar.',
+      });
     } finally {
       setRefreshing(false);
     }
   }
 
+  async function reimprimirComanda(idPedido: number) {
+    setReimprimiendoId(idPedido);
+    try {
+      const res = await api<{
+        impresion_comanda?: {
+          impreso: boolean;
+          error?: string;
+          destino?: string;
+        };
+      }>(`/pedidos/${idPedido}/reimprimir-comanda`, {
+        method: 'POST',
+        token,
+      });
+      if (alertarSiSinPapel(res)) return;
+      const imp = res.impresion_comanda;
+      await showNotice(
+        imp?.impreso ? 'Comanda reimpresa' : 'Sin imprimir',
+        imp?.impreso
+          ? `Ticket de cocina impreso (${imp.destino ?? 'impresora'}).`
+          : imp?.error ?? 'No se pudo imprimir la comanda.',
+        imp?.impreso ? 'success' : 'error',
+      );
+    } catch (e) {
+      await manejarErrorAccion(e, 'reimprimir la comanda');
+    } finally {
+      setReimprimiendoId(null);
+    }
+  }
+
   const itemsOrdenados = useMemo(
-    () =>
-      [...items].sort(
-        (a, b) =>
-          new Date(a.creado_en).getTime() - new Date(b.creado_en).getTime(),
-      ),
+    () => ordenarPedidosCocinaPorLlegada(items),
     [items],
   );
 
   const { selectedId, setSelectedId, selected: pedidoSeleccionado } =
     useSeleccionPedido(itemsOrdenados);
+
+  useEffect(() => {
+    pedidoIdRef.current = pedidoSeleccionado?.id_pedido ?? null;
+    if (pedidoSeleccionado?.id_pedido) {
+      void cargarDetallePedido(pedidoSeleccionado.id_pedido);
+    } else {
+      setPedidoCompleto(null);
+    }
+  }, [pedidoSeleccionado?.id_pedido, cargarDetallePedido]);
+
+  const etiquetaLugarMesa = useCallback(
+    (mesaNumero: number) => tituloLugarMesa(mesaNumero, opConfig),
+    [opConfig],
+  );
+
+  const renderChipPedido = useCallback(
+    (p: PedidoCocinaView, selected: boolean) => {
+      const tint = selected ? colors.primaryDark : colors.text;
+      return (
+        <View style={styles.chipContent}>
+          <Text style={[styles.chipPedidoId, selected && styles.chipPedidoIdOn]}>
+            #{p.id_pedido}
+          </Text>
+          <LugarPedidoIcon
+            mesaNumero={p.mesa_numero}
+            config={opConfig}
+            color={tint}
+          />
+        </View>
+      );
+    },
+    [opConfig],
+  );
 
   function grupoKey(idPedido: number, g: LineaPedidoGrupo): string {
     return `${idPedido}:${g.ids_detalle.join('-')}`;
@@ -180,13 +309,9 @@ export default function AyudaCompanerosScreen() {
         });
       }
       setCantidadesRecogida((prev) => ({ ...prev, [p.id_pedido]: {} }));
-      await load();
+      await refreshPedidoSeleccionado(p.id_pedido);
     } catch (e) {
-      await showNotice(
-        'Error',
-        e instanceof Error ? e.message : 'No se pudo confirmar en mesa',
-        'error',
-      );
+      await manejarErrorAccion(e, 'confirmar la recogida en mesa');
     } finally {
       setBusyGrupoKey(null);
     }
@@ -214,24 +339,16 @@ export default function AyudaCompanerosScreen() {
         });
       }
       setCantidadesRecogida((prev) => ({ ...prev, [p.id_pedido]: {} }));
-      await load();
+      await refreshPedidoSeleccionado(p.id_pedido);
     } catch (e) {
-      await showNotice(
-        'Error',
-        e instanceof Error ? e.message : 'No se pudo avisar a cocina',
-        'error',
-      );
+      await manejarErrorAccion(e, 'avisar a cocina');
     } finally {
       setBusyGrupoKey(null);
     }
   }
 
   if (!user || loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
+    return <ScreenLoading />;
   }
 
   if (!puedeVer) {
@@ -256,8 +373,7 @@ export default function AyudaCompanerosScreen() {
   }
 
   return (
-    <ScrollView
-      style={styles.container}
+    <ScreenScroll
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
@@ -271,39 +387,48 @@ export default function AyudaCompanerosScreen() {
             : 'platos pendientes de recoger'}
         </Text>
         <Text style={styles.resumenSub}>
-          {items.length} pedido(s) de compañeros que puedes confirmar en mesa si su
-          teléfono no responde.
+          {items.length} pedido(s) de compañeros en orden de llegada.
         </Text>
       </View>
 
-      <View style={styles.headerCard}>
-        <Text style={styles.kicker}>Compañeros</Text>
-        <Text style={styles.h1}>Pedidos que puedes recoger</Text>
-        <Text style={styles.sub}>
-          Solo aparecen platos ya enviados a cocina que aún no están confirmados en
-          mesa. Usa ✓ cuando los hayas llevado al comensal.
-        </Text>
+      <ScreenHeader
+        eyebrow="Compañeros"
+        title="Pedidos que puedes recoger"
+        subtitle="Toca un pedido para ver ítems y ayudar en mesa. Confirma recogida o avisa a cocina si falta algo."
+      >
         <Pressable
           style={styles.linkMisPedidos}
           onPress={() => router.push('/(app)/mis-pedidos')}
         >
           <Text style={styles.linkMisPedidosText}>← Volver a mis pedidos</Text>
         </Pressable>
-      </View>
+      </ScreenHeader>
 
-      {itemsOrdenados.length === 0 ? (
-        <Text style={styles.empty}>
-          Ningún compañero tiene platos pendientes de recoger en este momento.
-        </Text>
-      ) : null}
-
-      {itemsOrdenados.length > 1 ? (
+      {itemsOrdenados.length >= 1 ? (
         <PedidosActivosChips
           pedidos={itemsOrdenados}
           selectedId={selectedId}
           onSelect={setSelectedId}
           label="Pedidos de compañeros"
+          minPedidos={1}
+          renderChip={renderChipPedido}
           style={styles.chipsCard}
+        />
+      ) : null}
+
+      {itemsOrdenados.length === 0 ? (
+        <EmptyState
+          title="Nada pendiente"
+          message="Ningún compañero tiene platos por recoger en este momento."
+          actions={[
+            {
+              key: 'mis-pedidos',
+              icon: AdminIcon.volverMesas,
+              label: 'Volver a mis pedidos',
+              variant: 'primary',
+              onPress: () => router.push('/(app)/mis-pedidos'),
+            },
+          ]}
         />
       ) : null}
 
@@ -323,7 +448,16 @@ export default function AyudaCompanerosScreen() {
               <View style={styles.cardTop}>
                 <View style={styles.rowPills}>
                   <View style={styles.pill}>
-                    <Text style={styles.pillText}>{tituloLugarMesa(p.mesa_numero)}</Text>
+                    <LugarPedidoIcon
+                      mesaNumero={p.mesa_numero}
+                      config={opConfig}
+                      color={colors.info}
+                    />
+                    {esMesaVirtualNumero(p.mesa_numero, opConfig) ? (
+                      <Text style={styles.pillText}>
+                        {etiquetaLugarMesa(p.mesa_numero)}
+                      </Text>
+                    ) : null}
                   </View>
                   <View style={styles.pillMesero}>
                     <Text style={styles.pillMeseroText}>
@@ -338,29 +472,80 @@ export default function AyudaCompanerosScreen() {
                     </View>
                   ) : null}
                 </View>
-                <Text style={styles.cardTitle}>Pedido #{p.id_pedido}</Text>
+                <View style={styles.cardTitleRow}>
+                  <Text style={styles.cardTitle}>Pedido #{p.id_pedido}</Text>
+                  <LugarPedidoIcon
+                    mesaNumero={p.mesa_numero}
+                    config={opConfig}
+                    color={colors.text}
+                  />
+                </View>
                 <Text style={styles.cardMeta}>
                   Mesero: {nombreMeseroPedido(p)} · {p.num_comensales} comensales
                 </Text>
               </View>
 
-              <PedidoRecogidaGrupos
-                idPedido={p.id_pedido}
-                detalles={p.detalles}
-                cantidades={cantidadesPedido(p.id_pedido)}
-                busyGrupoKey={busyGrupoKey}
-                soloRecogibles
-                onCambiarCantidad={(g, delta) =>
-                  cambiarCantidadGrupo(p.id_pedido, g, p.detalles, delta)
-                }
-                onConfirmar={(g) => confirmarGrupoRecogida(p, g)}
-                onFalta={(g) => avisarFaltaGrupo(p, g)}
-              />
+              {loadingDetalle ? (
+                <Text style={styles.loadingDetalle}>Cargando ítems…</Text>
+              ) : pedidoCompleto ? (
+                <PanelPedidoVirtualActivo
+                  pedido={pedidoCompleto}
+                  modo={modoPanelPedidoDesdeMesa(p.mesa_numero, opConfig)}
+                  token={token}
+                  onRefresh={() => refreshPedidoSeleccionado(p.id_pedido)}
+                  mostrarEncabezado={false}
+                  mostrarCancelar={false}
+                  mostrarCobrar={false}
+                  accionesExtra={[
+                    {
+                      key: 'reimprimir',
+                      icon:
+                        reimprimiendoId === p.id_pedido
+                          ? 'hourglass-outline'
+                          : PedidoIcon.reimprimirComanda,
+                      label:
+                        reimprimiendoId === p.id_pedido
+                          ? 'Imprimiendo…'
+                          : 'Reimprimir comanda',
+                      variant: 'secondary',
+                      disabled: reimprimiendoId === p.id_pedido,
+                      onPress: () => reimprimirComanda(p.id_pedido),
+                    },
+                  ]}
+                  extra={
+                    <>
+                      <Text style={styles.recogidaTitle}>
+                        Recogida en mesa · aviso a cocina
+                      </Text>
+                      <Text style={styles.recogidaHint}>
+                        Solo platos listos para recoger. Confirma en mesa o avisa
+                        si cocina aún no entregó.
+                      </Text>
+                      <PedidoRecogidaGrupos
+                        idPedido={p.id_pedido}
+                        detalles={p.detalles}
+                        cantidades={cantidadesPedido(p.id_pedido)}
+                        busyGrupoKey={busyGrupoKey}
+                        soloRecogibles
+                        onCambiarCantidad={(g, delta) =>
+                          cambiarCantidadGrupo(p.id_pedido, g, p.detalles, delta)
+                        }
+                        onConfirmar={(g) => confirmarGrupoRecogida(p, g)}
+                        onFalta={(g) => avisarFaltaGrupo(p, g)}
+                      />
+                    </>
+                  }
+                />
+              ) : (
+                <Text style={styles.loadingDetalle}>
+                  No se pudo cargar el detalle del pedido.
+                </Text>
+              )}
             </View>
           </AnimatedEnter>
         );
       })() : null}
-    </ScrollView>
+    </ScreenScroll>
   );
 }
 
@@ -404,34 +589,40 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   resumenSub: { marginTop: 8, color: colors.onInfoMuted, fontSize: 13, lineHeight: 18 },
-  headerCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    ...appShadow,
+  linkMisPedidos: {
+    marginTop: 12,
+    alignSelf: 'center',
+    minWidth: 220,
+    minHeight: 44,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  kicker: {
-    color: colors.textMuted,
-    fontWeight: '700',
-    fontSize: 12,
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-  },
-  h1: { fontSize: 20, fontWeight: '800', color: colors.text, marginTop: 4 },
-  sub: { marginTop: 6, color: colors.textMuted, fontSize: 13, lineHeight: 18 },
-  linkMisPedidos: { marginTop: 12 },
-  linkMisPedidosText: { color: colors.primary, fontWeight: '800', fontSize: 14 },
-  empty: {
+  linkMisPedidosText: {
+    color: colors.primary,
+    fontWeight: '800',
+    fontSize: 14,
     textAlign: 'center',
-    color: colors.textMuted,
-    marginVertical: 24,
-    fontSize: 15,
-    lineHeight: 22,
   },
   chipsCard: { marginBottom: 12 },
+  chipContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  chipPedidoId: {
+    fontWeight: '800',
+    color: colors.text,
+    fontVariant: ['tabular-nums'],
+  },
+  chipPedidoIdOn: { color: colors.primaryDark },
+  cardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   card: {
     backgroundColor: colors.surface,
     borderRadius: 16,
@@ -446,6 +637,9 @@ const styles = StyleSheet.create({
   cardTop: { marginBottom: 4 },
   rowPills: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 },
   pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     backgroundColor: colors.infoLight,
     paddingHorizontal: 10,
     paddingVertical: 4,
@@ -468,4 +662,23 @@ const styles = StyleSheet.create({
   pillRecogerText: { fontSize: 12, fontWeight: '800', color: colors.successText },
   cardTitle: { fontSize: 18, fontWeight: '800', color: colors.text },
   cardMeta: { marginTop: 4, color: colors.textMuted, fontSize: 13 },
+  loadingDetalle: {
+    marginTop: 12,
+    fontSize: 14,
+    color: colors.textMuted,
+    textAlign: 'center',
+    paddingVertical: 8,
+  },
+  recogidaTitle: {
+    fontWeight: '800',
+    fontSize: 15,
+    color: colors.text,
+    marginBottom: 4,
+  },
+  recogidaHint: {
+    fontSize: 12,
+    color: colors.textMuted,
+    lineHeight: 17,
+    marginBottom: 8,
+  },
 });

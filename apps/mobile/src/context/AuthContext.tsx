@@ -7,6 +7,14 @@ import React, {
   useState,
 } from 'react';
 import { api } from '../lib/api';
+import {
+  mensajeSesionCerrada,
+  registerUnauthorizedHandler,
+  setAuthSessionUserId,
+  tituloSesionCerrada,
+  type AuthInvalidReason,
+} from '../lib/auth-session';
+import { showNotice } from '../lib/app-dialog';
 import { connectSocket, disconnectSocket, setSocketAuthToken } from '../lib/socket';
 import { ensurePedidoSocketSync } from '../lib/pedido-sync';
 import { storage } from '../lib/storage';
@@ -36,6 +44,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setAuthSessionUserId(user?.id ?? null);
+  }, [user?.id]);
+
+  useEffect(() => {
+    registerUnauthorizedHandler(async (reason: AuthInvalidReason, message?: string) => {
+      await showNotice(
+        tituloSesionCerrada(reason),
+        mensajeSesionCerrada(reason, message),
+        'warning',
+      );
+      await storage.deleteItem(TOKEN_KEY);
+      await storage.deleteItem(USER_KEY);
+      setToken(null);
+      setUser(null);
+      setAuthSessionUserId(null);
+      setSocketAuthToken(null);
+      disconnectSocket();
+    });
+    return () => registerUnauthorizedHandler(null);
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -74,6 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await storage.deleteItem(USER_KEY);
     setToken(null);
     setUser(null);
+    setAuthSessionUserId(null);
     setSocketAuthToken(null);
     disconnectSocket();
   }, []);

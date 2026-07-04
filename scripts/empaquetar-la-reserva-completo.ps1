@@ -28,5 +28,5 @@ try {
 Write-Host ""
 Write-Host "=== Paquete listo en LaReserva\ ===" -ForegroundColor Green
 Write-Host "Copia la carpeta LaReserva al PC del restaurante." -ForegroundColor Green
-Write-Host "En ese PC: edita api\.env (PostgreSQL) y ejecuta inicio.bat" -ForegroundColor Green
+Write-Host "En ese PC: edita api\.env, activa licencia (bin\mostrar-id-maquina.bat) y ejecuta inicio.bat" -ForegroundColor Green
 Write-Host ""

@@ -19,11 +19,18 @@ type NetworkState = {
 const NetworkContext = createContext<NetworkState | null>(null);
 
 async function pingLocalApi(): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5_000);
   try {
-    const res = await fetch(`${API_URL}/health`, { cache: 'no-store' });
+    const res = await fetch(`${API_URL}/health`, {
+      cache: 'no-store',
+      signal: controller.signal,
+    });
     return res.ok;
   } catch {
     return false;
+  } finally {
+    clearTimeout(timer);
   }
 }
 

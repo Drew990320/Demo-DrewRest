@@ -10,7 +10,14 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import { useResponsive } from '../hooks/useResponsive';
+import { MOTION, useMotionEnabled } from '../lib/motion';
 import { blurWebFocus } from '../lib/web-a11y';
 import { colors } from '../lib/theme';
 
@@ -43,7 +50,7 @@ type Props = {
 
 type AnchorRect = { x: number; y: number; w: number; h: number };
 
-function WebFloatingTooltip({
+export function WebFloatingTooltip({
   visible,
   label,
   anchorRef,
@@ -142,10 +149,47 @@ export function IconTooltipButton({
   const wrapRef = useRef<View>(null);
   const showTip = Platform.OS === 'web' && hover && !disabled;
   const r = useResponsive();
-  const iconSz = fixedSize ? (size ?? 24) : (size ?? r.iconSize);
-  const btnSize = fixedSize ? 48 : r.iconBtnSize;
-  const btnPad = r.isCompact ? 10 : 12;
-  const btnRadius = r.isCompact ? 12 : 14;
+  const iconSz = fixedSize ? (size ?? 26) : (size ?? r.iconSize);
+  const btnSize = fixedSize ? Math.max(52, iconSz + 28) : r.iconBtnSize;
+  const btnPad = fixedSize ? 14 : r.isCompact ? 10 : 12;
+  const btnRadius = fixedSize ? 16 : r.isCompact ? 12 : 14;
+  const motion = useMotionEnabled();
+  const badgeVisible = badge != null && badge !== '' && badge !== 0;
+
+  const visualOpacity = useSharedValue(disabled ? 0.45 : 1);
+  const badgeScale = useSharedValue(badgeVisible ? 1 : 0);
+
+  useEffect(() => {
+    if (!motion) {
+      visualOpacity.value = disabled ? 0.45 : 1;
+      return;
+    }
+    visualOpacity.value = withTiming(disabled ? 0.45 : 1, {
+      duration: MOTION.normal,
+    });
+  }, [disabled, motion, visualOpacity]);
+
+  useEffect(() => {
+    if (!motion) {
+      badgeScale.value = badgeVisible ? 1 : 0;
+      return;
+    }
+    if (badgeVisible) {
+      badgeScale.value = 1.28;
+      badgeScale.value = withSpring(1, { damping: 14, stiffness: 260 });
+    } else {
+      badgeScale.value = withTiming(0, { duration: MOTION.fast });
+    }
+  }, [badgeVisible, badge, motion, badgeScale]);
+
+  const btnAnimStyle = useAnimatedStyle(() => ({
+    opacity: motion ? visualOpacity.value : disabled ? 0.45 : 1,
+  }));
+
+  const badgeAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: badgeScale.value }],
+    opacity: badgeScale.value,
+  }));
 
   return (
     <View ref={wrapRef} style={[styles.wrap, style]} collapsable={false}>
@@ -154,6 +198,7 @@ export function IconTooltipButton({
         label={label}
         anchorRef={wrapRef}
       />
+      <Animated.View style={btnAnimStyle}>
       <Pressable
         style={({ pressed }) => [
           styles.btn,
@@ -165,7 +210,6 @@ export function IconTooltipButton({
             borderRadius: btnRadius,
           },
           variantStyles[variant],
-          disabled && styles.disabled,
           pressed && !disabled && styles.pressed,
         ]}
         onPress={() => {
@@ -191,12 +235,13 @@ export function IconTooltipButton({
         ) : (
           <Ionicons name={icon as IonName} size={iconSz} color={iconColors[variant]} />
         )}
-        {badge != null && badge !== '' && badge !== 0 ? (
-          <View style={styles.badge}>
+        {badgeVisible ? (
+          <Animated.View style={[styles.badge, badgeAnimStyle]}>
             <Text style={styles.badgeText}>{badge}</Text>
-          </View>
+          </Animated.View>
         ) : null}
       </Pressable>
+      </Animated.View>
     </View>
   );
 }
@@ -253,7 +298,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   pressed: { opacity: 0.85 },
-  disabled: { opacity: 0.45 },
   badge: {
     position: 'absolute',
     top: 2,

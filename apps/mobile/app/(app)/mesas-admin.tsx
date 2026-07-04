@@ -1,7 +1,6 @@
 import { colors } from '../../src/lib/theme';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   FlatList,
   StyleSheet,
@@ -11,6 +10,7 @@ import {
 } from 'react-native';
 import { ActionIconBar, type ActionIconItem } from '../../src/components/ActionIconBar';
 import { FormModal } from '../../src/components/FormModal';
+import { ScreenLoading } from '../../src/components/ScreenLoading';
 import { WeekdayChips } from '../../src/components/WeekdayChips';
 import { useAuth } from '../../src/context/AuthContext';
 import { useResponsive, gridItemWidth } from '../../src/hooks/useResponsive';
@@ -24,6 +24,9 @@ import {
 } from '../../src/lib/weekday-visibility';
 import { api } from '../../src/lib/api';
 import { confirmAppDialog, showNotice } from '../../src/lib/app-dialog';
+import { manejarErrorAccion, manejarErrorOperacion } from '../../src/lib/recurso-disponible';
+import { useMesasVirtuales } from '../../src/hooks/useMesasVirtuales';
+import { useScreenScrollPadding } from '../../src/hooks/useScreenScrollPadding';
 import {
   avisarSiEnteroInvalido,
   avisarSiFaltanObligatorios,
@@ -133,7 +136,9 @@ function MesaAdminCard({
 
 export default function MesasAdminScreen() {
   const { token } = useAuth();
+  const mv = useMesasVirtuales();
   const r = useResponsive();
+  const listBottomPad = useScreenScrollPadding();
   const [rows, setRows] = useState<MesaAdmin[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<'crear' | 'editar' | null>(null);
@@ -157,7 +162,7 @@ export default function MesasAdminScreen() {
       try {
         await load();
       } catch (e) {
-        Alert.alert('Error', e instanceof Error ? e.message : String(e));
+        await manejarErrorAccion(e, 'cargar las mesas');
       } finally {
         setLoading(false);
       }
@@ -173,11 +178,10 @@ export default function MesasAdminScreen() {
       });
       await load();
     } catch (e) {
-      await showNotice(
-        'No se pudo actualizar',
-        e instanceof Error ? e.message : String(e),
-        'warning',
-      );
+      await manejarErrorOperacion(e, {
+        title: 'No se pudo actualizar',
+        message: 'Revisa si la mesa tiene pedidos activos.',
+      });
     }
   }
 
@@ -230,11 +234,10 @@ export default function MesasAdminScreen() {
       closeModal();
       await load();
     } catch (e) {
-      await showNotice(
-        modal === 'crear' ? 'No se pudo crear' : 'No se pudo actualizar',
-        e instanceof Error ? e.message : String(e),
-        'warning',
-      );
+      await manejarErrorOperacion(e, {
+        title: modal === 'crear' ? 'No se pudo crear' : 'No se pudo actualizar',
+        message: 'Revisa el número y los pedidos activos.',
+      });
     } finally {
       setSaving(false);
     }
@@ -253,20 +256,15 @@ export default function MesasAdminScreen() {
       });
       await load();
     } catch (e) {
-      await showNotice(
-        'No se pudo eliminar',
-        e instanceof Error ? e.message : String(e),
-        'warning',
-      );
+      await manejarErrorOperacion(e, {
+        title: 'No se pudo eliminar',
+        message: 'Solo se eliminan mesas sin historial de pedidos.',
+      });
     }
   }
 
   if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
+    return <ScreenLoading />;
   }
 
   return (
@@ -284,16 +282,14 @@ export default function MesasAdminScreen() {
         }
         contentContainerStyle={[
           styles.pad,
-          { paddingHorizontal: r.contentPadding, paddingBottom: 32 },
+          { paddingHorizontal: r.contentPadding, paddingBottom: listBottomPad },
         ]}
         ListHeaderComponent={
           <>
             <Text style={[styles.intro, formStyles.adminIntro]}>
-              Activa o desactiva cada mesa por día de la semana (zona horaria del API:
-              Bogotá). La grilla solo muestra mesas habilitadas para el día actual.
-              Las mesas 98 y 99 son del sistema: no se desactivan, renumeran ni eliminan.
-              Si una mesa tiene pedidos activos, no podrás desactivarla hoy ni cambiar su
-              número. Solo se eliminan mesas sin historial de pedidos.
+              Mesas por día (Bogotá). {mv.resueltas.numero_mesa_para_llevar} y{' '}
+              {mv.resueltas.numero_mesa_mostrador} son del sistema. No elimines
+              mesas con historial.
             </Text>
             <ActionIconBar
               style={formStyles.screenActions}
@@ -345,7 +341,10 @@ export default function MesasAdminScreen() {
         title={modal === 'editar' ? 'Cambiar número' : 'Nueva mesa'}
         onClose={closeModal}
       >
-        <Text style={formStyles.label}>Número (no usar 98 ni 99)</Text>
+        <Text style={formStyles.label}>
+          Número (no usar {mv.resueltas.numero_mesa_para_llevar} ni{' '}
+          {mv.resueltas.numero_mesa_mostrador})
+        </Text>
         <TextInput
           style={[formStyles.input, formStyles.inputNarrow]}
           value={numeroStr}

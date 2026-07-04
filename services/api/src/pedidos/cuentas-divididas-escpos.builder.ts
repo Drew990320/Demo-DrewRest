@@ -5,6 +5,7 @@ import {
   DEFAULT_ESC_POS_WIDTH,
   formatCopEscPos,
   lineaConPrecio,
+  printEncabezadoLaReserva,
 } from './escpos-utils';
 import { etiquetaMesaComanda } from './comanda-ticket';
 
@@ -22,10 +23,7 @@ export async function buildCuentasDivididasEscPos(
   const w = charWidth;
   const sep = '-'.repeat(w);
 
-  await printer.alignCenter();
-  await printer.bold(true);
-  await printer.println('LA RESERVA');
-  await printer.bold(false);
+  await printEncabezadoLaReserva(printer);
   await printer.println('CUENTAS DIVIDIDAS');
   await printer.println(ticket.fecha);
   await printer.drawLine();

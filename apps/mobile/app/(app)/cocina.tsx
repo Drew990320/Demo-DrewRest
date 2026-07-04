@@ -1,50 +1,51 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
 import { ActionIconBar } from '../../src/components/ActionIconBar';
+import { EmptyState } from '../../src/components/EmptyState';
 import { IconTooltipButton } from '../../src/components/IconTooltipButton';
+import { ScreenScroll } from '../../src/components/ScreenScroll';
+import { ScreenLoading } from '../../src/components/ScreenLoading';
 import { api } from '../../src/lib/api';
 import { PedidoIcon, NavIcon, AdminIcon } from '../../src/lib/app-icons';
 import { alertarSiSinPapel } from '../../src/lib/alarma-impresora';
 import { showBriefNotice, showNotice } from '../../src/lib/app-dialog';
-import { appShadow } from '../../src/lib/shadow';
+import { manejarErrorAccion, manejarErrorOperacion } from '../../src/lib/recurso-disponible';
 import { tituloLugarMesa } from '../../src/lib/mesa-label';
+import { colors, status } from '../../src/lib/theme';
 import {
   agruparLineasCocinaVisibles,
   agruparPlatosPendientes,
-  normalizarPedidoCocinaView,
+  conteoPorTipoEnCocina,
+  etiquetaTipoLineaCocina,
   ordenarPedidosCocinaPorLlegada,
   pedidoActivoEnCocina,
   porcionesVisiblesEnCocina,
+  textoResumenTiposCocina,
+  tipoLineaCocina,
   type PedidoCocinaView,
+  type TipoLineaCocina,
 } from '../../src/lib/cocina-pedido-view';
+import { notaCocinaVisibleUsuario } from '../../src/lib/nota-cocina-ui';
 import { puedeVerCocina } from '../../src/hooks/usePuedeTomarPedidos';
 import { useResponsive } from '../../src/hooks/useResponsive';
 import { joinPedidoRooms, subscribeCocinaFaltaPlato } from '../../src/lib/pedido-sync';
 import { useRefetchOnSync } from '../../src/hooks/useRefetchOnSync';
-import { colors } from '../../src/lib/theme';
+import {
+  getCachedCocinaQueue,
+  loadCocinaQueue,
+} from '../../src/lib/cocina-queue-store';
 
 type CocinaResponse = {
   pedidos: PedidoCocinaView[];
 };
-
-function parseCocinaPayload(
-  raw: CocinaResponse | PedidoCocinaView[],
-): PedidoCocinaView[] {
-  return (Array.isArray(raw) ? raw : (raw.pedidos ?? [])).map(
-    normalizarPedidoCocinaView,
-  );
-}
 
 function nombreMeseroCorto(p: PedidoCocinaView): string {
   const m = p.mesero;
@@ -56,16 +57,61 @@ function nombreMeseroCorto(p: PedidoCocinaView): string {
   return `${nombre} ${apellido.charAt(0)}.`;
 }
 
+const TIPO_LINEA_UI: Record<
+  TipoLineaCocina,
+  {
+    qtyBg: string;
+    chipBg: string;
+    chipBorder: string;
+    badgeBg: string;
+    badgeText: string;
+  }
+> = {
+  plato: {
+    qtyBg: colors.primary,
+    chipBg: colors.backgroundAlt,
+    chipBorder: colors.borderLight,
+    badgeBg: colors.primaryLight,
+    badgeText: colors.primaryDark,
+  },
+  entrada: {
+    qtyBg: colors.cocina,
+    chipBg: colors.secondaryLight,
+    chipBorder: colors.secondary,
+    badgeBg: colors.secondaryLight,
+    badgeText: colors.secondaryDark,
+  },
+  adicional: {
+    qtyBg: colors.info,
+    chipBg: colors.infoLight,
+    chipBorder: colors.infoBorder,
+    badgeBg: colors.infoLight,
+    badgeText: colors.infoText,
+  },
+  mazorca: {
+    qtyBg: colors.warningDark,
+    chipBg: colors.warningLight,
+    chipBorder: colors.warningBorder,
+    badgeBg: colors.warningLight,
+    badgeText: colors.warningText,
+  },
+  sopa: {
+    qtyBg: colors.cocina,
+    chipBg: colors.secondaryLight,
+    chipBorder: colors.secondary,
+    badgeBg: colors.secondaryLight,
+    badgeText: colors.secondaryDark,
+  },
+};
+
 export default function CocinaScreen() {
   const { token, user, logout } = useAuth();
   const router = useRouter();
   const r = useResponsive();
-  const insets = useSafeAreaInsets();
   const puedeVer = puedeVerCocina(user?.rol);
   const [items, setItems] = useState<PedidoCocinaView[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [llamandoId, setLlamandoId] = useState<number | null>(null);
   const [reimprimiendoId, setReimprimiendoId] = useState<number | null>(null);
   const [listoBusyKey, setListoBusyKey] = useState<string | null>(null);
 
@@ -74,11 +120,17 @@ export default function CocinaScreen() {
       setItems([]);
       return;
     }
-    const raw = await api<CocinaResponse | PedidoCocinaView[]>('/pedidos/cocina', {
-      token,
-      cacheKey: user?.id != null ? `pedidos_cocina_u${user.id}` : 'pedidos_cocina',
-    });
-    setItems(parseCocinaPayload(raw));
+    const cached = getCachedCocinaQueue();
+    if (cached) {
+      setItems(cached);
+    }
+    const items = await loadCocinaQueue(() =>
+      api<CocinaResponse | PedidoCocinaView[]>('/pedidos/cocina', {
+        token,
+        cacheKey: user?.id != null ? `pedidos_cocina_u${user.id}` : 'pedidos_cocina',
+      }),
+    );
+    setItems(items);
   }, [token, user?.id, puedeVer]);
 
   useEffect(() => {
@@ -90,6 +142,11 @@ export default function CocinaScreen() {
     (async () => {
       try {
         await load();
+      } catch (e) {
+        await manejarErrorOperacion(e, {
+          title: 'Cocina',
+          message: 'No se pudo cargar la cola de cocina.',
+        });
       } finally {
         setLoading(false);
       }
@@ -111,32 +168,28 @@ export default function CocinaScreen() {
     });
   }, [load, puedeVer]);
 
-  useRefetchOnSync(load, { enabled: puedeVer, source: 'pedido' });
+  useRefetchOnSync(
+    async () => {
+      try {
+        await load();
+      } catch {
+        /* sincronización en segundo plano */
+      }
+    },
+    { enabled: puedeVer, source: 'pedido' },
+  );
 
   async function onRefresh() {
     setRefreshing(true);
     try {
       await load();
+    } catch (e) {
+      await manejarErrorOperacion(e, {
+        title: 'Cocina',
+        message: 'No se pudo actualizar la cola de cocina.',
+      });
     } finally {
       setRefreshing(false);
-    }
-  }
-
-  async function llamarMesero(idPedido: number) {
-    setLlamandoId(idPedido);
-    try {
-      await api(`/pedidos/${idPedido}/llamar-mesero`, {
-        method: 'POST',
-        token,
-      });
-      await load();
-    } catch (e) {
-      Alert.alert(
-        'Error',
-        e instanceof Error ? e.message : 'No se pudo llamar al mesero',
-      );
-    } finally {
-      setLlamandoId(null);
     }
   }
 
@@ -155,11 +208,10 @@ export default function CocinaScreen() {
       );
       await load();
     } catch (e) {
-      await showBriefNotice(
-        'Cocina',
-        e instanceof Error ? e.message : 'No se pudo actualizar',
-        'error',
-      );
+      await manejarErrorOperacion(e, {
+        title: 'Cocina',
+        message: 'No se pudo actualizar el estado del plato.',
+      });
     } finally {
       setListoBusyKey(null);
     }
@@ -191,11 +243,7 @@ export default function CocinaScreen() {
         imp?.impreso ? 'success' : 'error',
       );
     } catch (e) {
-      await showNotice(
-        'Error',
-        e instanceof Error ? e.message : 'No se pudo reimprimir',
-        'error',
-      );
+      await manejarErrorAccion(e, 'reimprimir la comanda');
     } finally {
       setReimprimiendoId(null);
     }
@@ -221,14 +269,14 @@ export default function CocinaScreen() {
     [resumenPlatos],
   );
 
-  const pedidoPrimeroEnCola = cola[0] ?? null;
+  const conteoTipos = useMemo(() => conteoPorTipoEnCocina(items), [items]);
+  const textoTipos = useMemo(
+    () => textoResumenTiposCocina(conteoTipos),
+    [conteoTipos],
+  );
 
   if (!user || loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
+    return <ScreenLoading />;
   }
 
   if (!puedeVer) {
@@ -253,28 +301,28 @@ export default function CocinaScreen() {
   }
 
   return (
-    <View style={styles.screen}>
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={{
-          paddingBottom: Math.max(insets.bottom, 16) + 96,
-        }}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-      >
+    <ScreenScroll
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+      }
+    >
         <View style={styles.topBar}>
           <Text style={[styles.greeting, { fontSize: r.fontSize.body }]}>
             {user.nombre} · Cocina
           </Text>
-          <IconTooltipButton
-            icon={NavIcon.cerrarSesion}
-            label="Cerrar sesión"
-            variant="danger"
-            onPress={async () => {
-              await logout();
-              router.replace('/(auth)/login');
-            }}
+          <ActionIconBar
+            actions={[
+              {
+                key: 'logout',
+                icon: NavIcon.cerrarSesion,
+                label: 'Cerrar sesión',
+                variant: 'danger',
+                onPress: async () => {
+                  await logout();
+                  router.replace('/(auth)/login');
+                },
+              },
+            ]}
           />
         </View>
 
@@ -282,13 +330,15 @@ export default function CocinaScreen() {
           <View style={styles.resumenMain}>
             <Text style={styles.resumenNum}>{totalPlatos}</Text>
             <View style={styles.resumenHeadText}>
-              <Text style={styles.resumenLabel}>
-                {totalPlatos === 1 ? 'plato en cocina' : 'platos en cocina'}
-              </Text>
-              <Text style={styles.resumenMeta}>
-                {cola.length} {cola.length === 1 ? 'pedido' : 'pedidos'} · orden
-                de llegada
-              </Text>
+            <Text style={styles.resumenLabel}>
+              {totalPlatos === 1 ? 'ítem en cocina' : 'ítems en cocina'}
+            </Text>
+            <Text style={styles.resumenMeta}>
+              {textoTipos || `${totalPlatos} pendientes`}
+              {' · '}
+              {cola.length} {cola.length === 1 ? 'pedido' : 'pedidos'} · orden
+              de llegada
+            </Text>
             </View>
           </View>
         </View>
@@ -305,6 +355,9 @@ export default function CocinaScreen() {
                 >
                   {cola.map((p, idx) => {
                     const porciones = porcionesVisiblesEnCocina(p);
+                    const tiposPedido = textoResumenTiposCocina(
+                      conteoPorTipoEnCocina([p]),
+                    );
                     return (
                       <View
                         key={p.id_pedido}
@@ -325,8 +378,13 @@ export default function CocinaScreen() {
                           {tituloLugarMesa(p.mesa_numero)}
                         </Text>
                         <Text style={styles.mesaColaPorciones}>
-                          {porciones} {porciones === 1 ? 'plato' : 'platos'}
+                          {porciones} {porciones === 1 ? 'ítem' : 'ítems'}
                         </Text>
+                        {tiposPedido ? (
+                          <Text style={styles.mesaColaTipos} numberOfLines={2}>
+                            {tiposPedido}
+                          </Text>
+                        ) : null}
                       </View>
                     );
                   })}
@@ -336,30 +394,68 @@ export default function CocinaScreen() {
 
             {resumenPlatos.length > 0 ? (
               <View style={styles.platosGrid}>
-                {resumenPlatos.map((p) => (
-                  <View key={p.nombre} style={styles.platoChip}>
-                    <View style={styles.platoChipQtyWrap}>
-                      <Text style={styles.platoChipQty}>{p.total}</Text>
+                {resumenPlatos.map((p) => {
+                  const ui = TIPO_LINEA_UI[p.tipo];
+                  return (
+                    <View
+                      key={p.nombre}
+                      style={[
+                        styles.platoChip,
+                        {
+                          backgroundColor: ui.chipBg,
+                          borderColor: ui.chipBorder,
+                        },
+                      ]}
+                    >
+                      <View style={styles.platoChipTopRow}>
+                        <View
+                          style={[
+                            styles.platoChipQtyWrap,
+                            { backgroundColor: ui.qtyBg },
+                          ]}
+                        >
+                          <Text style={styles.platoChipQty}>{p.total}</Text>
+                        </View>
+                        <View
+                          style={[
+                            styles.tipoBadge,
+                            { backgroundColor: ui.badgeBg },
+                          ]}
+                        >
+                          <Text
+                            style={[styles.tipoBadgeText, { color: ui.badgeText }]}
+                          >
+                            {etiquetaTipoLineaCocina(p.tipo)}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={styles.platoChipNombre} numberOfLines={2}>
+                        {p.nombre}
+                      </Text>
+                      <Text style={styles.platoChipMesas} numberOfLines={2}>
+                        {p.mesas.map((m) => tituloLugarMesa(m)).join(' · ')}
+                      </Text>
                     </View>
-                    <Text style={styles.platoChipNombre} numberOfLines={2}>
-                      {p.nombre}
-                    </Text>
-                    <Text style={styles.platoChipMesas} numberOfLines={2}>
-                      {p.mesas.map((m) => tituloLugarMesa(m)).join(' · ')}
-                    </Text>
-                  </View>
-                ))}
+                  );
+                })}
               </View>
             ) : null}
           </View>
         ) : null}
 
         {cola.length === 0 ? (
-          <Text style={styles.empty}>
-            {items.length === 0
-              ? 'Sin pedidos en cocina.'
-              : 'Todo recogido o aún no llegan comandas.'}
-          </Text>
+          <EmptyState
+            title={
+              items.length === 0
+                ? 'Sin pedidos en cocina'
+                : 'Cola vacía por ahora'
+            }
+            message={
+              items.length === 0
+                ? 'Cuando lleguen comandas aparecerán aquí en orden de llegada.'
+                : 'Todo fue recogido o aún no hay comandas nuevas.'
+            }
+          />
         ) : (
           cola.map((p, idx) => {
             const lineas = agruparLineasCocinaVisibles(p.detalles);
@@ -403,26 +499,60 @@ export default function CocinaScreen() {
                     const grupoKey = d.ids_detalle.join('-');
                     const listo = d.listo_para_recoger;
                     const listoParcial = d.listo_para_recoger_parcial;
+                    const tipo = tipoLineaCocina(d);
+                    const ui = TIPO_LINEA_UI[tipo];
+                    const notaVisible = notaCocinaVisibleUsuario(d.nota_cocina);
                     return (
                       <View
                         key={grupoKey}
                         style={[
                           styles.linea,
-                          d.es_acompanamiento_mazorca && styles.lineaMazorca,
+                          tipo === 'mazorca' && styles.lineaMazorca,
                           listo && styles.lineaListo,
                           listoParcial && styles.lineaListoParcial,
+                          !listo &&
+                            !listoParcial &&
+                            tipo !== 'mazorca' && {
+                              backgroundColor: ui.chipBg,
+                              borderRadius: 8,
+                              padding: 8,
+                              borderWidth: 1,
+                              borderColor: ui.chipBorder,
+                            },
                         ]}
                       >
                         <View style={styles.lineaMain}>
-                          <View style={styles.lineaQtyBadge}>
+                          <View
+                            style={[
+                              styles.lineaQtyBadge,
+                              { backgroundColor: ui.qtyBg },
+                            ]}
+                          >
                             <Text style={styles.lineaQtyText}>{d.cantidad}</Text>
                           </View>
                           <View style={styles.lineaBody}>
-                            <Text style={styles.lineaNombre}>
-                              {d.nombre_producto}
-                            </Text>
-                            {d.nota_cocina ? (
-                              <Text style={styles.lineaNota}>↳ {d.nota_cocina}</Text>
+                            <View style={styles.lineaTitleRow}>
+                              <Text style={styles.lineaNombre}>
+                                {d.nombre_producto}
+                              </Text>
+                              <View
+                                style={[
+                                  styles.tipoBadge,
+                                  { backgroundColor: ui.badgeBg },
+                                ]}
+                              >
+                                <Text
+                                  style={[
+                                    styles.tipoBadgeText,
+                                    { color: ui.badgeText },
+                                  ]}
+                                >
+                                  {etiquetaTipoLineaCocina(tipo)}
+                                </Text>
+                              </View>
+                            </View>
+                            {notaVisible ? (
+                              <Text style={styles.lineaNota}>↳ {notaVisible}</Text>
                             ) : null}
                             {d.personalizaciones &&
                             d.personalizaciones.length > 0 ? (
@@ -469,41 +599,7 @@ export default function CocinaScreen() {
             );
           })
         )}
-      </ScrollView>
-
-      {pedidoPrimeroEnCola ? (
-        <View
-          style={[
-            styles.fabAnchor,
-            { bottom: Math.max(insets.bottom, 12) + 8 },
-          ]}
-        >
-          <View style={styles.fabHint}>
-            <Text style={styles.fabHintText} numberOfLines={1}>
-              #1 · {tituloLugarMesa(pedidoPrimeroEnCola.mesa_numero)}
-            </Text>
-          </View>
-          <IconTooltipButton
-            icon={
-              llamandoId === pedidoPrimeroEnCola.id_pedido
-                ? 'hourglass-outline'
-                : 'notifications'
-            }
-            label={
-              llamandoId === pedidoPrimeroEnCola.id_pedido
-                ? 'Avisando al mesero…'
-                : `Avisar mesero · ${tituloLugarMesa(pedidoPrimeroEnCola.mesa_numero)} · ${nombreMeseroCorto(pedidoPrimeroEnCola)}`
-            }
-            variant="cocina"
-            size={28}
-            fixedSize
-            disabled={llamandoId === pedidoPrimeroEnCola.id_pedido}
-            onPress={() => llamarMesero(pedidoPrimeroEnCola.id_pedido)}
-            style={styles.fabBtn}
-          />
-        </View>
-      ) : null}
-    </View>
+    </ScreenScroll>
   );
 }
 
@@ -524,28 +620,31 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   topBar: {
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     marginBottom: 12,
     paddingHorizontal: 4,
+    gap: 8,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    padding: 12,
   },
-  greeting: { color: colors.textMuted, fontWeight: '700', flex: 1 },
+  greeting: { color: colors.textMuted, fontWeight: '600', textAlign: 'center' },
   resumenBar: {
     backgroundColor: colors.primaryDark,
-    borderRadius: 14,
+    borderRadius: 12,
     padding: 14,
     marginBottom: 10,
   },
   resumenPanel: {
     backgroundColor: colors.surface,
-    borderRadius: 14,
+    borderRadius: 12,
     padding: 12,
     marginBottom: 16,
     gap: 12,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
-    ...appShadow('soft'),
   },
   resumenMain: {
     flexDirection: 'row',
@@ -614,13 +713,19 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 2,
   },
+  mesaColaTipos: {
+    color: colors.textHint,
+    fontSize: 10,
+    fontWeight: '600',
+    marginTop: 3,
+    lineHeight: 13,
+  },
   platosGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
   },
   platoChip: {
-    backgroundColor: colors.backgroundAlt,
     borderRadius: 12,
     paddingHorizontal: 10,
     paddingVertical: 10,
@@ -628,18 +733,21 @@ const styles = StyleSheet.create({
     minWidth: 140,
     flexGrow: 1,
     borderWidth: 1,
-    borderColor: colors.borderLight,
+  },
+  platoChipTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 6,
+    marginBottom: 6,
   },
   platoChipQtyWrap: {
-    alignSelf: 'flex-start',
     minWidth: 40,
     height: 40,
     borderRadius: 10,
-    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 8,
-    marginBottom: 6,
   },
   platoChipQty: {
     color: colors.surface,
@@ -660,21 +768,13 @@ const styles = StyleSheet.create({
     marginTop: 4,
     lineHeight: 14,
   },
-  empty: {
-    color: colors.textMuted,
-    textAlign: 'center',
-    fontSize: 15,
-    marginTop: 24,
-    paddingHorizontal: 16,
-  },
   card: {
     backgroundColor: colors.surface,
-    borderRadius: 14,
+    borderRadius: 12,
     padding: 14,
     marginBottom: 12,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
-    ...appShadow('elevated'),
   },
   cardHead: {
     flexDirection: 'row',
@@ -734,6 +834,24 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   lineaBody: { flex: 1, gap: 2, paddingTop: 2 },
+  lineaTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  tipoBadge: {
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    flexShrink: 0,
+  },
+  tipoBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
   lineaListoBtn: { flexShrink: 0, marginTop: 2 },
   lineaMazorca: {
     backgroundColor: colors.warningLight,
@@ -774,30 +892,5 @@ const styles = StyleSheet.create({
   lineaPers: {
     fontSize: 13,
     color: colors.textMuted,
-  },
-  fabAnchor: {
-    position: 'absolute',
-    right: 16,
-    alignItems: 'center',
-    gap: 6,
-  },
-  fabHint: {
-    backgroundColor: colors.surface,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderWidth: 1,
-    borderColor: colors.border,
-    maxWidth: 140,
-    ...appShadow('soft'),
-  },
-  fabHintText: {
-    color: colors.text,
-    fontSize: 12,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  fabBtn: {
-    ...appShadow('elevated'),
   },
 });

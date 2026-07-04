@@ -3,6 +3,7 @@ import {
   MESA_PARA_LLEVAR_NUMERO,
   esMesaVirtualNumero,
   tituloLugarMesa,
+  type MesasVirtualesConfig,
 } from './mesa-label';
 import { pedidoUsaLineaMazorca } from './mazorca-pedido';
 import { categoriaEsBebida, debeMarcarCocina } from './cocina-producto';
@@ -31,8 +32,9 @@ function esMazorca(d: DetalleTransferenciaLike): boolean {
 export function pedidoDebeTenerLineaMazorca(
   mesaNumero: number,
   detalles: DetalleTransferenciaLike[],
+  mazorcaActiva = true,
 ): boolean {
-  if (!pedidoUsaLineaMazorca(mesaNumero)) return false;
+  if (!pedidoUsaLineaMazorca(mesaNumero, mazorcaActiva)) return false;
   return detalles.some((d) => {
     if (!esRaiz(d)) return false;
     if (esMazorca(d) || (d.es_empacable ?? d.esEmpacable)) return false;
@@ -56,19 +58,20 @@ export function validarTransferenciaPedido(input: {
   origen_mesa_numero: number;
   destino_mesa_numero: number;
   destino_libre: boolean;
+  mesas_virtuales?: MesasVirtualesConfig | null;
 }): ResultadoValidacionTransferencia {
-  const { origen_mesa_numero: origen, destino_mesa_numero: destino, destino_libre: libre } =
-    input;
+  const {
+    origen_mesa_numero: origen,
+    destino_mesa_numero: destino,
+    destino_libre: libre,
+    mesas_virtuales: mesasVirtuales,
+  } = input;
 
-  if (esMesaVirtualNumero(origen)) {
+  if (esMesaVirtualNumero(origen, mesasVirtuales)) {
     return { accion: 'rechazar', mensaje: MSG_ORIGEN_VIRTUAL };
   }
 
-  if (
-    destino === MESA_PARA_LLEVAR_NUMERO ||
-    destino === MESA_MOSTRADOR_NUMERO ||
-    esMesaVirtualNumero(destino)
-  ) {
+  if (esMesaVirtualNumero(destino, mesasVirtuales)) {
     return { accion: 'rechazar', mensaje: MSG_DESTINO_VIRTUAL };
   }
 
@@ -81,7 +84,7 @@ export function validarTransferenciaPedido(input: {
 
   return {
     accion: 'mover',
-    mensaje_confirmacion: `¿Mover el pedido a ${tituloLugarMesa(destino)}? La mesa actual quedará libre si no hay más pedidos abiertos.`,
+    mensaje_confirmacion: `¿Mover el pedido a ${tituloLugarMesa(destino, mesasVirtuales)}? La mesa actual quedará libre si no hay más pedidos abiertos.`,
   };
 }
 

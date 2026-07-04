@@ -1,56 +1,45 @@
-import { Ionicons } from '@expo/vector-icons';
+import { useEffect } from 'react';
 import { Redirect, Stack } from 'expo-router';
-import { useRouter } from 'expo-router';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { AnimatedPressable } from '../../src/components/AnimatedPressable';
+import { HeaderHomeTitle } from '../../src/components/HeaderHomeTitle';
 import { MOTION } from '../../src/lib/motion';
 import { useAuth } from '../../src/context/AuthContext';
 import { useNetwork } from '../../src/context/NetworkContext';
+import { useAuthSessionGuard } from '../../src/hooks/useAuthSessionGuard';
 import { useImpresoraAlertas } from '../../src/hooks/useImpresoraAlertas';
 import { usePedidoNotificaciones } from '../../src/hooks/usePedidoNotificaciones';
 import { useBlurFocusOnRouteChange } from '../../src/hooks/useBlurFocusOnRouteChange';
 import { useResponsive } from '../../src/hooks/useResponsive';
-import { API_URL } from '../../src/lib/config';
+import { MENSAJE_SIN_CONEXION } from '../../src/lib/api-error';
+import { ResumenDiarioToolsRailProvider } from '../../src/context/ResumenDiarioToolsRailContext';
 import { NotificationProvider } from '../../src/context/NotificationCenterContext';
-import { NotificationFab } from '../../src/components/NotificationFab';
+import { AppNavFabLayer, AppNavShell } from '../../src/components/AppNavShell';
+import { NotificationHeaderButton } from '../../src/components/NotificationHeaderButton';
+import { LlamarMeseroFab } from '../../src/components/LlamarMeseroFab';
 import { colors } from '../../src/lib/theme';
+import { warmMenuTodayCache } from '../../src/lib/menu-prefetch';
+import { preloadCategoriaMenuIcons } from '../../src/lib/categoria-menu-icon-font';
 
 function PedidoNotificacionesListener() {
   usePedidoNotificaciones();
   return null;
 }
 
-function HeaderHomeTitle({ children }: { children?: string }) {
-  const router = useRouter();
-  const title = (children ?? '').trim();
-
-  return (
-    <View style={styles.headerTitleWrap}>
-      <AnimatedPressable
-        onPress={() => router.replace('/(app)/mesas')}
-        style={styles.homePill}
-        accessibilityRole="button"
-        accessibilityLabel="Ir al inicio (mesas)"
-      >
-        <Ionicons name="home" size={20} color={colors.onPrimary} />
-      </AnimatedPressable>
-      {!!title && title !== 'Mesas' && (
-        <Text numberOfLines={1} style={styles.headerSubTitle}>
-          {title}
-        </Text>
-      )}
-    </View>
-  );
-}
-
 export default function AppGroupLayout() {
   const { token, loading } = useAuth();
   const { online } = useNetwork();
-  const { contentMaxWidth, isWeb } = useResponsive();
+  const { isWeb } = useResponsive();
   useImpresoraAlertas();
+  useAuthSessionGuard();
   useBlurFocusOnRouteChange();
+
+  useEffect(() => {
+    void preloadCategoriaMenuIcons();
+    if (!token) return;
+    void warmMenuTodayCache(token);
+  }, [token]);
 
   if (loading) {
     return (
@@ -65,14 +54,10 @@ export default function AppGroupLayout() {
 
   return (
     <NotificationProvider>
+    <ResumenDiarioToolsRailProvider>
     <PedidoNotificacionesListener />
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.backgroundAlt }} edges={['top']}>
-      <View
-        style={[
-          styles.appFrame,
-          isWeb && contentMaxWidth != null && styles.appFrameWide,
-        ]}
-      >
+      <View style={[styles.appFrame, isWeb && styles.appFrameWide]}>
         {!online && (
           <Animated.View
             entering={FadeInDown.duration(MOTION.normal).springify()}
@@ -80,16 +65,16 @@ export default function AppGroupLayout() {
             style={styles.offlineBanner}
           >
             <Text style={styles.offlineText}>
-              No se puede contactar el servidor en este PC ({API_URL.replace(/^https?:\/\//, '')}).
-              Comprueba que inicio.bat siga abierto y que el celular use la misma Wi‑Fi.
+              {MENSAJE_SIN_CONEXION}
             </Text>
           </Animated.View>
         )}
-        <View
-          style={[
-            styles.appInner,
-            contentMaxWidth != null && { maxWidth: contentMaxWidth },
-          ]}
+        <AppNavShell
+          footer={
+            <AppNavFabLayer>
+              <LlamarMeseroFab />
+            </AppNavFabLayer>
+          }
         >
           <Stack
       screenOptions={{
@@ -102,6 +87,7 @@ export default function AppGroupLayout() {
         headerTitle: (props) => (
           <HeaderHomeTitle>{String(props.children ?? '')}</HeaderHomeTitle>
         ),
+        headerRight: () => <NotificationHeaderButton />,
         headerShadowVisible: false,
       }}
     >
@@ -139,19 +125,34 @@ export default function AppGroupLayout() {
         options={{ title: 'Categorías (admin)' }}
       />
       <Stack.Screen name="mesas-admin" options={{ title: 'Mesas (admin)' }} />
+      <Stack.Screen
+        name="configuracion"
+        options={{ title: 'Configuración' }}
+      />
+      <Stack.Screen
+        name="conexion-movil"
+        options={{ title: 'Conexión móvil' }}
+      />
+      <Stack.Screen
+        name="permisos"
+        options={{ title: 'Permisos meseros' }}
+      />
+      <Stack.Screen
+        name="meseros-operativos"
+        options={{ title: 'Meseros (turno)' }}
+      />
           </Stack>
-        </View>
-        <NotificationFab />
+        </AppNavShell>
       </View>
     </SafeAreaView>
+    </ResumenDiarioToolsRailProvider>
     </NotificationProvider>
   );
 }
 
 const styles = StyleSheet.create({
   appFrame: { flex: 1, width: '100%' },
-  appFrameWide: { alignItems: 'center' },
-  appInner: { flex: 1, width: '100%' },
+  appFrameWide: { alignItems: 'stretch' },
   offlineBanner: {
     backgroundColor: colors.offline,
     paddingHorizontal: 12,
@@ -159,12 +160,4 @@ const styles = StyleSheet.create({
   },
   offlineText: { color: colors.onDark, fontSize: 13, fontWeight: '600', textAlign: 'center' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  headerTitleWrap: { alignItems: 'center', justifyContent: 'center' },
-  homePill: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: colors.primary,
-  },
-  headerSubTitle: { marginTop: 4, color: colors.textMuted, fontWeight: '700', fontSize: 12 },
 });

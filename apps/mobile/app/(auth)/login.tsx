@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import {
-  Alert,
   Image,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -13,12 +13,13 @@ import { useRouter } from 'expo-router';
 import { ActionIconBar } from '../../src/components/ActionIconBar';
 import { useAuth } from '../../src/context/AuthContext';
 import { useFormShell } from '../../src/hooks/useFormShell';
+import { useResponsive } from '../../src/hooks/useResponsive';
 import { AdminIcon } from '../../src/lib/app-icons';
 import { showNotice } from '../../src/lib/app-dialog';
 import {
   avisarSiFaltanObligatorios,
 } from '../../src/lib/form-validation';
-import { appShadow } from '../../src/lib/shadow';
+import { manejarErrorOperacion } from '../../src/lib/recurso-disponible';
 import { colors } from '../../src/lib/theme';
 
 const logo = require('../../assets/logo.png');
@@ -27,6 +28,7 @@ export default function LoginScreen() {
   const { login } = useAuth();
   const router = useRouter();
   const formShell = useFormShell('centered');
+  const { isCompact } = useResponsive();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -48,7 +50,10 @@ export default function LoginScreen() {
       await login(email.trim(), password);
       router.replace('/(app)/mesas');
     } catch (e) {
-      Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo iniciar sesión');
+      await manejarErrorOperacion(e, {
+        title: 'No se pudo iniciar sesión',
+        message: 'Revisa tu correo y contraseña e intenta de nuevo.',
+      });
     } finally {
       setBusy(false);
     }
@@ -59,11 +64,16 @@ export default function LoginScreen() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        bounces={false}
+      >
       <View style={[styles.card, formShell]}>
         <View style={styles.logoWrap}>
           <Image
             source={logo}
-            style={styles.logo}
+            style={isCompact ? styles.logoCompact : styles.logo}
             resizeMode="contain"
             accessibilityLabel="La Reserva"
           />
@@ -100,6 +110,7 @@ export default function LoginScreen() {
           ]}
         />
       </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -107,18 +118,20 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: colors.background,
+  },
+  scrollContent: {
+    flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
-    backgroundColor: colors.background,
   },
   card: {
     backgroundColor: colors.surface,
-    borderRadius: 20,
+    borderRadius: 16,
     padding: 20,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
-    ...appShadow('login'),
   },
   logoWrap: {
     alignItems: 'center',
@@ -132,8 +145,12 @@ const styles = StyleSheet.create({
     width: 280,
     height: 200,
   },
+  logoCompact: {
+    width: 220,
+    height: 150,
+  },
   badge: {
-    alignSelf: 'flex-start',
+    alignSelf: 'center',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 999,
@@ -143,7 +160,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 6,
   },
-  sub: { fontSize: 15, color: colors.textMuted, marginBottom: 22 },
+  sub: {
+    fontSize: 15,
+    color: colors.textMuted,
+    marginBottom: 22,
+    textAlign: 'center',
+  },
   input: {
     borderWidth: 1,
     borderColor: colors.borderInput,

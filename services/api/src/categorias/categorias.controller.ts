@@ -5,12 +5,14 @@ import {
   Param,
   ParseIntPipe,
   Patch,
+  Post,
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { CategoriasService } from './categorias.service';
+import { CreateCategoriaDto } from './dto/create-categoria.dto';
 import { UpdateCategoriaDto } from './dto/update-categoria.dto';
 
 @Controller('categorias')
@@ -22,6 +24,11 @@ export class CategoriasController {
   @Get('admin')
   listarAdmin() {
     return this.categorias.listarTodasAdmin();
+  }
+
+  @Post('admin')
+  crear(@Body() dto: CreateCategoriaDto) {
+    return this.categorias.crear(dto);
   }
 
   @Patch('admin/:id')

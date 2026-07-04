@@ -5,6 +5,7 @@ import {
   crearLineaMazorcaInicial,
   esDetalleMazorcaAcompanamiento,
   idProductoMazorcaAcompanamiento,
+  invalidateMazorcaProductIdCache,
   NOMBRE_PRODUCTO_MAZORCA,
   pedidoUsaLineaMazorca,
   sincronizarLineaMazorcaAcompanamiento,
@@ -48,9 +49,17 @@ function mockTx(
 }
 
 describe('mazorca-linea-pedido', () => {
+  beforeEach(() => {
+    invalidateMazorcaProductIdCache();
+  });
+
   describe('pedidoUsaLineaMazorca', () => {
     it('usa línea de mazorca en mesas normales', () => {
       expect(pedidoUsaLineaMazorca(5)).toBe(true);
+    });
+
+    it('no usa línea si mazorca está desactivada en configuración', () => {
+      expect(pedidoUsaLineaMazorca(5, false)).toBe(false);
     });
 
     it('no usa línea de mazorca en mesa para llevar (98)', () => {
@@ -74,12 +83,13 @@ describe('mazorca-linea-pedido', () => {
   });
 
   describe('idProductoMazorcaAcompanamiento', () => {
-    it('resuelve el id del producto activo por nombre', async () => {
+    it('resuelve el id del producto marcado como acompañamiento', async () => {
       const { tx, producto } = mockTx();
       const id = await idProductoMazorcaAcompanamiento(tx);
       expect(id).toBe(MAZORCA_ID);
       expect(producto.findFirst).toHaveBeenCalledWith({
-        where: { nombre: NOMBRE_PRODUCTO_MAZORCA, activo: true },
+        where: { esAcompanamientoMazorca: true, activo: true },
+        orderBy: { idProducto: 'asc' },
         select: { idProducto: true },
       });
     });

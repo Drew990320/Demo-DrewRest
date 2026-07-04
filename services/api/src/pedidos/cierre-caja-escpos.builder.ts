@@ -11,6 +11,7 @@ import {
   formatCopEscPos,
 
   lineaConPrecio,
+  printEncabezadoLaReserva,
 
 } from './escpos-utils';
 
@@ -34,13 +35,7 @@ export async function buildCierreCajaEscPos(
 
 
 
-  await printer.alignCenter();
-
-  await printer.bold(true);
-
-  await printer.println('LA RESERVA');
-
-  await printer.bold(false);
+  await printEncabezadoLaReserva(printer);
 
   await printer.println('CIERRE DE CAJA');
 
@@ -118,6 +113,28 @@ export async function buildCierreCajaEscPos(
 
   );
 
+  if ((ticket.total_entradas_manual ?? 0) > 0) {
+    await printer.println(
+      lineaConPrecio(
+        'Entradas caja',
+        formatCopEscPos(ticket.total_entradas_manual ?? 0),
+        w,
+      ),
+    );
+  }
+
+  if ((ticket.subtotal_entradas_caja ?? 0) > 0) {
+    await printer.bold(true);
+    await printer.println(
+      lineaConPrecio(
+        'Total entradas',
+        formatCopEscPos(ticket.subtotal_entradas_caja ?? 0),
+        w,
+      ),
+    );
+    await printer.bold(false);
+  }
+
   await printer.println(
 
     lineaConPrecio(
@@ -131,6 +148,65 @@ export async function buildCierreCajaEscPos(
     ),
 
   );
+
+  if ((ticket.total_pagos_meseros ?? 0) > 0) {
+    await printer.println(
+      lineaConPrecio(
+        'Pagos meseros',
+        formatCopEscPos(-(ticket.total_pagos_meseros ?? 0)),
+        w,
+      ),
+    );
+  }
+
+  if ((ticket.total_salidas_manual ?? 0) > 0) {
+    await printer.println(
+      lineaConPrecio(
+        'Salidas caja',
+        formatCopEscPos(-(ticket.total_salidas_manual ?? 0)),
+        w,
+      ),
+    );
+  }
+  if ((ticket.total_devoluciones_efectivo ?? 0) > 0) {
+    await printer.println(
+      lineaConPrecio(
+        'Devol. efectivo',
+        formatCopEscPos(-(ticket.total_devoluciones_efectivo ?? 0)),
+        w,
+      ),
+    );
+  }
+  if ((ticket.total_pagos_domicilio ?? 0) > 0) {
+    await printer.println(
+      lineaConPrecio(
+        'Domicilios',
+        formatCopEscPos(-(ticket.total_pagos_domicilio ?? 0)),
+        w,
+      ),
+    );
+  }
+  if ((ticket.total_pagos_mesero_exceso ?? 0) > 0) {
+    await printer.println(
+      lineaConPrecio(
+        'Mesero (exceso)',
+        formatCopEscPos(-(ticket.total_pagos_mesero_exceso ?? 0)),
+        w,
+      ),
+    );
+  }
+
+  if ((ticket.subtotal_salidas_caja ?? 0) > 0) {
+    await printer.bold(true);
+    await printer.println(
+      lineaConPrecio(
+        'Total salidas',
+        formatCopEscPos(-(ticket.subtotal_salidas_caja ?? 0)),
+        w,
+      ),
+    );
+    await printer.bold(false);
+  }
 
   await printer.println(sep);
 
@@ -188,13 +264,7 @@ export async function buildBaseCajaEscPos(
 
 
 
-  await printer.alignCenter();
-
-  await printer.bold(true);
-
-  await printer.println('LA RESERVA');
-
-  await printer.bold(false);
+  await printEncabezadoLaReserva(printer);
 
   await printer.println('CAJA INICIAL');
 

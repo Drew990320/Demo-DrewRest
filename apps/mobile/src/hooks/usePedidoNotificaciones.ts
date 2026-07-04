@@ -4,11 +4,14 @@ import { showBriefNotice } from '../lib/app-dialog';
 import { tituloLugarMesa } from '../lib/mesa-label';
 import {
   mensajeCocinaLlamaMesero,
-  resumenLineasAgregadas,
   subscribeCocinaLlamaMesero,
   subscribeCompaneroAgregoItems,
   tituloCocinaLlamaMesero,
 } from '../lib/pedido-sync';
+import {
+  mensajeCompaneroModificoPedido,
+  tituloCompaneroModificoPedido,
+} from '@la-reserva/shared-domain/companero-pedido';
 import { puedeVerMisPedidos } from './usePuedeTomarPedidos';
 
 /** Un solo listener de avisos de cocina / compañeros para toda la app (evita duplicados por pantalla). */
@@ -35,10 +38,17 @@ export function usePedidoNotificaciones() {
 
     const unsubCompanero = subscribeCompaneroAgregoItems((payload) => {
       if (payload.idMeseroDueno !== idMesero) return;
+      const accion = payload.accion ?? 'agregado';
       void showBriefNotice(
-        'Tu mesa fue actualizada',
-        `${payload.meseroQuienAgregoNombre} agregó ${resumenLineasAgregadas(payload.lineas)} en ${tituloLugarMesa(payload.mesaNumero)} · pedido #${payload.pedidoId}`,
-        'info',
+        tituloCompaneroModificoPedido(accion),
+        mensajeCompaneroModificoPedido(
+          accion,
+          payload.meseroQuienAgregoNombre,
+          payload.lineas,
+          tituloLugarMesa(payload.mesaNumero),
+          payload.pedidoId,
+        ),
+        accion === 'quitado' ? 'warning' : 'info',
       );
     });
 

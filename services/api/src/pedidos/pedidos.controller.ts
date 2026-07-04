@@ -24,13 +24,24 @@ import { PedidosService } from './pedidos.service';
 import { CreatePedidoDto } from './dto/create-pedido.dto';
 import { AddDetalleDto } from './dto/add-detalle.dto';
 import { FacturarDto } from './dto/facturar.dto';
+import { FacturarMixtoDto } from './dto/facturar-mixto.dto';
+import { OmitirCuotaPlanDto } from './dto/omitir-cuota-plan.dto';
 import { ImprimirPrecuentaDto } from './dto/imprimir-precuenta.dto';
+import { ImprimirResumenSeleccionDto } from './dto/imprimir-resumen-seleccion.dto';
 import { UpsertCajaDiariaDto } from './dto/caja-diaria.dto';
+import { CrearMovimientoCajaDto } from './dto/crear-movimiento-caja.dto';
+import { VaciarResumenDiarioDto } from './dto/vaciar-resumen-diario.dto';
 import { UpsertConfigDescuentosDto } from './dto/upsert-config-descuentos.dto';
+import { UpsertConfigOperativaDto } from './dto/upsert-config-operativa.dto';
 import { PatchClienteMuleroDto } from './dto/patch-cliente-mulero.dto';
 import { PatchMazorcasPedidoDto } from './dto/patch-mazorcas-pedido.dto';
 import { PatchEstadoDto } from './dto/patch-estado.dto';
 import { TransferirPedidoDto } from './dto/transferir.dto';
+import { CerrarAnulandoPendienteDto } from './dto/cerrar-anulando-pendiente.dto';
+import { CancelarReabiertosDto } from './dto/cancelar-reabiertos.dto';
+import { ReabrirCobroDto } from './dto/reabrir-cobro.dto';
+import { RevertirTandaCobroDto } from './dto/revertir-tanda-cobro.dto';
+import { EnviarFacturaCorreoDto } from './dto/enviar-factura-correo.dto';
 import { PatchDetalleCocinaDto } from './dto/patch-detalle-cocina.dto';
 import { PatchListoParaRecogerDto } from './dto/patch-listo-para-recoger.dto';
 import { FaltaEnCocinaDto } from './dto/falta-en-cocina.dto';
@@ -98,6 +109,16 @@ export class PedidosController {
     @Req() req: Request & { user: Usuario & { rol: { nombre: string } } },
   ) {
     return this.pedidos.listarMisActivosResumen(req.user);
+  }
+
+  @SkipThrottle()
+  @Get('pendientes-cobro/resumen')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  listarPendientesCobroResumen(
+    @Req() req: Request & { user: Usuario & { rol: { nombre: string } } },
+  ) {
+    return this.pedidos.listarPendientesCobroResumen(req.user);
   }
 
   @SkipThrottle()
@@ -180,6 +201,28 @@ export class PedidosController {
     return this.pedidos.resumenDiario(fecha);
   }
 
+  @Post('resumen-diario/vaciar')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  vaciarResumenDiario(
+    @Body() dto: VaciarResumenDiarioDto,
+    @Query('fecha') fecha: string | undefined,
+    @Req() req: Request & { user: Usuario & { rol: { nombre: string } } },
+  ) {
+    return this.pedidos.vaciarResumenDiario(req.user, dto, fecha);
+  }
+
+  @Post('resumen-diario/cancelar-reabiertos')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  cancelarPedidosReabiertos(
+    @Body() dto: CancelarReabiertosDto,
+    @Query('fecha') fecha: string | undefined,
+    @Req() req: Request & { user: Usuario & { rol: { nombre: string } } },
+  ) {
+    return this.pedidos.cancelarPedidosReabiertos(req.user, dto, fecha);
+  }
+
   @Post('resumen-diario/imprimir-completo')
   @UseGuards(RolesGuard)
   @Roles('admin')
@@ -192,6 +235,16 @@ export class PedidosController {
   @Roles('admin')
   imprimirResumenTotal(@Query('fecha') fecha?: string) {
     return this.pedidos.imprimirResumenDiarioTotal(fecha);
+  }
+
+  @Post('resumen-diario/imprimir-seleccion')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  imprimirResumenSeleccion(
+    @Body() dto: ImprimirResumenSeleccionDto,
+    @Query('fecha') fecha?: string,
+  ) {
+    return this.pedidos.imprimirResumenDiarioSeleccion(dto, fecha);
   }
 
   @SkipThrottle()
@@ -211,6 +264,26 @@ export class PedidosController {
     return this.pedidos.upsertCajaDiaria(dto);
   }
 
+  @Post('movimientos-caja')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  crearMovimientoCaja(
+    @Body() dto: CrearMovimientoCajaDto,
+    @Req() req: { user: { idUsuario: number; rol: { nombre: string } } },
+  ) {
+    return this.pedidos.registrarMovimientoCajaManual(req.user, dto);
+  }
+
+  @Delete('movimientos-caja/:id')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  eliminarMovimientoCaja(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: { user: { idUsuario: number; rol: { nombre: string } } },
+  ) {
+    return this.pedidos.eliminarMovimientoCaja(req.user, id);
+  }
+
   @SkipThrottle()
   @Get('config-descuentos')
   configDescuentos() {
@@ -224,7 +297,22 @@ export class PedidosController {
     return this.pedidos.upsertConfigDescuentos(dto);
   }
 
+  @SkipThrottle()
+  @Get('config-operativa')
+  configOperativa() {
+    return this.pedidos.getConfigOperativa();
+  }
+
+  @Put('config-operativa')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  upsertConfigOperativa(@Body() dto: UpsertConfigOperativaDto) {
+    return this.pedidos.upsertConfigOperativa(dto);
+  }
+
   @Patch(':id/cliente-mulero')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'mesero')
   setClienteMulero(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: PatchClienteMuleroDto,
@@ -296,12 +384,12 @@ export class PedidosController {
   actualizarCantidadDetalle(
     @Param('idDetalle', ParseIntPipe) idDetalle: number,
     @Body() dto: PatchDetalleCantidadDto,
-    @Req() req: Request & { user: Usuario },
+    @Req() req: Request & { user: Usuario & { rol: { nombre: string } } },
   ) {
     return this.pedidos.actualizarCantidadDetalle(
       idDetalle,
       dto,
-      req.user.idUsuario,
+      req.user,
     );
   }
 
@@ -310,9 +398,9 @@ export class PedidosController {
   @Roles('admin', 'mesero')
   eliminarDetalle(
     @Param('idDetalle', ParseIntPipe) idDetalle: number,
-    @Req() req: Request & { user: Usuario },
+    @Req() req: Request & { user: Usuario & { rol: { nombre: string } } },
   ) {
-    return this.pedidos.eliminarDetalle(idDetalle, req.user.idUsuario);
+    return this.pedidos.eliminarDetalle(idDetalle, req.user);
   }
 
   @SkipThrottle()
@@ -333,30 +421,55 @@ export class PedidosController {
   agregarDetalle(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: AddDetalleDto,
-    @Req() req: Request & { user: Usuario },
+    @Req() req: Request & { user: Usuario & { rol: { nombre: string } } },
   ) {
-    return this.pedidos.agregarDetalle(id, dto, req.user.idUsuario);
+    return this.pedidos.agregarDetalle(id, dto, req.user);
   }
 
   /** Imprime comanda de cocina (solo platos, sin precios) y marca líneas enviadas. */
   @Post(':id/pasar-cocina')
   @UseGuards(RolesGuard)
   @Roles('admin', 'mesero')
-  pasarCocina(@Param('id', ParseIntPipe) id: number) {
-    return this.pedidos.pasarCocina(id);
+  pasarCocina(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: Request & { user: Usuario & { rol: { nombre: string } } },
+  ) {
+    return this.pedidos.pasarCocina(id, req.user);
   }
 
   @Post(':id/reimprimir-comanda')
   @UseGuards(RolesGuard)
   @Roles('admin', 'mesero', 'chef')
-  reimprimirComanda(@Param('id', ParseIntPipe) id: number) {
-    return this.pedidos.reimprimirComanda(id);
+  reimprimirComanda(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: Request & { user: Usuario & { rol: { nombre: string } } },
+  ) {
+    return this.pedidos.reimprimirComanda(id, req.user);
+  }
+
+  @Post(':id/enviar-factura-correo')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'mesero')
+  enviarFacturaCorreo(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: EnviarFacturaCorreoDto,
+    @Req() req: Request & { user: Usuario & { rol: { nombre: string } } },
+  ) {
+    return this.pedidos.enviarFacturaCorreo(
+      id,
+      dto.id_factura,
+      dto.email,
+      req.user,
+    );
   }
 
   @Post(':id/reimprimir-factura')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'mesero')
   reimprimirFactura(
     @Param('id', ParseIntPipe) id: number,
-    @Query('id_factura') idFactura?: string,
+    @Query('id_factura') idFactura: string | undefined,
+    @Req() req: Request & { user: Usuario & { rol: { nombre: string } } },
   ) {
     const idF =
       idFactura != null && idFactura !== ''
@@ -365,6 +478,7 @@ export class PedidosController {
     return this.pedidos.reimprimirFactura(
       id,
       idF != null && Number.isFinite(idF) ? idF : undefined,
+      req.user,
     );
   }
 
@@ -381,8 +495,9 @@ export class PedidosController {
   imprimirPrecuenta(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: ImprimirPrecuentaDto,
+    @Req() req: Request & { user: Usuario & { rol: { nombre: string } } },
   ) {
-    return this.pedidos.imprimirPrecuenta(id, dto);
+    return this.pedidos.imprimirPrecuenta(id, dto, req.user);
   }
 
   @Post(':id/facturar')
@@ -396,12 +511,87 @@ export class PedidosController {
     return this.pedidos.facturar(id, dto, req.user);
   }
 
+  @Post(':id/facturar-mixto')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'mesero')
+  facturarMixto(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: FacturarMixtoDto,
+    @Req() req: Request & { user: Usuario & { rol: { nombre: string } } },
+  ) {
+    return this.pedidos.facturarMixto(id, dto, req.user);
+  }
+
+  @Post(':id/plan/omitir-cuota')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'mesero')
+  omitirCuotaPlan(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: OmitirCuotaPlanDto,
+    @Req() req: Request & { user: Usuario & { rol: { nombre: string } } },
+  ) {
+    return this.pedidos.omitirCuotaPlan(id, dto, req.user);
+  }
+
+  /**
+   * Reparte el saldo pendiente (reparto personas/combinado) en platos enteros
+   * para cobrar por platos; el remanente sigue como saldo pendiente.
+   */
+  @Post(':id/plan/reconciliar-saldo-platos')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'mesero')
+  reconciliarSaldoAPlatos(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: Request & { user: Usuario & { rol: { nombre: string } } },
+  ) {
+    return this.pedidos.reconciliarSaldoAPlatos(id, req.user);
+  }
+
   /** Cancela el pedido (si no está facturado) y libera la mesa. */
   @Post(':id/cancelar')
   @UseGuards(RolesGuard)
   @Roles('admin', 'mesero')
-  cancelar(@Param('id', ParseIntPipe) id: number) {
-    return this.pedidos.cancelar(id);
+  cancelar(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: Request & { user: Usuario & { rol: { nombre: string } } },
+  ) {
+    return this.pedidos.cancelar(id, req.user);
+  }
+
+  /** Cierra mesa con cobros parciales: anula líneas pendientes y libera la mesa. Admin o mesero delegado del día. */
+  @Post(':id/cerrar-anulando-pendiente')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'mesero')
+  cerrarAnulandoPendiente(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CerrarAnulandoPendienteDto,
+    @Req() req: Request & { user: Usuario & { rol: { nombre: string } } },
+  ) {
+    return this.pedidos.cerrarAnulandoPendiente(id, dto, req.user);
+  }
+
+  /** Anula cobros del pedido y lo reabre para corregir y volver a facturar. Solo admin. */
+  @Post(':id/reabrir-cobro')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  reabrirCobro(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ReabrirCobroDto,
+    @Req() req: Request & { user: Usuario & { rol: { nombre: string } } },
+  ) {
+    return this.pedidos.reabrirCobro(id, dto, req.user);
+  }
+
+  /** Anula una sola tanda (factura o grupo mixto). Conserva el resto de cobros. Solo admin. */
+  @Post(':id/revertir-tanda-cobro')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  revertirTandaCobro(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: RevertirTandaCobroDto,
+    @Req() req: Request & { user: Usuario & { rol: { nombre: string } } },
+  ) {
+    return this.pedidos.revertirTandaCobro(id, dto, req.user);
   }
 
   /** Transfiere el pedido a otra mesa libre y libera la anterior. */
@@ -411,11 +601,14 @@ export class PedidosController {
   transferir(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: TransferirPedidoDto,
+    @Req() req: Request & { user: Usuario & { rol: { nombre: string } } },
   ) {
-    return this.pedidos.transferir(id, dto);
+    return this.pedidos.transferir(id, dto, req.user);
   }
 
   @Patch(':id/estado')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
   estado(@Param('id', ParseIntPipe) id: number, @Body() dto: PatchEstadoDto) {
     return this.pedidos.cambiarEstado(id, dto.estado);
   }

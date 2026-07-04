@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   Pressable,
   ScrollView,
@@ -13,16 +12,21 @@ import {
 import { ActionIconBar } from '../../src/components/ActionIconBar';
 import { FormModal } from '../../src/components/FormModal';
 import { MoneyTextInput } from '../../src/components/MoneyTextInput';
+import { ScreenLoading } from '../../src/components/ScreenLoading';
 import { useAuth } from '../../src/context/AuthContext';
 import { IconTooltipButton } from '../../src/components/IconTooltipButton';
 import { AccionIcon, AdminIcon } from '../../src/lib/app-icons';
 import { formStyles } from '../../src/lib/form-layout';
 import { api } from '../../src/lib/api';
-import { digitsFromMonto, parseCOPDigits } from '../../src/lib/cop-input';
+import { digitsFromMonto, parseCOPDigits, sanitizeMontoDigitos } from '../../src/lib/cop-input';
 import { showAppDialog, showNotice } from '../../src/lib/app-dialog';
+import { manejarErrorAccion, manejarErrorOperacion } from '../../src/lib/recurso-disponible';
 import { colors } from '../../src/lib/theme';
+import { flagsProductoMenuPorCategoria } from '../../src/lib/empaque-para-llevar';
+import { ProductoPersonalizacionesPanel } from '../../src/components/ProductoPersonalizacionesPanel';
+import { useScreenScrollPadding } from '../../src/hooks/useScreenScrollPadding';
 
-type Categoria = { id_categoria: number; nombre: string };
+type Categoria = { id_categoria: number; nombre: string; es_bebida?: boolean };
 
 type ProductoRow = {
   id_producto: number;
@@ -34,8 +38,21 @@ type ProductoRow = {
   activo: boolean;
   es_plato_principal: boolean;
   es_empacable: boolean;
+  es_acompanamiento_mazorca: boolean;
   tipo_proteina: string;
+  es_bebida?: boolean;
+  control_stock?: boolean;
+  stock_disponible?: number;
+  ocultar_sin_stock?: boolean;
 };
+
+const TIPOS_PROTEINA = [
+  'ninguno',
+  'pollo',
+  'res',
+  'cerdo',
+  'otro',
+] as const;
 
 export default function MenuAdminScreen() {
   const { token } = useAuth();
@@ -46,6 +63,7 @@ export default function MenuAdminScreen() {
   /** Si no es null, el modal está en modo edición de ese producto. */
   const [editProduct, setEditProduct] = useState<ProductoRow | null>(null);
   const [saving, setSaving] = useState(false);
+  const listBottomPad = useScreenScrollPadding();
 
   const [idCat, setIdCat] = useState<number | null>(null);
   const [nombre, setNombre] = useState('');
@@ -53,10 +71,99 @@ export default function MenuAdminScreen() {
   const [desc, setDesc] = useState('');
   const [platoPrincipal, setPlatoPrincipal] = useState(false);
   const [empacable, setEmpacable] = useState(false);
+  const [mazorcaAcompanamiento, setMazorcaAcompanamiento] = useState(false);
+  const [tipoProteina, setTipoProteina] =
+    useState<(typeof TIPOS_PROTEINA)[number]>('ninguno');
+  const [controlStock, setControlStock] = useState(false);
+  const [stockDigits, setStockDigits] = useState('');
+  const [ocultarSinStock, setOcultarSinStock] = useState(true);
+
+  const categoriaSeleccionada = categorias.find((c) => c.id_categoria === idCat);
+  const esCategoriaBebida =
+    categoriaSeleccionada?.es_bebida ??
+    Boolean(
+      editProduct?.es_bebida ??
+      /bebida/i.test(categoriaSeleccionada?.nombre ?? ''),
+    );
+  const sugeridoCategoria = categoriaSeleccionada
+    ? flagsProductoMenuPorCategoria(categoriaSeleccionada.nombre)
+    : null;
+
+  function seleccionarCategoria(id: number) {
+    setIdCat(id);
+    const cat = categorias.find((c) => c.id_categoria === id);
+    if (!cat) return;
+    if (editProduct) return;
+    const sugerido = flagsProductoMenuPorCategoria(cat.nombre);
+    setPlatoPrincipal(sugerido.es_plato_principal);
+    setEmpacable(sugerido.es_empacable);
+  }
+
+  async function patchFlagsProducto(
+    p: ProductoRow,
+    patch: Partial<
+      Pick<
+        ProductoRow,
+        'es_plato_principal' | 'es_empacable' | 'es_acompanamiento_mazorca' | 'tipo_proteina'
+      >
+    >,
+  ) {
+    await api(`/productos/${p.id_producto}`, {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify(patch),
+    });
+    await load();
+    setEditProduct((prev) =>
+      prev?.id_producto === p.id_producto ? { ...prev, ...patch } : prev,
+    );
+  }
+
+  async function onPlatoPrincipalChange(value: boolean) {
+    setPlatoPrincipal(value);
+    if (editProduct) {
+      try {
+        await patchFlagsProducto(editProduct, { es_plato_principal: value });
+      } catch (e) {
+        setPlatoPrincipal(!value);
+        await manejarErrorAccion(e, 'guardar el cambio');
+      }
+    }
+  }
+
+  async function onEmpacableChange(value: boolean) {
+    setEmpacable(value);
+    if (value) setPlatoPrincipal(false);
+    if (editProduct) {
+      try {
+        await patchFlagsProducto(editProduct, {
+          es_empacable: value,
+          es_plato_principal: value ? false : editProduct.es_plato_principal,
+        });
+      } catch (e) {
+        setEmpacable(!value);
+        await manejarErrorAccion(e, 'guardar el cambio');
+      }
+    }
+  }
+
+  async function onMazorcaChange(value: boolean) {
+    setMazorcaAcompanamiento(value);
+    if (editProduct) {
+      try {
+        await patchFlagsProducto(editProduct, {
+          es_acompanamiento_mazorca: value,
+        });
+      } catch (e) {
+        setMazorcaAcompanamiento(!value);
+        await manejarErrorAccion(e, 'guardar el cambio');
+      }
+    }
+  }
 
   const load = useCallback(async () => {
     const [cats, prods] = await Promise.all([
-      api<Categoria[]>('/productos/categorias', { token }),
+      api<Categoria[]>('/categorias/admin', { token }),
       api<ProductoRow[]>('/productos?incluir_inactivos=true', { token }),
     ]);
     setCategorias(cats);
@@ -68,7 +175,7 @@ export default function MenuAdminScreen() {
       try {
         await load();
       } catch (e) {
-        await showNotice('Error', e instanceof Error ? e.message : String(e), 'error');
+        await manejarErrorAccion(e, 'cargar el menú de administración');
       } finally {
         setLoading(false);
       }
@@ -101,11 +208,7 @@ export default function MenuAdminScreen() {
             try {
               await setProductoActivo(p, false);
             } catch (e) {
-              await showNotice(
-                'Error',
-                e instanceof Error ? e.message : String(e),
-                'error',
-              );
+              await manejarErrorAccion(e, 'ocultar el producto');
             }
           },
         },
@@ -117,18 +220,27 @@ export default function MenuAdminScreen() {
     try {
       await setProductoActivo(p, true);
     } catch (e) {
-      await showNotice('Error', e instanceof Error ? e.message : String(e), 'error');
+      await manejarErrorAccion(e, 'restaurar el producto');
     }
   }
 
   function openNew() {
     setEditProduct(null);
-    setIdCat(categorias[0]?.id_categoria ?? null);
+    const first = categorias[0]?.id_categoria ?? null;
     setNombre('');
     setPrecioStr('');
     setDesc('');
-    setPlatoPrincipal(false);
-    setEmpacable(false);
+    if (first != null) seleccionarCategoria(first);
+    else {
+      setIdCat(null);
+      setPlatoPrincipal(false);
+      setEmpacable(false);
+      setMazorcaAcompanamiento(false);
+      setTipoProteina('ninguno');
+    }
+    setControlStock(false);
+    setStockDigits('');
+    setOcultarSinStock(true);
     setModal(true);
   }
 
@@ -140,6 +252,15 @@ export default function MenuAdminScreen() {
     setDesc(p.descripcion ?? '');
     setPlatoPrincipal(p.es_plato_principal);
     setEmpacable(p.es_empacable);
+    setMazorcaAcompanamiento(p.es_acompanamiento_mazorca);
+    setTipoProteina(
+      (TIPOS_PROTEINA.includes(p.tipo_proteina as (typeof TIPOS_PROTEINA)[number])
+        ? p.tipo_proteina
+        : 'ninguno') as (typeof TIPOS_PROTEINA)[number],
+    );
+    setControlStock(Boolean(p.control_stock));
+    setStockDigits(digitsFromMonto(p.stock_disponible ?? 0));
+    setOcultarSinStock(p.ocultar_sin_stock !== false);
     setModal(true);
   }
 
@@ -177,37 +298,44 @@ export default function MenuAdminScreen() {
     }
     setSaving(true);
     try {
+      const payload: Record<string, unknown> = {
+        id_categoria: idCat,
+        nombre: nombre.trim(),
+        precio,
+        descripcion: desc.trim() || null,
+        es_plato_principal: platoPrincipal,
+        es_empacable: empacable,
+        es_acompanamiento_mazorca: mazorcaAcompanamiento,
+        tipo_proteina: tipoProteina,
+      };
+      if (esCategoriaBebida) {
+        const stock = Math.max(0, parseCOPDigits(stockDigits));
+        Object.assign(payload, {
+          control_stock: controlStock,
+          stock_disponible: stock,
+          ocultar_sin_stock: ocultarSinStock,
+        });
+      }
       if (editProduct) {
         await api(`/productos/${editProduct.id_producto}`, {
           method: 'PATCH',
           token,
-          body: JSON.stringify({
-            id_categoria: idCat,
-            nombre: nombre.trim(),
-            precio,
-            descripcion: desc.trim() || null,
-            es_plato_principal: platoPrincipal,
-            es_empacable: empacable,
-          }),
+          body: JSON.stringify(payload),
         });
       } else {
         await api('/productos', {
           method: 'POST',
           token,
           body: JSON.stringify({
-            id_categoria: idCat,
-            nombre: nombre.trim(),
-            precio,
+            ...payload,
             descripcion: desc.trim() || undefined,
-            es_plato_principal: platoPrincipal,
-            es_empacable: empacable,
           }),
         });
       }
       closeModal();
       await load();
     } catch (e) {
-      await showNotice('Error', e instanceof Error ? e.message : String(e), 'error');
+      await manejarErrorAccion(e, 'guardar el producto');
     } finally {
       setSaving(false);
     }
@@ -218,11 +346,7 @@ export default function MenuAdminScreen() {
   }
 
   if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
+    return <ScreenLoading />;
   }
 
   return (
@@ -240,13 +364,12 @@ export default function MenuAdminScreen() {
         ]}
       />
       <Text style={[styles.hint, formStyles.adminIntro]}>
-        Las categorías y sus días se gestionan en Categorías (admin). Aquí puedes crear
-        ítems, cambiar precio y datos con Editar, u ocultar del menú visible.
+        Precios, datos y visibilidad del menú. Categorías y días en Categorías.
       </Text>
       <FlatList
         data={productos}
         keyExtractor={(item) => String(item.id_producto)}
-        contentContainerStyle={styles.listPad}
+        contentContainerStyle={[styles.listPad, { paddingBottom: listBottomPad }]}
         ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
         renderItem={({ item }) => (
           <View
@@ -258,6 +381,15 @@ export default function MenuAdminScreen() {
                 <Text style={styles.cardMeta}>
                   {item.categoria_nombre} · $
                   {Math.round(item.precio).toLocaleString('es-CO')}
+                  {item.es_plato_principal ? ' · plato principal' : ''}
+                  {item.es_empacable ? ' · línea empaque' : ''}
+                  {item.es_acompanamiento_mazorca ? ' · mazorca' : ''}
+                  {item.tipo_proteina !== 'ninguno'
+                    ? ` · ${item.tipo_proteina}`
+                    : ''}
+                  {item.control_stock
+                    ? ` · stock ${item.stock_disponible ?? 0}`
+                    : ''}
                   {!productoVisible(item) ? ' · oculto' : ''}
                 </Text>
               </View>
@@ -297,8 +429,31 @@ export default function MenuAdminScreen() {
         title={editProduct ? 'Editar producto' : 'Nuevo producto'}
         onClose={closeModal}
         scroll
+        footer={
+          <ActionIconBar
+            style={formStyles.modalActionBar}
+            actions={[
+              {
+                key: 'cancel',
+                icon: AdminIcon.cancelar,
+                label: 'Cancelar',
+                variant: 'secondary',
+                disabled: saving,
+                onPress: closeModal,
+              },
+              {
+                key: 'save',
+                icon: saving ? 'hourglass-outline' : AccionIcon.guardar,
+                label: saving ? 'Guardando…' : 'Guardar',
+                variant: 'primary',
+                disabled: saving,
+                onPress: onSave,
+              },
+            ]}
+          />
+        }
       >
-        <Text style={formStyles.label}>Categoría</Text>
+        <Text style={[formStyles.label, styles.modalLabel]}>Categoría</Text>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -307,7 +462,7 @@ export default function MenuAdminScreen() {
           {categorias.map((c) => (
             <Pressable
               key={c.id_categoria}
-              onPress={() => setIdCat(c.id_categoria)}
+              onPress={() => seleccionarCategoria(c.id_categoria)}
               style={[
                 styles.chip,
                 idCat === c.id_categoria && styles.chipOn,
@@ -325,35 +480,122 @@ export default function MenuAdminScreen() {
             </Pressable>
           ))}
         </ScrollView>
-        <Text style={formStyles.label}>Nombre</Text>
+        <Text style={[formStyles.label, styles.modalLabel]}>Nombre</Text>
         <TextInput
-          style={formStyles.input}
+          style={[formStyles.input, styles.modalInput]}
           value={nombre}
           onChangeText={setNombre}
           placeholder="Ej. Pechuga a la plancha"
         />
-        <Text style={formStyles.label}>Precio</Text>
+        <Text style={[formStyles.label, styles.modalLabel]}>Precio</Text>
         <MoneyTextInput
-          style={[formStyles.input, formStyles.inputNarrow]}
+          style={[formStyles.input, formStyles.inputNarrow, styles.modalInput]}
           digits={precioStr}
           onChangeDigits={setPrecioStr}
           placeholderAmount={28000}
         />
-        <Text style={formStyles.label}>Descripción (opcional)</Text>
+        <Text style={[formStyles.label, styles.modalLabel]}>Descripción (opcional)</Text>
         <TextInput
-          style={[formStyles.input, formStyles.inputMultiline]}
+          style={[formStyles.input, styles.modalInput, styles.modalInputMultiline]}
           value={desc}
           onChangeText={setDesc}
           multiline
         />
         <View style={styles.rowSwitch}>
-          <Text style={styles.switchLabel}>Plato principal</Text>
-          <Switch value={platoPrincipal} onValueChange={setPlatoPrincipal} />
+          <View style={styles.switchTextCol}>
+            <Text style={styles.switchLabel}>Plato principal</Text>
+            <Text style={styles.switchHint}>
+              Cocina, camionero y empaque para llevar.
+            </Text>
+          </View>
+          <Switch
+            value={platoPrincipal}
+            onValueChange={onPlatoPrincipalChange}
+            disabled={empacable}
+          />
         </View>
         <View style={styles.rowSwitch}>
-          <Text style={styles.switchLabel}>Empacable</Text>
-          <Switch value={empacable} onValueChange={setEmpacable} />
+          <View style={styles.switchTextCol}>
+            <Text style={styles.switchLabel}>Línea de empaque</Text>
+            <Text style={styles.switchHint}>Empaque automático en para llevar.</Text>
+          </View>
+          <Switch value={empacable} onValueChange={onEmpacableChange} />
         </View>
+        <View style={styles.rowSwitch}>
+          <View style={styles.switchTextCol}>
+            <Text style={styles.switchLabel}>Acompañamiento mazorca</Text>
+            <Text style={styles.switchHint}>Se agrega por comensal en mesas.</Text>
+          </View>
+          <Switch
+            value={mazorcaAcompanamiento}
+            onValueChange={onMazorcaChange}
+          />
+        </View>
+        <Text style={[formStyles.label, styles.modalLabel]}>Tipo de proteína (cocina)</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.catScroll}
+        >
+          {TIPOS_PROTEINA.map((t) => (
+            <Pressable
+              key={t}
+              onPress={() => setTipoProteina(t)}
+              style={[styles.chip, tipoProteina === t && styles.chipOn]}
+            >
+              <Text
+                style={[
+                  styles.chipText,
+                  tipoProteina === t && styles.chipTextOn,
+                ]}
+              >
+                {t}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+        {esCategoriaBebida ? (
+          <>
+            <View style={styles.rowSwitch}>
+              <View style={styles.switchTextCol}>
+                <Text style={styles.switchLabel}>Controlar stock</Text>
+                <Text style={styles.switchHint}>Límite de unidades por día.</Text>
+              </View>
+              <Switch value={controlStock} onValueChange={setControlStock} />
+            </View>
+            {controlStock ? (
+              <>
+                <Text style={[formStyles.label, styles.modalLabel]}>Unidades disponibles</Text>
+                <TextInput
+                  style={formStyles.input}
+                  keyboardType="number-pad"
+                  value={stockDigits}
+                  onChangeText={(t) =>
+                    setStockDigits(sanitizeMontoDigitos(t).slice(0, 4))
+                  }
+                  placeholder="0"
+                />
+                <View style={styles.rowSwitch}>
+                  <View style={styles.switchTextCol}>
+                    <Text style={styles.switchLabel}>Ocultar al agotarse</Text>
+                    <Text style={styles.switchHint}>Si está apagado, se ve como agotado.</Text>
+                  </View>
+                  <Switch
+                    value={ocultarSinStock}
+                    onValueChange={setOcultarSinStock}
+                  />
+                </View>
+              </>
+            ) : null}
+          </>
+        ) : null}
+        <Text style={styles.flagsNote}>
+          {editProduct
+            ? 'Los cambios de flags se guardan al instante al editar, o con Guardar al crear.'
+            : sugeridoCategoria
+              ? 'Se sugiere según la categoría; ajusta antes de guardar.'
+              : 'Elige categoría para ver sugerencias.'}
+        </Text>
         {editProduct ? (
           <View style={styles.modalVisibilityRow}>
             <Text style={styles.modalVisibilityLabel}>Visibilidad en el menú</Text>
@@ -378,27 +620,9 @@ export default function MenuAdminScreen() {
             </View>
           </View>
         ) : null}
-        <ActionIconBar
-          style={formStyles.modalActionBar}
-          actions={[
-            {
-              key: 'cancel',
-              icon: AdminIcon.cancelar,
-              label: 'Cancelar',
-              variant: 'secondary',
-              disabled: saving,
-              onPress: closeModal,
-            },
-            {
-              key: 'save',
-              icon: saving ? 'hourglass-outline' : AccionIcon.guardar,
-              label: saving ? 'Guardando…' : 'Guardar',
-              variant: 'primary',
-              disabled: saving,
-              onPress: onSave,
-            },
-          ]}
-        />
+        {editProduct ? (
+          <ProductoPersonalizacionesPanel idProducto={editProduct.id_producto} />
+        ) : null}
       </FormModal>
     </View>
   );
@@ -441,18 +665,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 16,
-    paddingTop: 12,
+    marginTop: 8,
+    paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
   modalVisibilityLabel: { fontWeight: '600', color: colors.text, flex: 1 },
   modalVisibilityActions: { flexDirection: 'row', gap: 8 },
-  catScroll: { maxHeight: 88, marginBottom: 4 },
+  modalLabel: { marginBottom: 2 },
+  modalInput: { marginBottom: 6, paddingVertical: 8 },
+  modalInputMultiline: { minHeight: 44, maxHeight: 72 },
+  catScroll: { maxHeight: 72, marginBottom: 2 },
   chip: {
     marginRight: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
     borderRadius: 10,
     backgroundColor: colors.surface,
     borderWidth: 1,
@@ -466,7 +693,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 8,
+    marginTop: 6,
+    gap: 10,
   },
+  switchTextCol: { flex: 1, minWidth: 0 },
   switchLabel: { fontWeight: '600', color: colors.text },
+  switchHint: {
+    marginTop: 2,
+    fontSize: 11,
+    lineHeight: 15,
+    color: colors.textMuted,
+  },
+  flagsNote: {
+    marginTop: 4,
+    marginBottom: 4,
+    fontSize: 11,
+    color: colors.textMuted,
+    fontStyle: 'italic',
+  },
 });

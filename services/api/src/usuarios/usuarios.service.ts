@@ -6,6 +6,8 @@ import {
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
+import { invalidateAuthUser } from '../auth/auth-user-cache';
+import { PedidosGateway } from '../pedidos/pedidos.gateway';
 import { CreateMeseroDto } from './dto/create-mesero.dto';
 import { PatchUsuarioDto } from './dto/patch-usuario.dto';
 import { emailMeseroDesdeNombre } from './email-mesero';
@@ -16,7 +18,10 @@ const PEDIDOS_ABIERTOS = ['abierto', 'en_cocina'] as const;
 
 @Injectable()
 export class UsuariosService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly gateway: PedidosGateway,
+  ) {}
 
   async listar() {
     const rows = await this.prisma.usuario.findMany({
@@ -145,6 +150,21 @@ export class UsuariosService {
       data,
       include: { rol: true },
     });
+    invalidateAuthUser(idUsuario);
+    if (dto.activo === false) {
+      this.gateway.emitAuthSesionInvalidada(
+        idUsuario,
+        'desactivado',
+        'Un administrador desactivó tu acceso.',
+      );
+    }
+    if (dto.password?.trim()) {
+      this.gateway.emitAuthSesionInvalidada(
+        idUsuario,
+        'credenciales',
+        'Tu contraseña fue actualizada. Inicia sesión de nuevo.',
+      );
+    }
     return this.mapOne(u);
   }
 

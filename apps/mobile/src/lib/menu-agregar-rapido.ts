@@ -1,14 +1,54 @@
 /** Producto del menú con opciones mínimas para personalización. */
 export type ProductoMenuAgregarRapido = {
   opciones: { tipo: string }[];
+  es_plato_principal?: boolean;
 };
+
+const OMITIR = ['Sin yuca', 'Sin papa', 'Sin ensalada', 'Sin mazorca'] as const;
+const ADEREZOS = ['Chipotle', 'Agridulce', 'Chimichurri'] as const;
+
+export function categoriaPermitePersonalizacion(nombreCategoria: string): boolean {
+  const n = nombreCategoria.toLowerCase();
+  return (
+    n.startsWith('platos fuertes') ||
+    n.includes('infantil') ||
+    n.includes('compartir') ||
+    n.includes('picada')
+  );
+}
 
 export function productoTieneOpcionesPersonalizacion(
   producto: ProductoMenuAgregarRapido,
+  categoriaNombre?: string,
 ): boolean {
-  return producto.opciones.some(
-    (o) => o.tipo === 'omitir_ingrediente' || o.tipo === 'aderezo',
-  );
+  if (
+    producto.opciones.some(
+      (o) => o.tipo === 'omitir_ingrediente' || o.tipo === 'aderezo',
+    )
+  ) {
+    return true;
+  }
+  if (categoriaNombre && categoriaPermitePersonalizacion(categoriaNombre)) {
+    return true;
+  }
+  return producto.es_plato_principal === true;
+}
+
+/** Opciones estándar cuando el catálogo aún no tiene filas en BD (modo local / reparación). */
+export function opcionesPersonalizacionEstandar(): {
+  tipo: 'omitir_ingrediente' | 'aderezo';
+  descripcion: string;
+}[] {
+  return [
+    ...OMITIR.map((descripcion) => ({
+      tipo: 'omitir_ingrediente' as const,
+      descripcion,
+    })),
+    ...ADEREZOS.map((descripcion) => ({
+      tipo: 'aderezo' as const,
+      descripcion,
+    })),
+  ];
 }
 
 export function parseColaPersonalizarMenu(

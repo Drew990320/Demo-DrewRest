@@ -4,8 +4,12 @@
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
+$LaReservaRoot = Join-Path $RepoRoot "LaReserva\LaReserva"
+if (-not (Test-Path (Join-Path $LaReservaRoot "inicio.bat"))) {
+  $LaReservaRoot = Join-Path $RepoRoot "LaReserva"
+}
 $ApiSrc = Join-Path $RepoRoot "services\api"
-$ApiDst = Join-Path $RepoRoot "LaReserva\api"
+$ApiDst = Join-Path $LaReservaRoot "api"
 $SharedSrc = Join-Path $RepoRoot "packages\shared-domain"
 $VendorDst = Join-Path $ApiDst "vendor\shared-domain"
 $MainJs = Join-Path $ApiSrc "dist\main.js"
@@ -41,11 +45,31 @@ Remove-Item -Path (Join-Path $ApiDst "prisma") -Recurse -Force -ErrorAction Sile
 Copy-Item -Path (Join-Path $ApiSrc "dist") -Destination (Join-Path $ApiDst "dist") -Recurse -Force
 Copy-Item -Path (Join-Path $ApiSrc "prisma") -Destination (Join-Path $ApiDst "prisma") -Recurse -Force
 
+$assetsSrc = Join-Path $ApiSrc "assets"
+if (Test-Path $assetsSrc) {
+  Copy-Item -Path $assetsSrc -Destination (Join-Path $ApiDst "assets") -Recurse -Force
+  $distAssets = Join-Path $ApiDst "dist\assets"
+  New-Item -ItemType Directory -Force -Path $distAssets | Out-Null
+  Copy-Item -Path (Join-Path $assetsSrc "*") -Destination $distAssets -Recurse -Force
+}
+
+$runForever = Join-Path $ApiSrc "run-forever.js"
+if (Test-Path $runForever) {
+  Copy-Item -Path $runForever -Destination (Join-Path $ApiDst "run-forever.js") -Force
+}
+
 $bootstrapSrc = Join-Path $RepoRoot "scripts\bootstrap-inicial-api.js"
 if (Test-Path $bootstrapSrc) {
   $dstScripts = Join-Path $ApiDst "scripts"
   New-Item -ItemType Directory -Force -Path $dstScripts | Out-Null
   Copy-Item -Path $bootstrapSrc -Destination (Join-Path $dstScripts "bootstrap-inicial.js") -Force
+}
+
+$licenseScriptsSrc = Join-Path $ApiSrc "scripts\license"
+if (Test-Path $licenseScriptsSrc) {
+  $dstLicense = Join-Path $ApiDst "scripts\license"
+  New-Item -ItemType Directory -Force -Path $dstLicense | Out-Null
+  Copy-Item -Path (Join-Path $licenseScriptsSrc "*") -Destination $dstLicense -Force
 }
 
 function Write-Utf8NoBom {

@@ -35,7 +35,14 @@ type PedidoRow = {
   detalles: DetalleRow[];
 };
 
-export function idProductoMazorcaLocal(productos: ProductoRow[]): number | undefined {
+export function idProductoMazorcaLocal(
+  productos: ProductoRow[],
+  idConfigurado?: number | null,
+): number | undefined {
+  if (idConfigurado != null) {
+    const cfg = productos.find((p) => p.id_producto === idConfigurado);
+    if (cfg) return cfg.id_producto;
+  }
   return productos.find(
     (p) =>
       p.es_acompanamiento_mazorca ||
@@ -52,9 +59,10 @@ export function crearLineaMazorcaInicialLocal(
   mesaNumero: number,
   productoId: number,
   nextDetalleId: () => number,
+  mazorcaActiva = true,
 ): void {
   const cantidad = cantidadLineaMazorcaInicial({
-    usa_linea_mazorca: pedidoUsaLineaMazorca(mesaNumero),
+    usa_linea_mazorca: pedidoUsaLineaMazorca(mesaNumero, mazorcaActiva),
     ya_tiene_linea: lineasMazorca(pedido, productoId).length > 0,
     num_comensales: pedido.num_comensales,
   });
@@ -79,11 +87,14 @@ export function sincronizarLineaMazorcaLocal(
   productoId: number | undefined,
   nextDetalleId: () => number,
   usaLineaMazorca?: boolean,
+  mazorcaActiva = true,
 ): string | null {
   if (productoId == null) return null;
   const lineas = lineasMazorca(pedido, productoId);
   const plan = planificarSyncMazorca({
-    usa_linea_mazorca: usaLineaMazorca ?? pedidoUsaLineaMazorca(mesaNumero),
+    usa_linea_mazorca:
+      usaLineaMazorca ??
+      pedidoUsaLineaMazorca(mesaNumero, mazorcaActiva),
     num_comensales: pedido.num_comensales,
     lineas: lineas.map((l) => ({
       id_detalle: l.id_detalle,

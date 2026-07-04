@@ -3,6 +3,7 @@ import {
   bufferFromPrinter,
   createEscPosPrinter,
   DEFAULT_ESC_POS_WIDTH,
+  printEncabezadoLaReserva,
   wrapEscPos,
 } from './escpos-utils';
 
@@ -15,10 +16,7 @@ export async function buildComandaEscPos(
   const w = charWidth;
   const sep = '-'.repeat(w);
 
-  await printer.alignCenter();
-  await printer.bold(true);
-  await printer.println('LA RESERVA');
-  await printer.bold(false);
+  await printEncabezadoLaReserva(printer);
   await printer.println('COMANDA COCINA');
   if (ticket.es_adicional) {
     await printer.bold(true);
@@ -40,7 +38,9 @@ export async function buildComandaEscPos(
   await printer.bold(false);
   await printer.println(`Pedido #${ticket.id_pedido}`);
   await printer.println(`Comensales: ${ticket.num_comensales}`);
-  await printer.println(`Mesero: ${ticket.mesero}`);
+  if (ticket.mesero?.trim()) {
+    await printer.println(`Mesero: ${ticket.mesero}`);
+  }
   if (ticket.modo_servicio === 'para_llevar') {
     await printer.bold(true);
     await printer.println('*** PARA LLEVAR ***');
@@ -73,8 +73,6 @@ export async function buildComandaEscPos(
   }
 
   await printer.println(sep);
-  await printer.alignCenter();
-  await printer.println('--- fin comanda ---');
   await printer.cut();
 
   return bufferFromPrinter(printer);

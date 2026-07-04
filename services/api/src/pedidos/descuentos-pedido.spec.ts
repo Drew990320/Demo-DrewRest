@@ -9,6 +9,7 @@ const configBase = {
   sopas_monto_por_unidad: 5000,
   muleros_activo: true,
   muleros_monto_por_plato_principal: 3000,
+  umbral_subtotal_otros: UMBRAL_SUBTOTAL_OTROS_COP,
 };
 
 describe('descuentos-pedido', () => {
@@ -26,8 +27,18 @@ describe('descuentos-pedido', () => {
         esLineaSopa({
           cantidad: 1,
           subtotal_linea: 10000,
+          nombre_producto: 'Sopa del día',
+          categoria_nombre: 'Entradas',
+          participa_descuento_sopas: true,
+        }),
+      ).toBe(true);
+      expect(
+        esLineaSopa({
+          cantidad: 1,
+          subtotal_linea: 10000,
           nombre_producto: 'Arroz',
           categoria_nombre: 'Platos fuertes',
+          participa_descuento_sopas: false,
         }),
       ).toBe(false);
     });
@@ -54,6 +65,7 @@ describe('descuentos-pedido', () => {
         false,
       );
       expect(r.descuento_sopas).toBe(0);
+      expect(r.descuento_promociones).toBe(0);
     });
 
     it('aplica descuento de sopas con 2+ sopas y subtotal alto en otros ítems', () => {
@@ -76,6 +88,45 @@ describe('descuentos-pedido', () => {
         false,
       );
       expect(r.descuento_sopas).toBe(2 * 5000);
+    });
+
+    it('aplica descuento de sopas con min_unidades configurable', () => {
+      const r = calcularDescuentosPedido(
+        [
+          {
+            cantidad: 3,
+            subtotal_linea: 30000,
+            nombre_producto: 'Sopa A',
+            categoria_nombre: 'Sopas',
+          },
+          {
+            cantidad: 1,
+            subtotal_linea: UMBRAL_SUBTOTAL_OTROS_COP + 1000,
+            nombre_producto: 'Churrasco',
+            categoria_nombre: 'Platos fuertes',
+          },
+        ],
+        { ...configBase, sopas_min_unidades: 3 },
+        false,
+      );
+      expect(r.descuento_sopas).toBe(3 * 5000);
+    });
+
+    it('no aplica muleros si no alcanza min_platos_principales', () => {
+      const r = calcularDescuentosPedido(
+        [
+          {
+            cantidad: 1,
+            subtotal_linea: 50000,
+            nombre_producto: 'Churrasco',
+            categoria_nombre: 'Platos fuertes',
+            es_plato_principal: true,
+          },
+        ],
+        { ...configBase, muleros_min_platos_principales: 2 },
+        true,
+      );
+      expect(r.descuento_muleros).toBe(0);
     });
 
     it('aplica descuento muleros por platos principales', () => {

@@ -1,7 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { categoriaDisponibleEnDia } from '../common/categoria-dia';
+import {
+  getCachedMenuHoy,
+  invalidateMenuHoyCache,
+  setCachedMenuHoy,
+} from '../common/menu-hoy-cache';
 import { weekdayBogota } from '../common/timezone';
+import {
+  productoAgotado,
+  productoVisibleEnMenu,
+} from '@la-reserva/shared-domain/stock-producto';
 import type { Categoria } from '@prisma/client';
 
 function categoriaDisponibleHoy(cat: Categoria, weekday: number): boolean {
@@ -12,7 +21,15 @@ function categoriaDisponibleHoy(cat: Categoria, weekday: number): boolean {
 export class MenuService {
   constructor(private readonly prisma: PrismaService) {}
 
+  invalidateCache(): void {
+    invalidateMenuHoyCache();
+  }
+
   async menuHoy() {
+    const cached = getCachedMenuHoy();
+    if (cached) {
+      return cached;
+    }
     const weekday = weekdayBogota();
     const categorias = await this.prisma.categoria.findMany({
       include: {
@@ -29,7 +46,18 @@ export class MenuService {
       .map((c) => ({
         id_categoria: c.idCategoria,
         nombre: c.nombre,
-        productos: c.productos.map((p) => ({
+        es_bebida: c.esBebida,
+        visible_en_mostrador: c.visibleEnMostrador,
+        productos: c.productos
+          .filter((p) =>
+            productoVisibleEnMenu({
+              activo: true,
+              control_stock: p.controlStock,
+              stock_disponible: p.stockDisponible,
+              ocultar_sin_stock: p.ocultarSinStock,
+            }),
+          )
+          .map((p) => ({
           id_producto: p.idProducto,
           nombre: p.nombre,
           descripcion: p.descripcion,
@@ -37,6 +65,13 @@ export class MenuService {
           activo: p.activo,
           es_plato_principal: p.esPlatoPrincipal,
           es_empacable: p.esEmpacable,
+          control_stock: p.controlStock,
+          stock_disponible: p.stockDisponible,
+          ocultar_sin_stock: p.ocultarSinStock,
+          agotado: productoAgotado({
+            control_stock: p.controlStock,
+            stock_disponible: p.stockDisponible,
+          }),
           opciones: [] as {
             id_opcion: number;
             tipo: string;
@@ -72,6 +107,8 @@ export class MenuService {
       }
     }
 
-    return { categorias: out };
+    const result = { categorias: out };
+    setCachedMenuHoy(result);
+    return result;
   }
 }

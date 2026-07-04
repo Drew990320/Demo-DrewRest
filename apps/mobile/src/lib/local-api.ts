@@ -1,6 +1,10 @@
 import { buildLocalCategorias, buildLocalMenuProductos } from '../data/local-menu-seed';
 import type { CategoriaLocal } from '../data/local-menu-seed';
 import { notifyMesasInvalidated } from './mesas-sync';
+import { notifyConfigUpdated } from './config-sync';
+import { notifyAuthSesionInvalidada } from './auth-session';
+import { dispatchCompaneroModificoPedido } from './pedido-sync';
+import { ApiHttpError } from './api-error';
 import { deleteOfflineCache } from './offline-cache';
 import { storage } from './storage';
 import type { Producto } from './local-api-types';
@@ -15,12 +19,16 @@ import {
 import { ordenarPedidosCocinaPorLlegada } from './cocina-pedido-view';
 import {
   PRECIO_EMPAQUE_PARA_LLEVAR_COP,
+  flagsProductoMenuPorCategoria,
   productoCobraEmpaqueParaLlevarPorPlatoFuerte,
 } from './empaque-para-llevar';
 import {
   calcularDescuentosPedido,
+  MULEROS_MIN_PLATOS_PRINCIPALES_DEFAULT,
+  SOPAS_MIN_UNIDADES_DEFAULT,
   UMBRAL_SUBTOTAL_OTROS_COP,
 } from './descuentos-pedido';
+import { parseReglasPromocion } from './promociones-pedido';
 import {
   expandirDetallesParaCobro,
   expandirSolicitudesConEmpaques,
@@ -40,15 +48,50 @@ import {
   idProductoMazorcaLocal,
   sincronizarLineaMazorcaLocal,
 } from './mazorca-linea-pedido';
+import {
+  ensureProductoCuotaPendienteLocal,
+  formatCuotaPendienteNota,
+} from './cuota-pendiente-linea-pedido';
+import {
+  listarCuotasPlanOmitidas,
+  nombreProductoCuotaPendienteDisplay,
+} from '@la-reserva/shared-domain/cuota-pendiente-reparto';
+import {
+  NOMBRE_DISPLAY_SALDO_PENDIENTE,
+  SALDO_RESTANTE_FRAGMENTO_NOTA,
+  distribuirSaldoEnPlatos,
+  esNotaSaldoRestantePendiente,
+  formatSaldoRestanteNota,
+  parseSaldoRestantePool,
+  saldoNecesitaReconciliarAPlatos,
+} from '@la-reserva/shared-domain/saldo-restante';
+import {
+  PERMISOS_MESERO_DEFAULTS,
+  PERMISOS_MESERO_KEYS,
+  type PermisosMeseroConfig,
+  permisosMeseroTodos,
+} from '@la-reserva/shared-domain/permisos-mesero';
+import {
+  inferirReglasCategoriaDesdeNombre,
+  type TipoLineaCocinaCategoria,
+} from '@la-reserva/shared-domain/categoria-reglas';
+import {
+  productoAgotado,
+  productoVisibleEnMenu,
+} from '@la-reserva/shared-domain/stock-producto';
 import { categoriaDisponibleEnDiaSnake } from '@la-reserva/shared-domain/dias-semana';
 import {
   categoriaEsBebida,
   debeMarcarCocina,
 } from '@la-reserva/shared-domain/cocina-producto';
 import {
+  esMesaMostradorNumero,
+  esMesaParaLlevarNumero,
   esMesaVirtualNumero,
   MESA_MOSTRADOR_NUMERO,
   MESA_PARA_LLEVAR_NUMERO,
+  numerosMesasVirtuales,
+  resolverMesasVirtuales,
 } from './mesa-label';
 import {
   type PatchDisponibilidadMesa,
@@ -59,10 +102,19 @@ import {
   validarPatchMesaAdmin,
 } from '@la-reserva/shared-domain/mesa-admin-validacion';
 import { agregarVentasResumenDiario } from '@la-reserva/shared-domain/resumen-diario-ventas';
+import { calcularEfectivoEsperadoEnCaja } from '@la-reserva/shared-domain/movimiento-caja';
 import {
   pedidoDebeTenerLineaMazorca,
   validarTransferenciaPedido,
 } from '@la-reserva/shared-domain/transferencia-pedido';
+import {
+  dividirSolicitudesCobroMixto,
+  facturasDeTandaCobro,
+  nuevoCobroMixtoGrupo,
+  repartoMixtoConDevolucion,
+} from '@la-reserva/shared-domain/factura-mixto';
+import { importesProporcionalesMixto } from '@la-reserva/shared-domain/cobro-invariantes';
+import type { DetalleCobroCantidad } from '@la-reserva/shared-domain/cobro-parcial';
 
 type ApiOptions = RequestInit & { token?: string | null };
 
@@ -132,28 +184,75 @@ type Factura = {
   subtotal: number;
   descuento_sopas: number;
   descuento_muleros: number;
+  descuento_promociones: number;
   total: number;
   metodo_pago: 'efectivo' | 'transferencia';
   emitida_en: string;
   es_parcial?: boolean;
+  persona_plan_indice?: number;
+  cobro_mixto_grupo?: number;
 };
 
 type PedidoHistorialRow = {
   id_historial: number;
   id_pedido: number;
   id_usuario: number;
-  tipo: 'detalle_agregado' | 'detalle_eliminado' | 'cantidad_actualizada';
+  tipo:
+    | 'detalle_agregado'
+    | 'detalle_eliminado'
+    | 'cantidad_actualizada'
+    | 'cuota_plan_omitida'
+    | 'cobro_reabierto';
   detalle: unknown;
   creado_en: string;
 };
 
 type CajaDiaRow = { fecha: string; monto_base_efectivo: number };
 
+type MovimientoCajaRow = {
+  id_movimiento: number;
+  fecha: string;
+  tipo: 'devolucion_exceso_transferencia' | 'entrada_manual' | 'salida_manual' | 'pago_domicilio' | 'pago_mesero';
+  monto: number;
+  motivo?: string | null;
+  metodo_devolucion?: 'efectivo' | 'transferencia' | null;
+  id_pedido?: number | null;
+  id_factura?: number | null;
+  id_usuario: number;
+  creado_en: string;
+};
+
 type ConfigDescuentosRow = {
   sopas_activo: boolean;
   sopas_monto_por_unidad: number;
+  sopas_min_unidades: number;
   muleros_activo: boolean;
   muleros_monto_por_plato_principal: number;
+  muleros_min_platos_principales: number;
+  umbral_subtotal_otros: number;
+  reglas_promocion: ReturnType<typeof parseReglasPromocion>;
+};
+
+type ConfigOperativaRow = {
+  precio_empaque_para_llevar: number;
+  mazorca_activa: boolean;
+  id_producto_mazorca: number | null;
+  id_producto_cuota_pendiente: number | null;
+  numero_mesa_para_llevar: number;
+  numero_mesa_mostrador: number;
+  etiqueta_para_llevar: string;
+  etiqueta_mostrador: string;
+  mostrador_activo: boolean;
+  para_llevar_activo: boolean;
+  beneficio_soda_almuerzo_activo: boolean;
+  id_producto_soda_almuerzo: number | null;
+  soda_almuerzo_descontar_stock: boolean;
+};
+
+type DelegacionCierreRow = {
+  fecha: string;
+  id_usuario: number;
+  asignado_en: string;
 };
 
 type Db = {
@@ -166,13 +265,18 @@ type Db = {
   pedidoHistorial: PedidoHistorialRow[];
   /** YYYY-MM-DD → monto inicial de efectivo en caja */
   cajaDiaria: CajaDiaRow[];
+  movimientosCaja: MovimientoCajaRow[];
   configDescuentos: ConfigDescuentosRow;
+  configOperativa: ConfigOperativaRow;
+  permisosMesero: PermisosMeseroConfig;
+  delegacionCierreAnulacion: DelegacionCierreRow | null;
   seq: {
     pedido: number;
     detalle: number;
     factura: number;
     user: number;
     historial: number;
+    movimientoCaja: number;
     mesa: number;
   };
 };
@@ -189,8 +293,79 @@ function toDateKey(iso: string): string {
   return iso.slice(0, 10);
 }
 
-function unauthorized(): never {
-  throw new Error('Credenciales inválidas');
+function mapMovimientoCajaLocal(db: Db, m: MovimientoCajaRow) {
+  const ped =
+    m.id_pedido != null
+      ? db.pedidos.find((x) => x.id_pedido === m.id_pedido)
+      : undefined;
+  const mesa = ped
+    ? db.mesas.find((x) => x.id_mesa === ped.id_mesa)
+    : undefined;
+  const u = db.users.find((x) => x.id === m.id_usuario);
+  return {
+    id_movimiento: m.id_movimiento,
+    tipo: m.tipo,
+    monto: m.monto,
+    motivo: m.motivo ?? null,
+    metodo_devolucion: m.metodo_devolucion ?? null,
+    id_pedido: m.id_pedido ?? null,
+    id_factura: m.id_factura ?? null,
+    mesa_numero: mesa?.numero ?? null,
+    registrado_por: u ? `${u.nombre} ${u.apellido}`.trim() : '',
+    creado_en: m.creado_en,
+  };
+}
+
+function permisosEfectivosLocal(
+  db: Db,
+  actor: { id: number; rol: string },
+): PermisosMeseroConfig & { puede_cerrar_anulando: boolean; es_admin: boolean } {
+  if (actor.rol === 'admin') return permisosMeseroTodos();
+  if (actor.rol === 'chef') {
+    return {
+      ...PERMISOS_MESERO_DEFAULTS,
+      reimprimir_comanda: true,
+      puede_cerrar_anulando: false,
+      es_admin: false,
+    };
+  }
+  if (actor.rol !== 'mesero') {
+    return {
+      ...Object.fromEntries(PERMISOS_MESERO_KEYS.map((k) => [k, false])) as PermisosMeseroConfig,
+      puede_cerrar_anulando: false,
+      es_admin: false,
+    };
+  }
+  const hoy = toDateKey(todayIso());
+  const delegado =
+    db.delegacionCierreAnulacion?.fecha === hoy &&
+    db.delegacionCierreAnulacion.id_usuario === actor.id;
+  return {
+    ...db.permisosMesero,
+    puede_cerrar_anulando: delegado,
+    es_admin: false,
+  };
+}
+
+function delegacionCierreLocal(db: Db, fecha: string) {
+  if (!db.delegacionCierreAnulacion || db.delegacionCierreAnulacion.fecha !== fecha) {
+    return null;
+  }
+  const u = db.users.find((x) => x.id === db.delegacionCierreAnulacion!.id_usuario);
+  if (!u) return null;
+  return {
+    id_usuario: u.id,
+    nombre: u.nombre,
+    apellido: u.apellido,
+    asignado_en: db.delegacionCierreAnulacion.asignado_en,
+  };
+}
+
+function unauthorized(inactivo = false): never {
+  throw new ApiHttpError(
+    inactivo ? 'Usuario inactivo o inexistente' : 'Credenciales inválidas',
+    401,
+  );
 }
 
 function rechazarChefTomaPedidos(actor: { rol: string }) {
@@ -203,6 +378,15 @@ function soloChefOAdmin(actor: { rol: string }) {
 
 function badRequest(msg: string): never {
   throw new Error(msg);
+}
+
+function boolBody(v: unknown, defaultValue: boolean): boolean {
+  return v === undefined ? defaultValue : Boolean(v);
+}
+
+function tipoLineaCocinaBody(v: unknown): TipoLineaCocinaCategoria | undefined {
+  if (v === 'plato' || v === 'entrada' || v === 'adicional') return v;
+  return undefined;
 }
 
 function diasMesasTodos(): Pick<
@@ -294,20 +478,130 @@ function defaultConfigDescuentos(): ConfigDescuentosRow {
   return {
     sopas_activo: false,
     sopas_monto_por_unidad: 0,
+    sopas_min_unidades: SOPAS_MIN_UNIDADES_DEFAULT,
     muleros_activo: false,
     muleros_monto_por_plato_principal: 0,
+    muleros_min_platos_principales: MULEROS_MIN_PLATOS_PRINCIPALES_DEFAULT,
+    umbral_subtotal_otros: UMBRAL_SUBTOTAL_OTROS_COP,
+    reglas_promocion: [],
   };
+}
+
+function defaultConfigOperativa(): ConfigOperativaRow {
+  return {
+    precio_empaque_para_llevar: PRECIO_EMPAQUE_PARA_LLEVAR_COP,
+    mazorca_activa: true,
+    id_producto_mazorca: null,
+    id_producto_cuota_pendiente: null,
+    numero_mesa_para_llevar: MESA_PARA_LLEVAR_NUMERO,
+    numero_mesa_mostrador: MESA_MOSTRADOR_NUMERO,
+    etiqueta_para_llevar: 'Pedidos para llevar',
+    etiqueta_mostrador: 'Mostrador',
+    mostrador_activo: true,
+    para_llevar_activo: true,
+    beneficio_soda_almuerzo_activo: false,
+    id_producto_soda_almuerzo: null,
+    soda_almuerzo_descontar_stock: true,
+  };
+}
+
+function sincronizarNumeroMesaVirtualLocal(
+  db: Db,
+  numeroAnterior: number,
+  numeroNuevo: number,
+): void {
+  if (numeroAnterior === numeroNuevo) return;
+  const conflicto = db.mesas.find((m) => m.numero === numeroNuevo);
+  if (conflicto && conflicto.numero !== numeroAnterior) {
+    badRequest(`Ya existe una mesa con el número ${numeroNuevo}`);
+  }
+  const mesa = db.mesas.find((m) => m.numero === numeroAnterior);
+  if (mesa) {
+    mesa.numero = numeroNuevo;
+    return;
+  }
+  const id = db.seq.mesa++;
+  db.mesas.push({
+    id_mesa: id,
+    numero: numeroNuevo,
+    capacidad: 1,
+    estado: 'libre',
+    ...diasMesasTodos(),
+  });
+}
+
+function nextOpcionId(db: Db): number {
+  let max = 0;
+  for (const p of db.productos) {
+    for (const o of p.opciones) {
+      max = Math.max(max, o.id_opcion);
+    }
+  }
+  return max + 1;
+}
+
+function findOpcionEnDb(db: Db, idOpcion: number) {
+  for (const p of db.productos) {
+    const o = p.opciones.find((x) => x.id_opcion === idOpcion);
+    if (o) return { producto: p, opcion: o };
+  }
+  return null;
 }
 
 function mapConfigDescuentosLocal(c: ConfigDescuentosRow) {
   return {
     sopas_activo: Boolean(c.sopas_activo),
     sopas_monto_por_unidad: Math.round(c.sopas_monto_por_unidad),
+    sopas_min_unidades: Math.max(
+      1,
+      Math.round(c.sopas_min_unidades ?? SOPAS_MIN_UNIDADES_DEFAULT),
+    ),
     muleros_activo: Boolean(c.muleros_activo),
     muleros_monto_por_plato_principal: Math.round(
       c.muleros_monto_por_plato_principal,
     ),
-    umbral_subtotal_otros: UMBRAL_SUBTOTAL_OTROS_COP,
+    muleros_min_platos_principales: Math.max(
+      1,
+      Math.round(
+        c.muleros_min_platos_principales ??
+          MULEROS_MIN_PLATOS_PRINCIPALES_DEFAULT,
+      ),
+    ),
+    umbral_subtotal_otros: Math.round(
+      c.umbral_subtotal_otros ?? UMBRAL_SUBTOTAL_OTROS_COP,
+    ),
+    reglas_promocion: parseReglasPromocion(c.reglas_promocion ?? []),
+  };
+}
+
+function mapConfigOperativaLocal(
+  c: ConfigOperativaRow,
+  productos: Producto[],
+) {
+  const prod =
+    c.id_producto_mazorca != null
+      ? productos.find((p) => p.id_producto === c.id_producto_mazorca)
+      : productos.find((p) => p.es_acompanamiento_mazorca);
+  const prodSoda =
+    c.id_producto_soda_almuerzo != null
+      ? productos.find((p) => p.id_producto === c.id_producto_soda_almuerzo)
+      : null;
+  const mv = resolverMesasVirtuales(c);
+  return {
+    precio_empaque_para_llevar: Math.round(c.precio_empaque_para_llevar),
+    mazorca_activa: Boolean(c.mazorca_activa),
+    id_producto_mazorca: c.id_producto_mazorca,
+    producto_mazorca_nombre: prod?.nombre ?? null,
+    numero_mesa_para_llevar: mv.numero_mesa_para_llevar,
+    numero_mesa_mostrador: mv.numero_mesa_mostrador,
+    etiqueta_para_llevar: mv.etiqueta_para_llevar,
+    etiqueta_mostrador: mv.etiqueta_mostrador,
+    mostrador_activo: c.mostrador_activo !== false,
+    para_llevar_activo: c.para_llevar_activo !== false,
+    beneficio_soda_almuerzo_activo: Boolean(c.beneficio_soda_almuerzo_activo),
+    id_producto_soda_almuerzo: c.id_producto_soda_almuerzo,
+    producto_soda_nombre: prodSoda?.nombre ?? null,
+    soda_almuerzo_descontar_stock: c.soda_almuerzo_descontar_stock !== false,
   };
 }
 
@@ -375,8 +669,20 @@ function seedDb(): Db {
     facturas: [],
     pedidoHistorial: [],
     cajaDiaria: [],
+    movimientosCaja: [],
     configDescuentos: defaultConfigDescuentos(),
-    seq: { pedido: 1, detalle: 1, factura: 1, user: 4, historial: 1, mesa: 18 },
+    configOperativa: defaultConfigOperativa(),
+    permisosMesero: { ...PERMISOS_MESERO_DEFAULTS },
+    delegacionCierreAnulacion: null,
+    seq: {
+      pedido: 1,
+      detalle: 1,
+      factura: 1,
+      user: 4,
+      historial: 1,
+      movimientoCaja: 1,
+      mesa: 18,
+    },
   };
 }
 
@@ -396,19 +702,119 @@ function normalizeDb(parsed: unknown): Db {
   if (!Array.isArray(o.cajaDiaria)) {
     o.cajaDiaria = [];
   }
+  if (!Array.isArray(o.movimientosCaja)) {
+    o.movimientosCaja = [];
+  } else {
+    o.movimientosCaja = (o.movimientosCaja as Partial<MovimientoCajaRow>[]).map(
+      (m) => ({
+        id_movimiento: Number(m.id_movimiento),
+        fecha: String(m.fecha ?? ''),
+        tipo:
+          m.tipo === 'entrada_manual' ||
+          m.tipo === 'salida_manual' ||
+          m.tipo === 'devolucion_exceso_transferencia' ||
+          m.tipo === 'pago_domicilio' ||
+          m.tipo === 'pago_mesero'
+            ? m.tipo
+            : 'devolucion_exceso_transferencia',
+        monto: Math.round(Number(m.monto) || 0),
+        motivo: m.motivo?.trim() || null,
+        metodo_devolucion: m.metodo_devolucion ?? null,
+        id_pedido: m.id_pedido ?? null,
+        id_factura: m.id_factura ?? null,
+        id_usuario: Number(m.id_usuario),
+        creado_en: String(m.creado_en ?? todayIso()),
+      }),
+    );
+  }
   if (!o.configDescuentos || typeof o.configDescuentos !== 'object') {
     o.configDescuentos = defaultConfigDescuentos();
   } else {
-    const c = o.configDescuentos as ConfigDescuentosRow;
+    const c = o.configDescuentos as ConfigDescuentosRow & {
+      muleros_monto_por_unidad?: number;
+    };
     o.configDescuentos = {
       sopas_activo: Boolean(c.sopas_activo),
       sopas_monto_por_unidad: Math.round(Number(c.sopas_monto_por_unidad) || 0),
+      sopas_min_unidades: Math.max(
+        1,
+        Math.round(
+          Number(c.sopas_min_unidades) || SOPAS_MIN_UNIDADES_DEFAULT,
+        ),
+      ),
       muleros_activo: Boolean(c.muleros_activo),
       muleros_monto_por_plato_principal: Math.round(
         Number(c.muleros_monto_por_plato_principal ?? c.muleros_monto_por_unidad) ||
           0,
       ),
+      muleros_min_platos_principales: Math.max(
+        1,
+        Math.round(
+          Number(c.muleros_min_platos_principales) ||
+            MULEROS_MIN_PLATOS_PRINCIPALES_DEFAULT,
+        ),
+      ),
+      umbral_subtotal_otros: Math.round(
+        Number(c.umbral_subtotal_otros) || UMBRAL_SUBTOTAL_OTROS_COP,
+      ),
+      reglas_promocion: parseReglasPromocion(
+        (c as { reglas_promocion?: unknown }).reglas_promocion ?? [],
+      ),
     };
+  }
+  if (!o.configOperativa || typeof o.configOperativa !== 'object') {
+    o.configOperativa = defaultConfigOperativa();
+  } else {
+    const op = o.configOperativa as Partial<ConfigOperativaRow>;
+    const defaults = defaultConfigOperativa();
+    o.configOperativa = {
+      precio_empaque_para_llevar: Math.round(
+        Number(op.precio_empaque_para_llevar) || PRECIO_EMPAQUE_PARA_LLEVAR_COP,
+      ),
+      mazorca_activa: op.mazorca_activa !== false,
+      id_producto_mazorca:
+        op.id_producto_mazorca != null
+          ? Number(op.id_producto_mazorca)
+          : null,
+      id_producto_cuota_pendiente:
+        op.id_producto_cuota_pendiente != null
+          ? Number(op.id_producto_cuota_pendiente)
+          : null,
+      numero_mesa_para_llevar: Math.round(
+        Number(op.numero_mesa_para_llevar) || defaults.numero_mesa_para_llevar,
+      ),
+      numero_mesa_mostrador: Math.round(
+        Number(op.numero_mesa_mostrador) || defaults.numero_mesa_mostrador,
+      ),
+      etiqueta_para_llevar:
+        String(op.etiqueta_para_llevar ?? defaults.etiqueta_para_llevar).trim() ||
+        defaults.etiqueta_para_llevar,
+      etiqueta_mostrador:
+        String(op.etiqueta_mostrador ?? defaults.etiqueta_mostrador).trim() ||
+        defaults.etiqueta_mostrador,
+      mostrador_activo: op.mostrador_activo !== false,
+      para_llevar_activo: op.para_llevar_activo !== false,
+      beneficio_soda_almuerzo_activo: Boolean(op.beneficio_soda_almuerzo_activo),
+      id_producto_soda_almuerzo:
+        op.id_producto_soda_almuerzo != null
+          ? Number(op.id_producto_soda_almuerzo)
+          : null,
+      soda_almuerzo_descontar_stock: op.soda_almuerzo_descontar_stock !== false,
+    };
+  }
+  if (!o.permisosMesero || typeof o.permisosMesero !== 'object') {
+    o.permisosMesero = { ...PERMISOS_MESERO_DEFAULTS };
+  } else {
+    const pm = o.permisosMesero as Partial<PermisosMeseroConfig>;
+    o.permisosMesero = Object.fromEntries(
+      PERMISOS_MESERO_KEYS.map((k) => [k, pm[k] !== false]),
+    ) as PermisosMeseroConfig;
+  }
+  if (
+    o.delegacionCierreAnulacion != null &&
+    typeof o.delegacionCierreAnulacion !== 'object'
+  ) {
+    o.delegacionCierreAnulacion = null;
   }
   if (!Array.isArray(o.pedidos)) {
     o.pedidos = [];
@@ -419,6 +825,9 @@ function normalizeDb(parsed: unknown): Db {
     for (const f of o.facturas as Factura[]) {
       if ((f as { metodo_pago?: string }).metodo_pago === 'tarjeta') {
         f.metodo_pago = 'transferencia';
+      }
+      if (f.descuento_promociones === undefined) {
+        f.descuento_promociones = 0;
       }
     }
   }
@@ -431,6 +840,8 @@ function normalizeDb(parsed: unknown): Db {
     factura: typeof seq.factura === 'number' ? seq.factura : 1,
     user: typeof seq.user === 'number' ? seq.user : 4,
     historial: typeof seq.historial === 'number' ? seq.historial : 1,
+    movimientoCaja:
+      typeof seq.movimientoCaja === 'number' ? seq.movimientoCaja : 1,
     mesa: typeof seq.mesa === 'number' ? seq.mesa : maxMesaId + 1,
   };
   const mesas = o.mesas as Mesa[];
@@ -446,22 +857,26 @@ function normalizeDb(parsed: unknown): Db {
     if (m.disponible_sabado === undefined) m.disponible_sabado = d0.disponible_sabado;
     if (m.disponible_domingo === undefined) m.disponible_domingo = d0.disponible_domingo;
   }
-  if (!mesas.some((m) => m.numero === MESA_PARA_LLEVAR_NUMERO)) {
-    const maxId = mesas.reduce((acc, m) => Math.max(acc, m.id_mesa), 0);
-    mesas.push({
-      id_mesa: maxId + 1,
-      numero: MESA_PARA_LLEVAR_NUMERO,
-      capacidad: 1,
-      estado: 'libre',
-      ...d0,
-    });
+  const cfgOp = o.configOperativa as ConfigOperativaRow;
+  for (const num of numerosMesasVirtuales(cfgOp)) {
+    if (!mesas.some((m) => m.numero === num)) {
+      const maxId = mesas.reduce((acc, m) => Math.max(acc, m.id_mesa), 0);
+      mesas.push({
+        id_mesa: maxId + 1,
+        numero: num,
+        capacidad: 1,
+        estado: 'libre',
+        ...d0,
+      });
+    }
   }
   const pedidos = (o.pedidos as Pedido[]) ?? [];
   for (const p of pedidos) {
     if (!p.modo_servicio) {
       const mesa = mesas.find((m) => m.id_mesa === p.id_mesa);
-      p.modo_servicio =
-        mesa?.numero === MESA_PARA_LLEVAR_NUMERO ? 'para_llevar' : 'en_mesa';
+      p.modo_servicio = esMesaParaLlevarNumero(mesa?.numero ?? 0, cfgOp)
+        ? 'para_llevar'
+        : 'en_mesa';
     }
     if (p.prioridad_cocina_override === undefined) {
       p.prioridad_cocina_override = null;
@@ -507,13 +922,27 @@ function normalizeDb(parsed: unknown): Db {
       if (c.disponible_viernes === undefined) c.disponible_viernes = dCat.disponible_viernes;
       if (c.disponible_sabado === undefined) c.disponible_sabado = dCat.disponible_sabado;
       if (c.disponible_domingo === undefined) c.disponible_domingo = dCat.disponible_domingo;
+      if (c.es_bebida === undefined) {
+        const reglas = inferirReglasCategoriaDesdeNombre(c.nombre);
+        c.es_bebida = reglas.es_bebida;
+        c.cobra_empaque_para_llevar = reglas.cobra_empaque_para_llevar;
+        c.participa_descuento_sopas = reglas.participa_descuento_sopas;
+        c.es_linea_empaque = reglas.es_linea_empaque;
+        c.visible_en_mostrador = reglas.visible_en_mostrador;
+        c.tipo_linea_cocina_default = reglas.tipo_linea_cocina_default;
+        c.es_plato_principal_default = reglas.es_plato_principal_default;
+      }
     }
     for (const p of productosNorm) {
       if (!cats.some((c) => c.id_categoria === p.id_categoria)) {
+        const { nombre: _n, ...reglas } = inferirReglasCategoriaDesdeNombre(
+          p.categoria_nombre,
+        );
         cats.push({
           id_categoria: p.id_categoria,
           nombre: p.categoria_nombre,
           ...diasCategoriaPorNombre(p.categoria_nombre),
+          ...reglas,
         });
       }
     }
@@ -573,11 +1002,34 @@ function pushHistorialLocal(
   });
 }
 
+function notificarCompaneroModificoPedidoLocal(
+  db: Db,
+  p: Pedido,
+  actor: User,
+  lineas: { nombre_producto: string; cantidad: number }[],
+  accion: 'agregado' | 'quitado' | 'reducido',
+) {
+  if (actor.id === p.id_usuario || lineas.length === 0) return;
+  const mesa = db.mesas.find((m) => m.id_mesa === p.id_mesa);
+  if (!mesa) return;
+  dispatchCompaneroModificoPedido({
+    pedidoId: p.id_pedido,
+    mesaId: p.id_mesa,
+    mesaNumero: mesa.numero,
+    idMeseroDueno: p.id_usuario,
+    idMeseroQuienAgrego: actor.id,
+    meseroQuienAgregoNombre: `${actor.nombre} ${actor.apellido}`.trim(),
+    lineas,
+    accion,
+    at: new Date().toISOString(),
+  });
+}
+
 function userFromToken(db: Db, token?: string | null): User {
   if (!token || !token.startsWith(TOKEN_PREFIX)) unauthorized();
   const id = Number(token.slice(TOKEN_PREFIX.length));
-  const u = db.users.find((x) => x.id === id && x.activo);
-  if (!u) unauthorized();
+  const u = db.users.find((x) => x.id === id);
+  if (!u || !u.activo) unauthorized(true);
   return u;
 }
 
@@ -599,6 +1051,7 @@ function categoriaDisponibleHoyLocal(c: CategoriaLocal): boolean {
 }
 
 function mapCategoriaAdminLocal(c: CategoriaLocal) {
+  const fallback = inferirReglasCategoriaDesdeNombre(c.nombre);
   return {
     id_categoria: c.id_categoria,
     nombre: c.nombre,
@@ -609,7 +1062,50 @@ function mapCategoriaAdminLocal(c: CategoriaLocal) {
     disponible_viernes: c.disponible_viernes,
     disponible_sabado: c.disponible_sabado,
     disponible_domingo: c.disponible_domingo,
+    es_bebida: c.es_bebida ?? fallback.es_bebida,
+    cobra_empaque_para_llevar:
+      c.cobra_empaque_para_llevar ?? fallback.cobra_empaque_para_llevar,
+    participa_descuento_sopas:
+      c.participa_descuento_sopas ?? fallback.participa_descuento_sopas,
+    es_linea_empaque: c.es_linea_empaque ?? fallback.es_linea_empaque,
+    visible_en_mostrador:
+      c.visible_en_mostrador ?? fallback.visible_en_mostrador,
+    tipo_linea_cocina_default:
+      c.tipo_linea_cocina_default ?? fallback.tipo_linea_cocina_default,
+    es_plato_principal_default:
+      c.es_plato_principal_default ?? fallback.es_plato_principal_default,
   };
+}
+
+function categoriaDeProducto(
+  db: Db,
+  p: { id_categoria: number; categoria_nombre: string },
+): CategoriaLocal {
+  const found = db.categorias.find((c) => c.id_categoria === p.id_categoria);
+  if (found) return found;
+  const { nombre: _nombreInferido, ...inferredReglas } =
+    inferirReglasCategoriaDesdeNombre(p.categoria_nombre);
+  return {
+    id_categoria: p.id_categoria,
+    nombre: p.categoria_nombre,
+    disponible_lunes: true,
+    disponible_martes: true,
+    disponible_miercoles: true,
+    disponible_jueves: true,
+    disponible_viernes: true,
+    disponible_sabado: true,
+    disponible_domingo: true,
+    ...inferredReglas,
+  };
+}
+
+function detalleMarcaCocina(db: Db, d: PedidoDetalle): boolean {
+  const prod = db.productos.find((x) => x.id_producto === d.id_producto);
+  if (!prod) return false;
+  return debeMarcarCocina(
+    categoriaDeProducto(db, prod),
+    Boolean(prod.es_empacable),
+  );
 }
 
 function diasCategoriaPorNombre(nombre: string): Pick<
@@ -651,10 +1147,14 @@ function ensureCategoriasFromProductos(productos: Producto[]): CategoriaLocal[] 
   const map = new Map<number, CategoriaLocal>();
   for (const p of productos) {
     if (map.has(p.id_categoria)) continue;
+    const { nombre: _n, ...reglas } = inferirReglasCategoriaDesdeNombre(
+      p.categoria_nombre,
+    );
     map.set(p.id_categoria, {
       id_categoria: p.id_categoria,
       nombre: p.categoria_nombre,
       ...diasCategoriaPorNombre(p.categoria_nombre),
+      ...reglas,
     });
   }
   return [...map.values()].sort((a, b) => a.nombre.localeCompare(b.nombre));
@@ -662,19 +1162,46 @@ function ensureCategoriasFromProductos(productos: Producto[]): CategoriaLocal[] 
 
 function groupMenu(db: Db) {
   const activos = db.productos.filter(
-    (p) => p.activo !== false && !p.es_acompanamiento_mazorca,
+    (p) => p.activo !== false && !p.es_acompanamiento_mazorca && !p.es_cuota_pendiente_reparto,
   );
-  const byCat = new Map<number, { id_categoria: number; nombre: string; productos: Producto[] }>();
+  const byCat = new Map<
+    number,
+    {
+      id_categoria: number;
+      nombre: string;
+      es_bebida: boolean;
+      visible_en_mostrador: boolean;
+      productos: Producto[];
+    }
+  >();
   for (const p of activos) {
     const cat = db.categorias.find((c) => c.id_categoria === p.id_categoria);
     if (!cat || !categoriaDisponibleHoyLocal(cat)) continue;
+    if (
+      !productoVisibleEnMenu({
+        activo: p.activo !== false,
+        control_stock: p.control_stock,
+        stock_disponible: p.stock_disponible,
+        ocultar_sin_stock: p.ocultar_sin_stock,
+      })
+    ) {
+      continue;
+    }
+    const fallback = inferirReglasCategoriaDesdeNombre(cat.nombre);
     const curr = byCat.get(p.id_categoria) ?? {
       id_categoria: p.id_categoria,
       nombre: cat.nombre,
+      es_bebida: cat.es_bebida ?? fallback.es_bebida,
+      visible_en_mostrador:
+        cat.visible_en_mostrador ?? fallback.visible_en_mostrador,
       productos: [],
     };
     curr.productos.push({
       ...p,
+      agotado: productoAgotado({
+        control_stock: p.control_stock,
+        stock_disponible: p.stock_disponible,
+      }),
       opciones: p.opciones,
     });
     byCat.set(p.id_categoria, curr);
@@ -699,7 +1226,12 @@ function serializeProductoAdmin(p: Producto) {
     activo: p.activo !== false,
     es_plato_principal: Boolean(p.es_plato_principal),
     es_empacable: Boolean(p.es_empacable),
+    es_acompanamiento_mazorca: Boolean(p.es_acompanamiento_mazorca),
     tipo_proteina: p.tipo_proteina ?? 'ninguno',
+    control_stock: Boolean(p.control_stock),
+    stock_disponible: p.stock_disponible ?? 0,
+    ocultar_sin_stock: p.ocultar_sin_stock !== false,
+    es_bebida: /bebida/i.test(p.categoria_nombre),
   };
 }
 
@@ -716,7 +1248,10 @@ function serializePedido(db: Db, p: Pedido) {
     const opcionIds = Array.isArray(d.opcion_ids) ? d.opcion_ids : [];
     const pers = prod.opciones.filter((o) => opcionIds.includes(o.id_opcion));
     const marcar =
-      debeMarcarCocina(prod.categoria_nombre, prod.es_empacable);
+      debeMarcarCocina(categoriaDeProducto(db, prod), Boolean(prod.es_empacable));
+    const esSaldoPend = esNotaSaldoRestantePendiente(d.nota_cocina);
+    const esCuotaPend =
+      Boolean(prod.es_cuota_pendiente_reparto) || esSaldoPend;
     const tipoProteina = tipoProteinaResuelto(
       prod.tipo_proteina,
       prod.categoria_nombre,
@@ -726,13 +1261,21 @@ function serializePedido(db: Db, p: Pedido) {
       id_detalle: d.id_detalle,
       id_producto: d.id_producto,
       id_detalle_padre: d.id_detalle_padre,
-      nombre_producto: prod.nombre,
+      nombre_producto: esSaldoPend
+        ? NOMBRE_DISPLAY_SALDO_PENDIENTE
+        : esCuotaPend
+          ? nombreProductoCuotaPendienteDisplay(prod.nombre, d.nota_cocina)
+          : prod.nombre,
       categoria_nombre: prod.categoria_nombre,
+      id_categoria: prod.id_categoria,
+      participa_descuento_sopas: categoriaDeProducto(db, prod)
+        .participa_descuento_sopas,
       tipo_proteina: tipoProteina,
-      es_bebida: categoriaEsBebida(prod.categoria_nombre),
+      es_bebida: categoriaEsBebida(categoriaDeProducto(db, prod)),
       es_empacable: Boolean(prod.es_empacable),
       es_plato_principal: Boolean(prod.es_plato_principal),
       es_acompanamiento_mazorca: Boolean(prod.es_acompanamiento_mazorca),
+      es_cuota_pendiente_reparto: esCuotaPend,
       marcar_cocina: marcar,
       enviado_cocina: d.enviado_cocina ?? false,
       listo_para_recoger: d.listo_para_recoger ?? false,
@@ -741,7 +1284,9 @@ function serializePedido(db: Db, p: Pedido) {
       precio_unitario: d.precio_unitario,
       subtotal_linea: d.precio_unitario * d.cantidad,
       nota_cocina: d.nota_cocina,
-      cobrado: d.id_factura != null || Boolean(prod.es_acompanamiento_mazorca),
+      cobrado:
+        d.id_factura != null ||
+        (!esCuotaPend && Boolean(prod.es_acompanamiento_mazorca)),
       id_factura: d.id_factura ?? null,
       personalizaciones: pers,
     };
@@ -751,14 +1296,27 @@ function serializePedido(db: Db, p: Pedido) {
     subtotal: f.subtotal,
     descuento_sopas: f.descuento_sopas,
     descuento_muleros: f.descuento_muleros,
+    descuento_promociones: f.descuento_promociones ?? 0,
     total: f.total,
     metodo_pago: f.metodo_pago,
     emitida_en: f.emitida_en,
     es_parcial: Boolean(f.es_parcial),
   }));
   const ultimaFactura = facturas.length ? facturas[facturas.length - 1] : null;
-  const pendientes = detalles.filter((d) => !d.cobrado);
-  const totalPendiente = pendientes.reduce((s, d) => s + d.subtotal_linea, 0);
+  const pendientesComida = detalles.filter(
+    (d) => !d.cobrado && !d.es_cuota_pendiente_reparto,
+  );
+  const totalPendiente = pendientesComida.reduce(
+    (s, d) => s + d.subtotal_linea,
+    0,
+  );
+  const historialPedido = db.pedidoHistorial
+    .filter((h) => h.id_pedido === p.id_pedido)
+    .map((h) => ({ tipo: h.tipo, detalle: h.detalle }));
+  const cuotas_plan_omitidas = listarCuotasPlanOmitidas(
+    detalles,
+    historialPedido,
+  );
   const prioridadAuto = prioridadAutomaticaDesdeDetalles(
     detalles.map((d) => ({
       categoria_nombre: d.categoria_nombre,
@@ -793,18 +1351,21 @@ function serializePedido(db: Db, p: Pedido) {
     detalles,
     facturas,
     factura: ultimaFactura,
+    cuotas_plan_omitidas,
     cobro_pendiente: {
-      items: pendientes.length,
+      items: pendientesComida.length,
       subtotal: totalPendiente,
     },
   };
-  if (pendientes.length > 0) {
+  if (pendientesComida.length > 0) {
     const config = mapConfigDescuentosLocal(db.configDescuentos);
-    const lineas = pendientes.map((d) => ({
+    const lineas = pendientesComida.map((d) => ({
       cantidad: d.cantidad,
       subtotal_linea: d.subtotal_linea,
       nombre_producto: d.nombre_producto,
       categoria_nombre: d.categoria_nombre,
+      id_categoria: d.id_categoria,
+      participa_descuento_sopas: d.participa_descuento_sopas,
       es_plato_principal: d.es_plato_principal,
     }));
     return {
@@ -844,7 +1405,6 @@ function serializePedidoOperativo(db: Db, p: Pedido) {
         subtotal_linea: _s,
         id_producto: _ip,
         id_detalle_padre: _padre,
-        es_plato_principal: _ep,
         cobrado: _c,
         id_factura: _f,
         ...rest
@@ -906,6 +1466,14 @@ export async function localApi<T = unknown>(
 
   const actor = userFromToken(db, opts.token);
 
+  if (path === '/auth/verify-password' && method === 'POST') {
+    if (actor.rol !== 'admin') unauthorized();
+    const password = String(body.password ?? '');
+    const u = db.users.find((x) => x.id === actor.id);
+    if (!u || u.password !== password) unauthorized();
+    return { ok: true } as T;
+  }
+
   if (path === '/auth/me' && method === 'GET') {
     return {
       id: actor.id,
@@ -924,6 +1492,54 @@ export async function localApi<T = unknown>(
   if (pathKey === '/categorias/admin' && method === 'GET') {
     if (actor.rol !== 'admin') unauthorized();
     return db.categorias.map(mapCategoriaAdminLocal) as T;
+  }
+
+  if (pathKey === '/categorias/admin' && method === 'POST') {
+    if (actor.rol !== 'admin') unauthorized();
+    const nombre = String(body.nombre ?? '').trim();
+    if (!nombre) badRequest('El nombre es obligatorio');
+    const dup = db.categorias.find(
+      (c) => c.nombre.trim().toLowerCase() === nombre.toLowerCase(),
+    );
+    if (dup) badRequest('Ya existe una categoría con ese nombre');
+    const inferred = inferirReglasCategoriaDesdeNombre(nombre);
+    const nuevo: CategoriaLocal = {
+      id_categoria: Math.max(0, ...db.categorias.map((c) => c.id_categoria)) + 1,
+      nombre,
+      disponible_lunes: boolBody(body.disponible_lunes, true),
+      disponible_martes: boolBody(body.disponible_martes, true),
+      disponible_miercoles: boolBody(body.disponible_miercoles, true),
+      disponible_jueves: boolBody(body.disponible_jueves, true),
+      disponible_viernes: boolBody(body.disponible_viernes, true),
+      disponible_sabado: boolBody(body.disponible_sabado, true),
+      disponible_domingo: boolBody(body.disponible_domingo, true),
+      es_bebida: boolBody(body.es_bebida, inferred.es_bebida),
+      cobra_empaque_para_llevar: boolBody(
+        body.cobra_empaque_para_llevar,
+        inferred.cobra_empaque_para_llevar,
+      ),
+      participa_descuento_sopas: boolBody(
+        body.participa_descuento_sopas,
+        inferred.participa_descuento_sopas,
+      ),
+      es_linea_empaque: boolBody(body.es_linea_empaque, inferred.es_linea_empaque),
+      visible_en_mostrador: boolBody(
+        body.visible_en_mostrador,
+        inferred.visible_en_mostrador,
+      ),
+      tipo_linea_cocina_default:
+        tipoLineaCocinaBody(body.tipo_linea_cocina_default) ??
+        inferred.tipo_linea_cocina_default,
+      es_plato_principal_default: boolBody(
+        body.es_plato_principal_default,
+        inferred.es_plato_principal_default,
+      ),
+    };
+    db.categorias.push(nuevo);
+    await writeDb(db);
+    await deleteOfflineCache('menu_today').catch(() => undefined);
+    notifyConfigUpdated('categorias');
+    return mapCategoriaAdminLocal(nuevo) as T;
   }
 
   {
@@ -954,8 +1570,29 @@ export async function localApi<T = unknown>(
       if (body.disponible_domingo !== undefined) {
         cat.disponible_domingo = Boolean(body.disponible_domingo);
       }
+      if (body.es_bebida !== undefined) cat.es_bebida = Boolean(body.es_bebida);
+      if (body.cobra_empaque_para_llevar !== undefined) {
+        cat.cobra_empaque_para_llevar = Boolean(body.cobra_empaque_para_llevar);
+      }
+      if (body.participa_descuento_sopas !== undefined) {
+        cat.participa_descuento_sopas = Boolean(body.participa_descuento_sopas);
+      }
+      if (body.es_linea_empaque !== undefined) {
+        cat.es_linea_empaque = Boolean(body.es_linea_empaque);
+      }
+      if (body.visible_en_mostrador !== undefined) {
+        cat.visible_en_mostrador = Boolean(body.visible_en_mostrador);
+      }
+      if (body.es_plato_principal_default !== undefined) {
+        cat.es_plato_principal_default = Boolean(body.es_plato_principal_default);
+      }
+      if (body.tipo_linea_cocina_default !== undefined) {
+        const tipo = tipoLineaCocinaBody(body.tipo_linea_cocina_default);
+        if (tipo) cat.tipo_linea_cocina_default = tipo;
+      }
       await writeDb(db);
       await deleteOfflineCache('menu_today').catch(() => undefined);
+      notifyConfigUpdated('categorias');
       return mapCategoriaAdminLocal(cat) as T;
     }
   }
@@ -979,6 +1616,15 @@ export async function localApi<T = unknown>(
     if (!nombre) badRequest('Nombre requerido');
     const precio = Number(body.precio);
     if (!Number.isFinite(precio) || precio < 0) badRequest('Precio inválido');
+    const flags = flagsProductoMenuPorCategoria(cat);
+    const esEmpacable =
+      body.es_empacable != null
+        ? Boolean(body.es_empacable)
+        : flags.es_empacable;
+    const esPlatoPrincipal = esEmpacable
+      ? false
+      : Boolean(body.es_plato_principal ?? flags.es_plato_principal);
+    const esMazorca = Boolean(body.es_acompanamiento_mazorca);
     const nuevo: Producto = {
       id_producto: Math.max(0, ...db.productos.map((x) => x.id_producto)) + 1,
       id_categoria: idCat,
@@ -993,14 +1639,135 @@ export async function localApi<T = unknown>(
       tipo_proteina:
         (body.tipo_proteina as TipoProteina | undefined) ??
         inferirTipoProteina(cat.nombre, nombre),
-      es_plato_principal: Boolean(body.es_plato_principal),
-      es_empacable: Boolean(body.es_empacable),
+      es_plato_principal: esPlatoPrincipal,
+      es_empacable: esEmpacable,
+      es_acompanamiento_mazorca: esMazorca,
       opciones: [],
     };
+    if (cat.es_bebida) {
+      if (body.control_stock != null) {
+        nuevo.control_stock = Boolean(body.control_stock);
+      }
+      if (body.stock_disponible != null) {
+        nuevo.stock_disponible = Math.max(0, Math.round(Number(body.stock_disponible)));
+      }
+      if (body.ocultar_sin_stock != null) {
+        nuevo.ocultar_sin_stock = Boolean(body.ocultar_sin_stock);
+      }
+    }
+    if (esMazorca) {
+      for (const x of db.productos) {
+        if (x.id_producto !== nuevo.id_producto) {
+          x.es_acompanamiento_mazorca = false;
+        }
+      }
+      db.configOperativa.id_producto_mazorca = nuevo.id_producto;
+    }
     db.productos.push(nuevo);
     await writeDb(db);
     await deleteOfflineCache('menu_today').catch(() => undefined);
+    notifyConfigUpdated('menu');
     return serializeProductoAdmin(nuevo) as T;
+  }
+
+  {
+    const m = /^\/productos\/(\d+)\/personalizaciones$/.exec(pathKey);
+    if (m && method === 'GET') {
+      const id = Number(m[1]);
+      const p = db.productos.find((x) => x.id_producto === id);
+      if (!p) badRequest('Producto no encontrado');
+      return p.opciones.map((o) => ({
+        id_opcion: o.id_opcion,
+        id_producto: id,
+        tipo: o.tipo,
+        descripcion: o.descripcion,
+      })) as T;
+    }
+    if (m && method === 'POST') {
+      if (actor.rol !== 'admin') unauthorized();
+      const id = Number(m[1]);
+      const p = db.productos.find((x) => x.id_producto === id);
+      if (!p) badRequest('Producto no encontrado');
+      if (p.es_acompanamiento_mazorca) {
+        badRequest('La línea de mazorca no admite personalizaciones');
+      }
+      const tipo = String(body.tipo ?? '').trim();
+      if (tipo !== 'omitir_ingrediente' && tipo !== 'aderezo') {
+        badRequest('tipo inválido');
+      }
+      const descripcion = String(body.descripcion ?? '').trim();
+      if (!descripcion) badRequest('descripcion requerida');
+      const created = {
+        id_opcion: nextOpcionId(db),
+        tipo,
+        descripcion,
+      };
+      p.opciones.push(created);
+      await writeDb(db);
+      await deleteOfflineCache('menu_today').catch(() => undefined);
+      notifyConfigUpdated('menu');
+      return {
+        id_opcion: created.id_opcion,
+        id_producto: id,
+        tipo: created.tipo,
+        descripcion: created.descripcion,
+      } as T;
+    }
+  }
+
+  {
+    const m = /^\/personalizaciones\/(\d+)$/.exec(pathKey);
+    if (m && method === 'PATCH') {
+      if (actor.rol !== 'admin') unauthorized();
+      const idOpcion = Number(m[1]);
+      const found = findOpcionEnDb(db, idOpcion);
+      if (!found) badRequest('Opción no encontrada');
+      if (body.tipo != null) {
+        const tipo = String(body.tipo).trim();
+        if (tipo !== 'omitir_ingrediente' && tipo !== 'aderezo') {
+          badRequest('tipo inválido');
+        }
+        found.opcion.tipo = tipo;
+      }
+      if (body.descripcion != null) {
+        const descripcion = String(body.descripcion).trim();
+        if (!descripcion) badRequest('descripcion requerida');
+        found.opcion.descripcion = descripcion;
+      }
+      await writeDb(db);
+      await deleteOfflineCache('menu_today').catch(() => undefined);
+      notifyConfigUpdated('menu');
+      return {
+        id_opcion: found.opcion.id_opcion,
+        id_producto: found.producto.id_producto,
+        tipo: found.opcion.tipo,
+        descripcion: found.opcion.descripcion,
+      } as T;
+    }
+    if (m && method === 'DELETE') {
+      if (actor.rol !== 'admin') unauthorized();
+      const idOpcion = Number(m[1]);
+      const found = findOpcionEnDb(db, idOpcion);
+      if (!found) badRequest('Opción no encontrada');
+      const usos = db.pedidos.reduce((acc, ped) => {
+        for (const d of ped.detalles) {
+          if (d.opcion_ids.includes(idOpcion)) acc += 1;
+        }
+        return acc;
+      }, 0);
+      if (usos > 0) {
+        badRequest(
+          'No se puede eliminar: la opción ya se usó en pedidos anteriores',
+        );
+      }
+      found.producto.opciones = found.producto.opciones.filter(
+        (o) => o.id_opcion !== idOpcion,
+      );
+      await writeDb(db);
+      await deleteOfflineCache('menu_today').catch(() => undefined);
+      notifyConfigUpdated('menu');
+      return { ok: true, id_opcion: idOpcion } as T;
+    }
   }
 
   {
@@ -1023,10 +1790,6 @@ export async function localApi<T = unknown>(
             : String(body.descripcion).trim();
       }
       if (body.activo != null) p.activo = Boolean(body.activo);
-      if (body.es_plato_principal != null) {
-        p.es_plato_principal = Boolean(body.es_plato_principal);
-      }
-      if (body.es_empacable != null) p.es_empacable = Boolean(body.es_empacable);
       if (body.tipo_proteina != null) {
         p.tipo_proteina = body.tipo_proteina as TipoProteina;
       }
@@ -1037,8 +1800,42 @@ export async function localApi<T = unknown>(
         p.id_categoria = idCat;
         p.categoria_nombre = cat.nombre;
       }
+      const flags = flagsProductoMenuPorCategoria(
+        categoriaDeProducto(db, p),
+      );
+      if (body.es_empacable != null) {
+        p.es_empacable = Boolean(body.es_empacable);
+      } else if (p.es_empacable == null) {
+        p.es_empacable = flags.es_empacable;
+      }
+      if (p.es_empacable) {
+        p.es_plato_principal = false;
+      } else if (body.es_plato_principal != null) {
+        p.es_plato_principal = Boolean(body.es_plato_principal);
+      }
+      if (body.es_acompanamiento_mazorca != null) {
+        p.es_acompanamiento_mazorca = Boolean(body.es_acompanamiento_mazorca);
+        if (p.es_acompanamiento_mazorca) {
+          for (const x of db.productos) {
+            if (x.id_producto !== p.id_producto) {
+              x.es_acompanamiento_mazorca = false;
+            }
+          }
+          db.configOperativa.id_producto_mazorca = p.id_producto;
+        }
+      }
+      if (body.control_stock != null) {
+        p.control_stock = Boolean(body.control_stock);
+      }
+      if (body.stock_disponible != null) {
+        p.stock_disponible = Math.max(0, Math.round(Number(body.stock_disponible)));
+      }
+      if (body.ocultar_sin_stock != null) {
+        p.ocultar_sin_stock = Boolean(body.ocultar_sin_stock);
+      }
       await writeDb(db);
       await deleteOfflineCache('menu_today').catch(() => undefined);
+      notifyConfigUpdated('menu');
       return serializeProductoAdmin(p) as T;
     }
     if (m && method === 'DELETE') {
@@ -1049,6 +1846,7 @@ export async function localApi<T = unknown>(
       p.activo = false;
       await writeDb(db);
       await deleteOfflineCache('menu_today').catch(() => undefined);
+      notifyConfigUpdated('menu');
       return serializeProductoAdmin(p) as T;
     }
   }
@@ -1075,12 +1873,15 @@ export async function localApi<T = unknown>(
     if (!Number.isFinite(numero) || numero < 1 || numero > 999) {
       badRequest('Número inválido');
     }
-    if (numero === MESA_PARA_LLEVAR_NUMERO || numero === MESA_MOSTRADOR_NUMERO) {
+    if (
+      numero === db.configOperativa.numero_mesa_para_llevar ||
+      numero === db.configOperativa.numero_mesa_mostrador
+    ) {
       badRequest(
-        `Los números ${MESA_PARA_LLEVAR_NUMERO} y ${MESA_MOSTRADOR_NUMERO} están reservados (para llevar / mostrador).`,
+        `Los números ${db.configOperativa.numero_mesa_para_llevar} (para llevar) y ${db.configOperativa.numero_mesa_mostrador} (mostrador) están reservados.`,
       );
     }
-    const reservado = validarNumeroMesaReservado(numero);
+    const reservado = validarNumeroMesaReservado(numero, db.configOperativa);
     if (!reservado.ok) badRequest(reservado.mensaje);
     if (!Number.isFinite(capacidad) || capacidad < 1 || capacidad > 50) {
       badRequest('Capacidad inválida');
@@ -1125,6 +1926,7 @@ export async function localApi<T = unknown>(
     };
     db.mesas.push(nueva);
     await writeDb(db);
+    notifyConfigUpdated('mesas');
     return mapMesaAdminLocal(nueva, 0, 0) as T;
   }
 
@@ -1141,10 +1943,12 @@ export async function localApi<T = unknown>(
         numeroMesa: mesa.numero,
         pedidosActivos,
         totalPedidos,
+        mesasVirtuales: db.configOperativa,
       });
       if (!validacion.ok) badRequest(validacion.mensaje);
       db.mesas = db.mesas.filter((x) => x.id_mesa !== idMesa);
       await writeDb(db);
+      notifyConfigUpdated('mesas');
       return { ok: true, id_mesa: idMesa } as T;
     }
     if (m && method === 'PATCH') {
@@ -1163,6 +1967,7 @@ export async function localApi<T = unknown>(
             numeroActual: mesa.numero,
             numeroNuevo,
             pedidosActivos,
+            mesasVirtuales: db.configOperativa,
           });
           if (!validacionNumero.ok) badRequest(validacionNumero.mensaje);
           if (db.mesas.some((x) => x.numero === numeroNuevo)) {
@@ -1211,6 +2016,7 @@ export async function localApi<T = unknown>(
           patch: patchDisponibilidad,
           pedidosActivos,
           weekdayHoy: weekdayLocal(),
+          mesasVirtuales: db.configOperativa,
         });
         if (!validacion.ok) badRequest(validacion.mensaje);
       }
@@ -1241,6 +2047,7 @@ export async function localApi<T = unknown>(
         mesa.disponible_domingo = patchDisponibilidad.disponible_domingo;
       }
       await writeDb(db);
+      notifyConfigUpdated('mesas');
       return mapMesaAdminLocal(
         mesa,
         contarPedidosActivosMesa(db, mesa.id_mesa),
@@ -1250,12 +2057,10 @@ export async function localApi<T = unknown>(
   }
 
   if (path === '/mesas' && method === 'GET') {
+    const ocultas = numerosMesasVirtuales(db.configOperativa);
     return db.mesas
       .filter(
-        (m) =>
-          m.numero !== MESA_MOSTRADOR_NUMERO &&
-          m.numero !== MESA_PARA_LLEVAR_NUMERO &&
-          mesaDisponibleHoyLocal(m),
+        (m) => !ocultas.includes(m.numero) && mesaDisponibleHoyLocal(m),
       )
       .map((m) => {
         const base = mapMesaPublicLocal(m);
@@ -1289,15 +2094,17 @@ export async function localApi<T = unknown>(
   }
 
   if (path === '/mesas/mostrador' && method === 'GET') {
-    const m = db.mesas.find((x) => x.numero === MESA_MOSTRADOR_NUMERO);
-    if (!m) badRequest('Mostrador no configurado');
+    const mv = resolverMesasVirtuales(db.configOperativa);
+    const m = db.mesas.find((x) => x.numero === mv.numero_mesa_mostrador);
+    if (!m) badRequest(`Mostrador no configurado (mesa ${mv.numero_mesa_mostrador})`);
     if (!mesaDisponibleHoyLocal(m)) badRequest('Mostrador no disponible hoy');
     return mapMesaPublicLocal(m) as T;
   }
 
   if (path === '/mesas/para-llevar' && method === 'GET') {
-    const m = db.mesas.find((x) => x.numero === MESA_PARA_LLEVAR_NUMERO);
-    if (!m) badRequest('Para llevar no configurado');
+    const mv = resolverMesasVirtuales(db.configOperativa);
+    const m = db.mesas.find((x) => x.numero === mv.numero_mesa_para_llevar);
+    if (!m) badRequest(`Para llevar no configurado (mesa ${mv.numero_mesa_para_llevar})`);
     if (!mesaDisponibleHoyLocal(m)) badRequest('Para llevar no disponible hoy');
     return mapMesaPublicLocal(m) as T;
   }
@@ -1323,7 +2130,7 @@ export async function localApi<T = unknown>(
     const comensales = Number(body.num_comensales ?? 1);
     const mesa = db.mesas.find((m) => m.id_mesa === idMesa);
     if (!mesa) badRequest('Mesa no encontrada');
-    const virtual = esMesaVirtualNumero(mesa.numero);
+    const virtual = esMesaVirtualNumero(mesa.numero, db.configOperativa);
     if (!virtual) {
       if (mesa.estado !== 'libre') badRequest('La mesa no está libre');
       if (
@@ -1336,7 +2143,9 @@ export async function localApi<T = unknown>(
       }
     }
     const modo_servicio: Pedido['modo_servicio'] =
-      mesa.numero === MESA_PARA_LLEVAR_NUMERO ? 'para_llevar' : 'en_mesa';
+      esMesaParaLlevarNumero(mesa.numero, db.configOperativa)
+        ? 'para_llevar'
+        : 'en_mesa';
     const p: Pedido = {
       id_pedido: db.seq.pedido++,
       id_mesa: idMesa,
@@ -1349,9 +2158,18 @@ export async function localApi<T = unknown>(
       prioridad_cocina_override: null,
       detalles: [],
     };
-    const mzId = idProductoMazorcaLocal(db.productos);
+    const mzId = idProductoMazorcaLocal(
+      db.productos,
+      db.configOperativa.id_producto_mazorca,
+    );
     if (mzId != null) {
-      crearLineaMazorcaInicialLocal(p, mesa.numero, mzId, () => db.seq.detalle++);
+      crearLineaMazorcaInicialLocal(
+        p,
+        mesa.numero,
+        mzId,
+        () => db.seq.detalle++,
+        db.configOperativa.mazorca_activa,
+      );
     }
     db.pedidos.push(p);
     if (!virtual) {
@@ -1367,7 +2185,10 @@ export async function localApi<T = unknown>(
       .filter(
         (x) => x.id_mesa === idMesa && ABIERTOS_LOCAL.includes(x.estado),
       )
-      .sort((a, b) => b.id_pedido - a.id_pedido);
+      .sort(
+        (a, b) =>
+          new Date(a.creado_en).getTime() - new Date(b.creado_en).getTime(),
+      );
     return rows.map((row) => serializePedido(db, row)) as T;
   }
 
@@ -1438,6 +2259,13 @@ export async function localApi<T = unknown>(
         cantidad_nueva: fusion.cantidad,
         fusionado_al_agregar: true,
       });
+      notificarCompaneroModificoPedidoLocal(
+        db,
+        p,
+        actor,
+        [{ nombre_producto: prod.nombre, cantidad }],
+        'agregado',
+      );
       await writeDb(db);
       return serializePedido(db, p) as T;
     }
@@ -1446,7 +2274,7 @@ export async function localApi<T = unknown>(
       productoCobraEmpaqueParaLlevarPorPlatoFuerte({
         es_plato_principal: prod.es_plato_principal,
         es_empacable: prod.es_empacable,
-        categoria_nombre: prod.categoria_nombre,
+        categoria: categoriaDeProducto(db, prod),
       }) &&
       !sinEmpaque;
     const d: PedidoDetalle = {
@@ -1482,7 +2310,7 @@ export async function localApi<T = unknown>(
         id_producto: emp.id_producto,
         id_detalle_padre: d.id_detalle,
         cantidad,
-        precio_unitario: PRECIO_EMPAQUE_PARA_LLEVAR_COP,
+        precio_unitario: db.configOperativa.precio_empaque_para_llevar,
         nota_cocina: null,
         opcion_ids: [],
         listo_cocina: false,
@@ -1498,6 +2326,13 @@ export async function localApi<T = unknown>(
     pushHistorialLocal(db, p.id_pedido, actor.id, 'detalle_agregado', {
       lineas: lineasAgregadas,
     });
+    notificarCompaneroModificoPedidoLocal(
+      db,
+      p,
+      actor,
+      lineasAgregadas.filter((l) => l.nombre_producto === prod.nombre),
+      'agregado',
+    );
     await writeDb(db);
     return serializePedido(db, p) as T;
   }
@@ -1514,7 +2349,7 @@ export async function localApi<T = unknown>(
     const pendientes = p.detalles.filter((d) => {
       const prod = db.productos.find((x) => x.id_producto === d.id_producto);
       if (!prod) return false;
-      const marcar = debeMarcarCocina(prod.categoria_nombre, prod.es_empacable);
+      const marcar = debeMarcarCocina(categoriaDeProducto(db, prod), Boolean(prod.es_empacable));
       return marcar && !(d.enviado_cocina ?? false);
     });
     if (pendientes.length === 0) {
@@ -1525,7 +2360,7 @@ export async function localApi<T = unknown>(
     const esAdicional = p.detalles.some((d) => {
       const prod = db.productos.find((x) => x.id_producto === d.id_producto);
       if (!prod) return false;
-      const marcar = debeMarcarCocina(prod.categoria_nombre, prod.es_empacable);
+      const marcar = debeMarcarCocina(categoriaDeProducto(db, prod), Boolean(prod.es_empacable));
       return marcar && (d.enviado_cocina ?? false);
     });
     for (const d of pendientes) {
@@ -1564,8 +2399,8 @@ export async function localApi<T = unknown>(
           badRequest('La cantidad de mazorcas se ajusta con el número de comensales');
         }
         const marcarCocina = debeMarcarCocina(
-          prod.categoria_nombre,
-          prod.es_empacable,
+          categoriaDeProducto(db, prod),
+          Boolean(prod.es_empacable),
         );
         if (
           cantidad > det.cantidad &&
@@ -1613,6 +2448,13 @@ export async function localApi<T = unknown>(
               },
             ],
           });
+          notificarCompaneroModificoPedidoLocal(
+            db,
+            p,
+            actor,
+            [{ nombre_producto: prod.nombre, cantidad: delta }],
+            'agregado',
+          );
           await writeDb(db);
           return serializePedido(db, p) as T;
         }
@@ -1637,6 +2479,33 @@ export async function localApi<T = unknown>(
           empaques_vinculados_sincronizados:
             det.id_detalle_padre == null && hijosPre.length > 0,
         });
+        if (cantidad > cantidadAnterior) {
+          notificarCompaneroModificoPedidoLocal(
+            db,
+            p,
+            actor,
+            [
+              {
+                nombre_producto: prod.nombre,
+                cantidad: cantidad - cantidadAnterior,
+              },
+            ],
+            'agregado',
+          );
+        } else if (cantidad < cantidadAnterior) {
+          notificarCompaneroModificoPedidoLocal(
+            db,
+            p,
+            actor,
+            [
+              {
+                nombre_producto: prod.nombre,
+                cantidad: cantidadAnterior - cantidad,
+              },
+            ],
+            'reducido',
+          );
+        }
         await writeDb(db);
         return serializePedido(db, p) as T;
       }
@@ -1679,6 +2548,13 @@ export async function localApi<T = unknown>(
         pushHistorialLocal(db, p.id_pedido, actor.id, 'detalle_eliminado', {
           lineas,
         });
+        notificarCompaneroModificoPedidoLocal(
+          db,
+          p,
+          actor,
+          [{ nombre_producto: prod.nombre, cantidad: det.cantidad }],
+          'quitado',
+        );
         p.detalles = p.detalles.filter(
           (x) => x.id_detalle !== idDetalle && x.id_detalle_padre !== idDetalle,
         );
@@ -1720,13 +2596,18 @@ export async function localApi<T = unknown>(
         badRequest('Debe haber al menos 1 comensal');
       }
       p.num_comensales = numComensales;
-      const mzId = idProductoMazorcaLocal(db.productos);
+      const mzId = idProductoMazorcaLocal(
+        db.productos,
+        db.configOperativa.id_producto_mazorca,
+      );
       if (mzId != null) {
         const err = sincronizarLineaMazorcaLocal(
           p,
           mesa.numero,
           mzId,
           () => db.seq.detalle++,
+          undefined,
+          db.configOperativa.mazorca_activa,
         );
         if (err) badRequest(err);
       }
@@ -1773,17 +2654,28 @@ export async function localApi<T = unknown>(
     const config = mapConfigDescuentosLocal(db.configDescuentos);
     const lineas = detallesCobro.map((d) => {
       const prod = db.productos.find((x) => x.id_producto === d.id_producto)!;
+      const cat = categoriaDeProducto(db, prod);
       return {
         cantidad: d.cantidad,
         subtotal_linea: d.precio_unitario * d.cantidad,
         nombre_producto: prod.nombre,
         categoria_nombre: prod.categoria_nombre,
+        id_categoria: prod.id_categoria,
         es_plato_principal: Boolean(prod.es_plato_principal),
+        participa_descuento_sopas: cat.participa_descuento_sopas,
       };
     });
-    const { descuento_sopas: descSopas, descuento_muleros: descMuleros } =
-      calcularDescuentosPedido(lineas, config, Boolean(p.cliente_mulero));
-    if (descSopas + descMuleros > subtotal) {
+    const descuentos = calcularDescuentosPedido(
+      lineas,
+      config,
+      Boolean(p.cliente_mulero),
+    );
+    if (
+      descuentos.descuento_sopas +
+        descuentos.descuento_muleros +
+        descuentos.descuento_promociones >
+      subtotal
+    ) {
       badRequest('Los descuentos no pueden superar el subtotal de esta cuenta');
     }
 
@@ -1804,10 +2696,11 @@ export async function localApi<T = unknown>(
     const idPedido = Number(path.split('/')[2]);
     const p = db.pedidos.find((x) => x.id_pedido === idPedido);
     if (!p) badRequest('Pedido no encontrado');
-    if (p.estado === 'facturado') badRequest('Este pedido ya fue facturado');
-    if (p.detalles.length === 0) badRequest('No hay ítems en el pedido');
+    const pedido = p;
+    if (pedido.estado === 'facturado') badRequest('Este pedido ya fue facturado');
+    if (pedido.detalles.length === 0) badRequest('No hay ítems en el pedido');
 
-    const detallesSerial = p.detalles.map((d) => ({
+    const detallesSerial = pedido.detalles.map((d) => ({
       id_detalle: d.id_detalle,
       id_detalle_padre: d.id_detalle_padre,
       cobrado: d.id_factura != null,
@@ -1873,29 +2766,63 @@ export async function localApi<T = unknown>(
     const lineas = lineasDescuentoDesdeSolicitudes(
       detallesCobro.map((d) => {
         const prod = db.productos.find((x) => x.id_producto === d.id_producto)!;
+        const cat = categoriaDeProducto(db, prod);
         return {
           id_detalle: d.id_detalle,
           cantidad: d.cantidad,
           precio_unitario: d.precio_unitario,
           nombre_producto: prod.nombre,
           categoria_nombre: prod.categoria_nombre,
+          id_categoria: prod.id_categoria,
           es_plato_principal: Boolean(prod.es_plato_principal),
+          participa_descuento_sopas: cat.participa_descuento_sopas,
         };
       }),
       solicitudes,
     );
-    const { descuento_sopas: descSopas, descuento_muleros: descMuleros } =
-      calcularDescuentosPedido(lineas, config, Boolean(p.cliente_mulero));
-    if (descSopas + descMuleros > subtotal) {
+    const descuentos = calcularDescuentosPedido(
+      lineas,
+      config,
+      Boolean(p.cliente_mulero),
+    );
+    if (
+      descuentos.descuento_sopas +
+        descuentos.descuento_muleros +
+        descuentos.descuento_promociones >
+      subtotal
+    ) {
       badRequest('Los descuentos no pueden superar el subtotal de esta cuenta');
     }
-    const total = subtotal - descSopas - descMuleros;
+    const total =
+      subtotal -
+      descuentos.descuento_sopas -
+      descuentos.descuento_muleros -
+      descuentos.descuento_promociones;
     const rawMp = String(body.metodo_pago ?? 'efectivo').toLowerCase();
     if (rawMp !== 'efectivo' && rawMp !== 'transferencia') {
       badRequest('Método de pago no válido (solo efectivo o transferencia).');
     }
     const metodoPago: Factura['metodo_pago'] =
       rawMp === 'transferencia' ? 'transferencia' : 'efectivo';
+    const totalNeto = Math.round(total);
+    const montoTransferencia =
+      body.monto_transferencia != null
+        ? Math.round(Number(body.monto_transferencia))
+        : undefined;
+    if (metodoPago === 'transferencia' && montoTransferencia != null) {
+      if (montoTransferencia < totalNeto) {
+        badRequest('La transferencia debe cubrir al menos el total de la cuenta');
+      }
+      const exceso = montoTransferencia - totalNeto;
+      if (exceso > 0) {
+        const dest = body.devolucion_exceso_metodo;
+        if (dest !== 'efectivo' && dest !== 'transferencia' && dest !== 'domicilio' && dest !== 'mesero') {
+          badRequest(
+            'Indica si el exceso es devolución al cliente, pago domiciliario o propina al mesero',
+          );
+        }
+      }
+    }
     const quedanPendientes = quedaPendienteTrasCobro(detallesSerial, solicitudes);
     const idFactura = db.seq.factura++;
     const factura: Factura = {
@@ -1903,8 +2830,9 @@ export async function localApi<T = unknown>(
       id_pedido: idPedido,
       id_usuario: actor.id,
       subtotal,
-      descuento_sopas: descSopas,
-      descuento_muleros: descMuleros,
+      descuento_sopas: descuentos.descuento_sopas,
+      descuento_muleros: descuentos.descuento_muleros,
+      descuento_promociones: descuentos.descuento_promociones,
       total,
       metodo_pago: metodoPago,
       emitida_en: todayIso(),
@@ -1923,7 +2851,7 @@ export async function localApi<T = unknown>(
       const queda = det.cantidad - cantidadCobrar;
       det.cantidad = queda;
       const nuevoId = db.seq.detalle++;
-      p.detalles.push({
+      pedido.detalles.push({
         id_detalle: nuevoId,
         id_producto: det.id_producto,
         id_detalle_padre: det.id_detalle_padre,
@@ -1938,11 +2866,48 @@ export async function localApi<T = unknown>(
       });
     }
 
-    const byId = new Map(p.detalles.map((d) => [d.id_detalle, d]));
+    const byId = new Map(pedido.detalles.map((d) => [d.id_detalle, d]));
     for (const s of solicitudes) {
       const det = byId.get(s.id_detalle);
       if (!det) continue;
       aplicarCobroLocal(det, s.cantidad);
+    }
+    if (
+      metodoPago === 'transferencia' &&
+      montoTransferencia != null &&
+      montoTransferencia > totalNeto
+    ) {
+      const dest = body.devolucion_exceso_metodo as
+        | 'efectivo'
+        | 'transferencia'
+        | 'domicilio'
+        | 'mesero';
+      const esDomicilio = dest === 'domicilio';
+      const esMesero = dest === 'mesero';
+      const mesero = db.users.find((u) => u.id === p.id_usuario);
+      const nombreMesero = mesero
+        ? `${mesero.nombre} ${mesero.apellido}`.trim()
+        : 'Mesero';
+      db.movimientosCaja.push({
+        id_movimiento: db.seq.movimientoCaja++,
+        fecha: toDateKey(todayIso()),
+        tipo: esMesero
+          ? 'pago_mesero'
+          : esDomicilio
+            ? 'pago_domicilio'
+            : 'devolucion_exceso_transferencia',
+        monto: montoTransferencia - totalNeto,
+        motivo: esMesero
+          ? `${nombreMesero} · pedido #${idPedido}`
+          : esDomicilio
+            ? `Domicilio · pedido #${idPedido}`
+            : null,
+        metodo_devolucion: esDomicilio || esMesero ? null : dest,
+        id_pedido: idPedido,
+        id_factura: idFactura,
+        id_usuario: actor.id,
+        creado_en: todayIso(),
+      });
     }
     const idMesaP = p.id_mesa;
     if (!quedanPendientes) {
@@ -1973,12 +2938,741 @@ export async function localApi<T = unknown>(
     } as T;
   }
 
+  if (
+    path.startsWith('/pedidos/') &&
+    path.endsWith('/plan/omitir-cuota') &&
+    method === 'POST'
+  ) {
+    rechazarChefTomaPedidos(actor);
+    const idPedido = Number(path.split('/')[2]);
+    const p = db.pedidos.find((x) => x.id_pedido === idPedido);
+    if (!p) badRequest('Pedido no encontrado');
+    if (p.estado === 'facturado') badRequest('Este pedido ya fue facturado');
+    if (!ABIERTOS_LOCAL.includes(p.estado)) {
+      badRequest('El pedido no admite cambios');
+    }
+
+    const enPlan =
+      body.plan_personas_sobre_total === true ||
+      body.plan_combinado_sobre_seleccion === true;
+    if (!enPlan) badRequest('Solo aplica en cobro por personas o combinado');
+
+    const personaIdx = Number(body.persona_plan_indice);
+    const monto = Math.round(Number(body.monto_persona_plan));
+    const totalPersonas = Number(body.total_personas_plan);
+    const facturasBase = Number(body.facturas_base_plan);
+
+    if (
+      !Number.isFinite(personaIdx) ||
+      personaIdx < 1 ||
+      personaIdx > totalPersonas
+    ) {
+      badRequest('Índice de persona inválido');
+    }
+    if (!Number.isFinite(monto) || monto <= 0) badRequest('Cuota inválida');
+
+    const historialRows = db.pedidoHistorial
+      .filter((h) => h.id_pedido === idPedido)
+      .map((h) => ({ tipo: h.tipo, detalle: h.detalle }));
+    const cuotasRegistradas = listarCuotasPlanOmitidas(
+      p.detalles.map((d) => {
+        const prod = db.productos.find((x) => x.id_producto === d.id_producto);
+        return {
+          cobrado: d.id_factura != null,
+          nota_cocina: d.nota_cocina,
+          es_cuota_pendiente_reparto: Boolean(prod?.es_cuota_pendiente_reparto),
+          precio_unitario: d.precio_unitario,
+          cantidad: d.cantidad,
+        };
+      }),
+      historialRows,
+    );
+    const yaExiste = cuotasRegistradas.some(
+      (c) =>
+        c.persona_plan_indice === personaIdx &&
+        c.facturas_base_plan === facturasBase,
+    );
+    if (yaExiste) {
+      badRequest(
+        `La persona ${personaIdx} ya tiene cuota pendiente registrada`,
+      );
+    }
+
+    const planBaseRaw = Math.round(Number(body.plan_base_total ?? 0));
+    const poolRef =
+      body.plan_combinado_sobre_seleccion === true &&
+      Array.isArray(body.detalles_seleccion_referencia)
+        ? (body.detalles_seleccion_referencia as {
+            id_detalle?: number;
+            cantidad?: number;
+          }[])
+            .map((s) => ({
+              id_detalle: Number(s.id_detalle),
+              cantidad: Number(s.cantidad),
+            }))
+            .filter((s) => s.id_detalle > 0 && s.cantidad > 0)
+        : null;
+    const planBase =
+      planBaseRaw > 0
+        ? planBaseRaw
+        : monto * (Number.isFinite(totalPersonas) ? totalPersonas : 1);
+    const facturasPedido = db.facturas
+      .filter((f) => f.id_pedido === idPedido)
+      .sort((a, b) => a.id_factura - b.id_factura);
+    const cobradoEnPlan = facturasPedido
+      .slice(facturasBase)
+      .reduce((s, f) => s + Math.round(f.total), 0);
+    const montoSaldo = Math.max(0, planBase - cobradoEnPlan);
+    const idProdSaldo = ensureProductoCuotaPendienteLocal(
+      db.productos,
+      db.categorias,
+      () => Math.max(0, ...db.productos.map((x) => x.id_producto)) + 1,
+    );
+    const notaSaldo = formatSaldoRestanteNota(poolRef);
+    const saldoExistente = p.detalles.find(
+      (d) =>
+        d.id_factura == null && esNotaSaldoRestantePendiente(d.nota_cocina),
+    );
+    if (montoSaldo <= 0) {
+      if (saldoExistente) {
+        p.detalles = p.detalles.filter(
+          (d) => d.id_detalle !== saldoExistente.id_detalle,
+        );
+      }
+    } else if (saldoExistente) {
+      saldoExistente.precio_unitario = montoSaldo;
+      saldoExistente.cantidad = 1;
+      saldoExistente.nota_cocina = notaSaldo;
+    } else {
+      p.detalles.push({
+        id_detalle: db.seq.detalle++,
+        id_producto: idProdSaldo,
+        id_detalle_padre: null,
+        cantidad: 1,
+        precio_unitario: montoSaldo,
+        nota_cocina: notaSaldo,
+        enviado_cocina: false,
+        listo_cocina: false,
+        listo_para_recoger: false,
+        id_factura: null,
+        opcion_ids: [],
+      });
+    }
+
+    const planSesionId = Number(body.plan_sesion_id);
+    pushHistorialLocal(db, idPedido, actor?.id ?? p.id_usuario, 'detalle_agregado', {
+      cuota_plan_omitida: true,
+      persona_plan_indice: personaIdx,
+      monto_persona_plan: monto,
+      total_personas_plan: totalPersonas,
+      facturas_base_plan: facturasBase,
+      plan_sesion_id:
+        Number.isFinite(planSesionId) && planSesionId > 0
+          ? planSesionId
+          : undefined,
+      plan_base_total: planBase,
+      plan_personas_sobre_total: body.plan_personas_sobre_total === true,
+      plan_combinado_sobre_seleccion:
+        body.plan_combinado_sobre_seleccion === true,
+    });
+
+    await writeDb(db);
+    return serializePedido(db, p) as T;
+  }
+
+  if (
+    path.startsWith('/pedidos/') &&
+    path.endsWith('/plan/reconciliar-saldo-platos') &&
+    method === 'POST'
+  ) {
+    rechazarChefTomaPedidos(actor);
+    const idPedido = Number(path.split('/')[2]);
+    const p = db.pedidos.find((x) => x.id_pedido === idPedido);
+    if (!p) badRequest('Pedido no encontrado');
+    if (p.estado === 'facturado') badRequest('Este pedido ya fue facturado');
+    if (!ABIERTOS_LOCAL.includes(p.estado)) {
+      badRequest('El pedido no admite cambios');
+    }
+
+    const saldo = p.detalles.find(
+      (d) =>
+        d.id_factura == null && esNotaSaldoRestantePendiente(d.nota_cocina),
+    );
+    if (!saldo) {
+      return serializePedido(db, p) as T;
+    }
+
+    const montoSaldo = Math.round(saldo.precio_unitario) * saldo.cantidad;
+    const pool = parseSaldoRestantePool(saldo.nota_cocina);
+    const facturasPed = db.facturas
+      .filter((f) => f.id_pedido === idPedido)
+      .sort((a, b) => a.id_factura - b.id_factura);
+    const idsFacturasPlan = new Set<number>();
+    for (const f of facturasPed) {
+      if (
+        (f as { plan_personas_sobre_total?: boolean }).plan_personas_sobre_total ||
+        (f as { plan_combinado_sobre_seleccion?: boolean })
+          .plan_combinado_sobre_seleccion
+      ) {
+        idsFacturasPlan.add(f.id_factura);
+      }
+    }
+    for (const d of p.detalles) {
+      if (
+        d.id_factura != null &&
+        (d.nota_cocina ?? '').startsWith('saldo_restante:abono')
+      ) {
+        idsFacturasPlan.add(d.id_factura);
+      }
+    }
+
+    const esCandidato = (d: PedidoDetalle, incluirPlan: boolean) => {
+      if (d.id_detalle_padre != null) return false;
+      const prod = db.productos.find((x) => x.id_producto === d.id_producto);
+      if (prod?.es_cuota_pendiente_reparto) return false;
+      if (esNotaSaldoRestantePendiente(d.nota_cocina)) return false;
+      if (d.id_factura != null) {
+        if (!incluirPlan || !idsFacturasPlan.has(d.id_factura)) return false;
+      }
+      if (pool != null && pool.length > 0) {
+        return pool.some((x) => x.id_detalle === d.id_detalle);
+      }
+      return true;
+    };
+
+    let candidatos = p.detalles.filter((d) => esCandidato(d, false));
+    const platosInput = candidatos.map((d) => ({
+      id_detalle: d.id_detalle,
+      precio_unitario: d.precio_unitario,
+      cantidad: d.cantidad,
+    }));
+    if (
+      !saldoNecesitaReconciliarAPlatos(
+        montoSaldo,
+        platosInput,
+        saldo.nota_cocina,
+      )
+    ) {
+      return serializePedido(db, p) as T;
+    }
+
+    if (candidatos.length === 0 && idsFacturasPlan.size > 0) {
+      for (const d of p.detalles) {
+        if (!esCandidato(d, true)) continue;
+        d.id_factura = null;
+        for (const h of p.detalles) {
+          if (
+            h.id_detalle_padre === d.id_detalle &&
+            h.id_factura != null &&
+            idsFacturasPlan.has(h.id_factura)
+          ) {
+            h.id_factura = null;
+          }
+        }
+      }
+      candidatos = p.detalles.filter((d) => esCandidato(d, false));
+    }
+    if (candidatos.length === 0) {
+      return serializePedido(db, p) as T;
+    }
+
+    const dist = distribuirSaldoEnPlatos(
+      montoSaldo,
+      candidatos.map((d) => ({
+        id_detalle: d.id_detalle,
+        precio_unitario: d.precio_unitario,
+        cantidad: d.cantidad,
+      })),
+    );
+    const liberarPorId = new Map(
+      dist.liberaciones.map((l) => [l.id_detalle, l.cantidad]),
+    );
+    const idFacturaRef =
+      facturasPed.length > 0
+        ? facturasPed[facturasPed.length - 1]!.id_factura
+        : null;
+
+    for (const d of [...candidatos]) {
+      const liberar = liberarPorId.get(d.id_detalle) ?? 0;
+      const marcar = d.cantidad - liberar;
+      if (marcar <= 0 || idFacturaRef == null) continue;
+      if (marcar === d.cantidad) {
+        d.id_factura = idFacturaRef;
+        for (const h of p.detalles) {
+          if (h.id_detalle_padre === d.id_detalle && h.id_factura == null) {
+            h.id_factura = idFacturaRef;
+          }
+        }
+      } else {
+        d.cantidad = liberar;
+        p.detalles.push({
+          id_detalle: db.seq.detalle++,
+          id_producto: d.id_producto,
+          id_detalle_padre: d.id_detalle_padre,
+          cantidad: marcar,
+          precio_unitario: d.precio_unitario,
+          nota_cocina: d.nota_cocina,
+          opcion_ids: [...d.opcion_ids],
+          listo_cocina: d.listo_cocina,
+          listo_para_recoger: d.listo_para_recoger,
+          enviado_cocina: d.enviado_cocina,
+          id_factura: idFacturaRef,
+        });
+      }
+    }
+
+    if (dist.montoSaldoRestante <= 0) {
+      p.detalles = p.detalles.filter((d) => d.id_detalle !== saldo.id_detalle);
+    } else {
+      saldo.precio_unitario = dist.montoSaldoRestante;
+      saldo.cantidad = 1;
+      saldo.nota_cocina = SALDO_RESTANTE_FRAGMENTO_NOTA;
+    }
+
+    pushHistorialLocal(db, idPedido, actor?.id ?? p.id_usuario, 'detalle_agregado', {
+      saldo_reconciliado_a_platos: true,
+      monto_saldo_antes: montoSaldo,
+      monto_platos: dist.montoPlatos,
+      monto_saldo_restante: dist.montoSaldoRestante,
+      liberaciones: dist.liberaciones,
+    });
+
+    await writeDb(db);
+    return serializePedido(db, p) as T;
+  }
+
+  if (
+    path.startsWith('/pedidos/') &&
+    path.endsWith('/facturar-mixto') &&
+    method === 'POST'
+  ) {
+    rechazarChefTomaPedidos(actor);
+    const idPedido = Number(path.split('/')[2]);
+    const p = db.pedidos.find((x) => x.id_pedido === idPedido);
+    if (!p) badRequest('Pedido no encontrado');
+    if (p.estado === 'facturado') badRequest('Este pedido ya fue facturado');
+    if (p.detalles.length === 0) badRequest('No hay ítems en el pedido');
+
+    const montoTransferencia = Math.round(Number(body.monto_transferencia ?? 0));
+    if (!Number.isFinite(montoTransferencia) || montoTransferencia < 1) {
+      badRequest('Indica cuánto transfirió el cliente');
+    }
+    const montoRecibidoEfectivo =
+      body.monto_recibido_efectivo != null
+        ? Math.round(Number(body.monto_recibido_efectivo))
+        : undefined;
+
+    const detallesSerial = p.detalles.map((d) => ({
+      id_detalle: d.id_detalle,
+      id_detalle_padre: d.id_detalle_padre,
+      cobrado: d.id_factura != null,
+      cantidad: d.cantidad,
+    }));
+    const pendientes = idsDetallesPendientes(detallesSerial);
+    if (pendientes.length === 0) badRequest('No quedan ítems pendientes de cobro');
+
+    const rawCobro = Array.isArray(body.detalles_cobro) ? body.detalles_cobro : [];
+    const detallesCobroBody = rawCobro
+      .map((x: { id_detalle?: unknown; cantidad?: unknown }) => ({
+        id_detalle: Number(x.id_detalle),
+        cantidad: Number(x.cantidad),
+      }))
+      .filter(
+        (x: { id_detalle: number; cantidad: number }) =>
+          Number.isFinite(x.id_detalle) && x.cantidad > 0,
+      );
+    let solicitudes: DetalleCobroCantidad[];
+    try {
+      const base = resolverSolicitudesCobro(
+        {
+          detalles_cobro:
+            detallesCobroBody.length > 0 ? detallesCobroBody : undefined,
+        },
+        detallesSerial,
+        pendientes,
+      );
+      solicitudes = ordenarSolicitudesCobro(
+        detallesSerial,
+        expandirSolicitudesConEmpaques(detallesSerial, base),
+      );
+    } catch (e) {
+      badRequest(e instanceof Error ? e.message : 'Cantidades de cobro inválidas');
+    }
+    if (solicitudes.length === 0) {
+      badRequest('Selecciona al menos un ítem pendiente de cobro');
+    }
+
+    const config = mapConfigDescuentosLocal(db.configDescuentos);
+
+    function importesDesdeSolicitudes(sol: DetalleCobroCantidad[]) {
+      const detallesCobro = p!.detalles.filter((d) =>
+        sol.some((s) => s.id_detalle === d.id_detalle),
+      );
+      const subtotal = subtotalDesdeSolicitudes(
+        p!.detalles.map((d) => ({
+          id_detalle: d.id_detalle,
+          precio_unitario: d.precio_unitario,
+          cantidad: d.cantidad,
+        })),
+        sol,
+      );
+      const lineas = lineasDescuentoDesdeSolicitudes(
+        detallesCobro.map((d) => {
+          const prod = db.productos.find((x) => x.id_producto === d.id_producto)!;
+          const cat = categoriaDeProducto(db, prod);
+          return {
+            id_detalle: d.id_detalle,
+            cantidad: d.cantidad,
+            precio_unitario: d.precio_unitario,
+            nombre_producto: prod.nombre,
+            categoria_nombre: prod.categoria_nombre,
+            id_categoria: prod.id_categoria,
+            es_plato_principal: Boolean(prod.es_plato_principal),
+            participa_descuento_sopas:
+              'participa_descuento_sopas' in cat
+                ? cat.participa_descuento_sopas
+                : undefined,
+          };
+        }),
+        sol,
+      );
+      const descuentos = calcularDescuentosPedido(
+        lineas,
+        config,
+        Boolean(p!.cliente_mulero),
+      );
+      const descTotal =
+        descuentos.descuento_sopas +
+        descuentos.descuento_muleros +
+        descuentos.descuento_promociones;
+      if (descTotal > subtotal) {
+        badRequest('Los descuentos no pueden superar el subtotal de esta cuenta');
+      }
+      const total = subtotal - descTotal;
+      return { subtotal, descuentos, total };
+    }
+
+    const importesTotales = importesDesdeSolicitudes(solicitudes);
+    const totalNeto = importesTotales.total;
+    const recibidoEf = montoRecibidoEfectivo ?? 0;
+    const metodoDev = body.devolucion_exceso_metodo as
+      | 'efectivo'
+      | 'transferencia'
+      | 'domicilio'
+      | 'mesero'
+      | undefined;
+    const reparto = repartoMixtoConDevolucion(
+      totalNeto,
+      montoTransferencia,
+      recibidoEf,
+      metodoDev,
+    );
+
+    if (reparto.excesoDevolverEfectivo === 0) {
+      if (reparto.efectivoFactura + reparto.transferenciaFactura !== totalNeto) {
+        badRequest('Efectivo y transferencia deben sumar el total de esta cuenta');
+      }
+    } else {
+      if (
+        metodoDev !== 'efectivo' &&
+        metodoDev !== 'transferencia' &&
+        metodoDev !== 'domicilio' &&
+        metodoDev !== 'mesero'
+      ) {
+        badRequest(
+          'Indica si el exceso es devolución al cliente, pago domiciliario o propina al mesero',
+        );
+      }
+    }
+    if (reparto.efectivoFactura > 0 && recibidoEf < reparto.efectivoFactura) {
+      badRequest('El efectivo recibido debe cubrir la parte en efectivo');
+    }
+
+    const precios: Record<number, number> = {};
+    const lineasPadre: {
+      id_detalle: number;
+      precio_unitario: number;
+      cantidad_pendiente: number;
+    }[] = [];
+    const cantSolicitud = new Map(
+      solicitudes.map((s) => [s.id_detalle, s.cantidad]),
+    );
+    for (const d of p.detalles) {
+      precios[d.id_detalle] = d.precio_unitario;
+      if (d.id_detalle_padre != null) continue;
+      const q = cantSolicitud.get(d.id_detalle);
+      if (q == null || q <= 0) continue;
+      lineasPadre.push({
+        id_detalle: d.id_detalle,
+        precio_unitario: d.precio_unitario,
+        cantidad_pendiente: q,
+      });
+    }
+
+    const netoDeCantidades = (cantidades: Record<number, number>) => {
+      const base = Object.entries(cantidades)
+        .filter(([, q]) => q > 0)
+        .map(([id, cantidad]) => ({
+          id_detalle: Number(id),
+          cantidad,
+        }));
+      if (base.length === 0) return 0;
+      const expandidas = ordenarSolicitudesCobro(
+        detallesSerial,
+        expandirSolicitudesConEmpaques(detallesSerial, base),
+      );
+      return importesDesdeSolicitudes(expandidas).total;
+    };
+
+    const expandirCantidades = (cantidades: Record<number, number>) => {
+      const base = Object.entries(cantidades)
+        .filter(([, q]) => q > 0)
+        .map(([id, cantidad]) => ({
+          id_detalle: Number(id),
+          cantidad,
+        }));
+      if (base.length === 0) return [];
+      return ordenarSolicitudesCobro(
+        detallesSerial,
+        expandirSolicitudesConEmpaques(detallesSerial, base),
+      );
+    };
+
+    let { efectivo: solEfectivo, transferencia: solTransferencia } =
+      dividirSolicitudesCobroMixto(
+        solicitudes,
+        precios,
+        reparto.efectivoFactura,
+        totalNeto,
+        {
+          lineasPadre,
+          netoDeCantidades,
+          expandirCantidades,
+        },
+      );
+
+    // Nunca partir precios: montos exactos van en cabecera de factura.
+    if (
+      reparto.efectivoFactura > 0 &&
+      reparto.transferenciaFactura > 0 &&
+      (solEfectivo.length === 0 || solTransferencia.length === 0)
+    ) {
+      if (solEfectivo.length === 0 && solTransferencia.length === 0) {
+        solTransferencia = [...solicitudes];
+      } else if (solEfectivo.length === 0) {
+        solEfectivo = [];
+        solTransferencia = [...solicitudes];
+      } else {
+        solTransferencia = [];
+        solEfectivo = [...solicitudes];
+      }
+    }
+    if (
+      solEfectivo.length === 0 &&
+      solTransferencia.length === 0 &&
+      solicitudes.length > 0
+    ) {
+      solEfectivo = [...solicitudes];
+    }
+
+    const cobroMixtoGrupo =
+      reparto.efectivoFactura > 0 && reparto.transferenciaFactura > 0
+        ? nuevoCobroMixtoGrupo()
+        : null;
+    const descFull =
+      importesTotales.descuentos.descuento_sopas +
+      importesTotales.descuentos.descuento_muleros +
+      importesTotales.descuentos.descuento_promociones;
+    const fullImportes = {
+      subtotal:
+        totalNeto === importesTotales.total
+          ? importesTotales.subtotal
+          : totalNeto + descFull,
+      descuento_sopas: importesTotales.descuentos.descuento_sopas,
+      descuento_muleros: importesTotales.descuentos.descuento_muleros,
+      descuento_promociones: importesTotales.descuentos.descuento_promociones,
+      total: totalNeto,
+    };
+    const proporcionales =
+      cobroMixtoGrupo != null
+        ? importesProporcionalesMixto(fullImportes, reparto.efectivoFactura)
+        : null;
+    const quedanPendientes = quedaPendienteTrasCobro(detallesSerial, solicitudes);
+    const idsFacturas: number[] = [];
+
+    function aplicarCobroLocal(det: PedidoDetalle, cantidadCobrar: number, idFactura: number) {
+      if (cantidadCobrar < 1 || cantidadCobrar > det.cantidad) {
+        badRequest('Cantidad de cobro inválida');
+      }
+      if (det.id_factura != null) {
+        badRequest('Algún ítem ya fue cobrado');
+      }
+      if (cantidadCobrar === det.cantidad) {
+        det.id_factura = idFactura;
+        return;
+      }
+      const queda = det.cantidad - cantidadCobrar;
+      det.cantidad = queda;
+      const nuevoId = db.seq.detalle++;
+      p!.detalles.push({
+        id_detalle: nuevoId,
+        id_producto: det.id_producto,
+        id_detalle_padre: det.id_detalle_padre,
+        cantidad: cantidadCobrar,
+        precio_unitario: det.precio_unitario,
+        nota_cocina: det.nota_cocina,
+        opcion_ids: [...det.opcion_ids],
+        listo_cocina: det.listo_cocina,
+        listo_para_recoger: det.listo_para_recoger,
+        enviado_cocina: det.enviado_cocina,
+        id_factura: idFactura,
+      });
+    }
+
+    function crearFacturaLocal(
+      sol: DetalleCobroCantidad[],
+      metodoPago: Factura['metodo_pago'],
+      grupo: number | null,
+      importesForzados: {
+        subtotal: number;
+        descuento_sopas: number;
+        descuento_muleros: number;
+        descuento_promociones: number;
+        total: number;
+      },
+    ) {
+      const idFactura = db.seq.factura++;
+      const factura: Factura = {
+        id_factura: idFactura,
+        id_pedido: idPedido,
+        id_usuario: actor.id,
+        subtotal: importesForzados.subtotal,
+        descuento_sopas: importesForzados.descuento_sopas,
+        descuento_muleros: importesForzados.descuento_muleros,
+        descuento_promociones: importesForzados.descuento_promociones,
+        total: importesForzados.total,
+        metodo_pago: metodoPago,
+        emitida_en: todayIso(),
+        es_parcial: quedanPendientes,
+        persona_plan_indice:
+          body.persona_plan_indice != null
+            ? Number(body.persona_plan_indice)
+            : undefined,
+        cobro_mixto_grupo: grupo ?? undefined,
+      };
+      db.facturas.push(factura);
+      idsFacturas.push(idFactura);
+
+      const byId = new Map(p!.detalles.map((d) => [d.id_detalle, d]));
+      for (const s of sol) {
+        const det = byId.get(s.id_detalle);
+        if (!det) continue;
+        aplicarCobroLocal(det, s.cantidad, idFactura);
+      }
+      return idFactura;
+    }
+
+    if (reparto.efectivoFactura > 0) {
+      const impEf =
+        proporcionales != null
+          ? proporcionales.primera
+          : {
+              subtotal: fullImportes.subtotal,
+              descuento_sopas: fullImportes.descuento_sopas,
+              descuento_muleros: fullImportes.descuento_muleros,
+              descuento_promociones: fullImportes.descuento_promociones,
+              total: fullImportes.total,
+            };
+      crearFacturaLocal(solEfectivo, 'efectivo', cobroMixtoGrupo, impEf);
+    }
+    if (reparto.transferenciaFactura > 0) {
+      const impTr =
+        proporcionales != null
+          ? proporcionales.segunda
+          : {
+              subtotal: fullImportes.subtotal,
+              descuento_sopas: fullImportes.descuento_sopas,
+              descuento_muleros: fullImportes.descuento_muleros,
+              descuento_promociones: fullImportes.descuento_promociones,
+              total: fullImportes.total,
+            };
+      crearFacturaLocal(solTransferencia, 'transferencia', cobroMixtoGrupo, impTr);
+    }
+
+    if (reparto.excesoDevolverEfectivo > 0) {
+      const metodoDev = body.devolucion_exceso_metodo as
+        | 'efectivo'
+        | 'transferencia'
+        | 'domicilio'
+        | 'mesero';
+      const esDomicilio = metodoDev === 'domicilio';
+      const esMesero = metodoDev === 'mesero';
+      const mesero = db.users.find((u) => u.id === p!.id_usuario);
+      const nombreMesero = mesero
+        ? `${mesero.nombre} ${mesero.apellido}`.trim()
+        : 'Mesero';
+      db.movimientosCaja.push({
+        id_movimiento: db.seq.movimientoCaja++,
+        fecha: toDateKey(todayIso()),
+        tipo: esMesero
+          ? 'pago_mesero'
+          : esDomicilio
+            ? 'pago_domicilio'
+            : 'devolucion_exceso_transferencia',
+        monto: reparto.excesoDevolverEfectivo,
+        motivo: esMesero
+          ? `${nombreMesero} · pedido #${idPedido}`
+          : esDomicilio
+            ? `Domicilio · pedido #${idPedido}`
+            : null,
+        metodo_devolucion: esDomicilio || esMesero ? null : metodoDev,
+        id_pedido: idPedido,
+        id_factura: idsFacturas[0],
+        id_usuario: actor.id,
+        creado_en: todayIso(),
+      });
+    }
+
+    const idMesaP = p.id_mesa;
+    if (!quedanPendientes) {
+      p.estado = 'facturado';
+      p.cerrado_en = todayIso();
+      const mesa = db.mesas.find((m) => m.id_mesa === idMesaP);
+      const abiertosRest = db.pedidos.filter(
+        (x) => x.id_mesa === idMesaP && ABIERTOS_LOCAL.includes(x.estado),
+      ).length;
+      if (mesa && abiertosRest === 0) {
+        mesa.estado = 'libre';
+      }
+    }
+
+    await writeDb(db);
+    const serialized = serializePedido(db, p);
+    const quiereImprimir = body.imprimir_factura !== false;
+    const idFacturaImprimir =
+      cobroMixtoGrupo != null
+        ? Math.min(...idsFacturas)
+        : idsFacturas[idsFacturas.length - 1]!;
+    return {
+      ...serialized,
+      id_factura_emitida: idFacturaImprimir,
+      cobro_completo: !quedanPendientes,
+      impresion_factura: quiereImprimir
+        ? {
+            impreso: false,
+            error:
+              'Impresión de factura solo disponible con el API en el PC del restaurante',
+          }
+        : { impreso: false, omitido: true },
+    } as T;
+  }
+
   if (path.startsWith('/pedidos/') && path.endsWith('/reimprimir-comanda') && method === 'POST') {
     const idPedido = Number(path.split('/')[2]);
     const p = db.pedidos.find((x) => x.id_pedido === idPedido);
     if (!p) badRequest('Pedido no encontrado');
     const enviados = p.detalles.filter(
-      (d) => d.marcar_cocina && d.enviado_cocina,
+      (d) => detalleMarcaCocina(db, d) && d.enviado_cocina,
     );
     if (enviados.length === 0) {
       badRequest('No hay platos enviados a cocina para reimprimir');
@@ -1993,6 +3687,15 @@ export async function localApi<T = unknown>(
           'Reimpresión de comanda solo disponible con el API en el PC del restaurante',
       },
     } as T;
+  }
+
+  if (
+    /\/pedidos\/\d+\/enviar-factura-correo$/.test(path.split('?')[0]) &&
+    method === 'POST'
+  ) {
+    badRequest(
+      'El envío por correo requiere el API en el PC del restaurante con internet y SMTP configurado.',
+    );
   }
 
   if (
@@ -2104,6 +3807,7 @@ export async function localApi<T = unknown>(
       origen_mesa_numero: mesaOrigen.numero,
       destino_mesa_numero: mesaNueva.numero,
       destino_libre: destinoLibre,
+      mesas_virtuales: db.configOperativa,
     });
     if (validacion.accion === 'rechazar') {
       badRequest(validacion.mensaje);
@@ -2118,14 +3822,14 @@ export async function localApi<T = unknown>(
     const restOrigen = db.pedidos.filter(
       (x) => x.id_mesa === idAnterior && ABIERTOS_LOCAL.includes(x.estado),
     ).length;
-    if (mesaOrigen && restOrigen === 0 && !esMesaVirtualNumero(mesaOrigen.numero)) {
+    if (mesaOrigen && restOrigen === 0 && !esMesaVirtualNumero(mesaOrigen.numero, db.configOperativa)) {
       mesaOrigen.estado = 'libre';
     }
 
     const ctx = p.detalles.map((d) => {
       const prod = db.productos.find((x) => x.id_producto === d.id_producto);
       return {
-        es_bebida: prod ? categoriaEsBebida(prod.categoria_nombre) : false,
+        es_bebida: prod ? categoriaEsBebida(categoriaDeProducto(db, prod)) : false,
         es_acompanamiento_mazorca: Boolean(prod?.es_acompanamiento_mazorca),
         es_empacable: Boolean(prod?.es_empacable),
         categoria_nombre: prod?.categoria_nombre ?? '',
@@ -2135,9 +3839,14 @@ export async function localApi<T = unknown>(
     const errMz = sincronizarLineaMazorcaLocal(
       p,
       mesaNueva.numero,
-      idProductoMazorcaLocal(db.productos),
+      idProductoMazorcaLocal(db.productos, db.configOperativa.id_producto_mazorca),
       () => db.seq.detalle++,
-      pedidoDebeTenerLineaMazorca(mesaNueva.numero, ctx),
+      pedidoDebeTenerLineaMazorca(
+        mesaNueva.numero,
+        ctx,
+        db.configOperativa.mazorca_activa,
+      ),
+      db.configOperativa.mazorca_activa,
     );
     if (errMz) badRequest(errMz);
 
@@ -2154,7 +3863,7 @@ export async function localApi<T = unknown>(
       const d = p.detalles.find((x) => x.id_detalle === idDetalle);
       if (!d) continue;
       const prod = db.productos.find((x) => x.id_producto === d.id_producto)!;
-      if (categoriaEsBebida(prod.categoria_nombre)) {
+      if (categoriaEsBebida(categoriaDeProducto(db, prod))) {
         badRequest('Las bebidas no se marcan en cocina');
       }
       if (prod.es_empacable) {
@@ -2192,7 +3901,7 @@ export async function localApi<T = unknown>(
       const d = p.detalles.find((x) => x.id_detalle === idDetalle);
       if (!d) continue;
       const prod = db.productos.find((x) => x.id_producto === d.id_producto)!;
-      if (categoriaEsBebida(prod.categoria_nombre)) {
+      if (categoriaEsBebida(categoriaDeProducto(db, prod))) {
         badRequest('Las bebidas no aplican en cocina');
       }
       if (prod.es_empacable) {
@@ -2231,7 +3940,7 @@ export async function localApi<T = unknown>(
       const d = p.detalles.find((x) => x.id_detalle === idDetalle);
       if (!d) continue;
       const prod = db.productos.find((x) => x.id_producto === d.id_producto)!;
-      if (categoriaEsBebida(prod.categoria_nombre)) {
+      if (categoriaEsBebida(categoriaDeProducto(db, prod))) {
         badRequest('Las bebidas no aplican en cocina');
       }
       if (prod.es_empacable) {
@@ -2264,7 +3973,7 @@ export async function localApi<T = unknown>(
       const aplica = (d: PedidoDetalle) => {
         if (!d.enviado_cocina || d.listo_cocina) return false;
         const prod = db.productos.find((x) => x.id_producto === d.id_producto)!;
-        if (!debeMarcarCocina(prod.categoria_nombre, prod.es_empacable)) {
+        if (!debeMarcarCocina(categoriaDeProducto(db, prod), Boolean(prod.es_empacable))) {
           return false;
         }
         return true;
@@ -2283,13 +3992,13 @@ export async function localApi<T = unknown>(
         badRequest('No hay platos de cocina pendientes de recoger en este pedido');
       }
       await writeDb(db);
-      const mesero = db.users.find((u) => u.id_usuario === p.id_usuario)!;
+      const mesero = db.users.find((u) => u.id === p.id_usuario)!;
       return {
         id_pedido: idPedido,
         platos_listos: platosListos,
         marcados_ahora: marcadosAhora,
         mesero: {
-          id: mesero.id_usuario,
+          id: mesero.id,
           nombre: mesero.nombre,
           apellido: mesero.apellido,
         },
@@ -2335,8 +4044,8 @@ export async function localApi<T = unknown>(
       mesaIds.push(p.id_mesa);
       const mesa = db.mesas.find((m) => m.id_mesa === p.id_mesa);
       const numero = mesa?.numero ?? 0;
-      if (numero === MESA_MOSTRADOR_NUMERO) pedidosMostrador += 1;
-      if (numero === MESA_PARA_LLEVAR_NUMERO) pedidosParaLlevar += 1;
+      if (esMesaMostradorNumero(numero, db.configOperativa)) pedidosMostrador += 1;
+      if (esMesaParaLlevarNumero(numero, db.configOperativa)) pedidosParaLlevar += 1;
       for (const d of p.detalles) {
         const prod = db.productos.find((x) => x.id_producto === d.id_producto);
         const cat = prod
@@ -2345,11 +4054,11 @@ export async function localApi<T = unknown>(
         const catNombre = cat?.nombre ?? '';
         const esBebida = catNombre.toLowerCase().includes('bebida');
         const esEmpacable = prod?.es_empacable ?? false;
-        if (d.marcar_cocina && !d.enviado_cocina) {
+        if (detalleMarcaCocina(db, d) && !d.enviado_cocina) {
           platosSinPasarCocina += d.cantidad;
         }
         if (
-          d.marcar_cocina &&
+          detalleMarcaCocina(db, d) &&
           d.enviado_cocina &&
           d.listo_para_recoger &&
           !d.listo_cocina &&
@@ -2375,6 +4084,43 @@ export async function localApi<T = unknown>(
     } as T;
   }
 
+  if (path === '/pedidos/pendientes-cobro/resumen' && method === 'GET') {
+    if (actor.rol !== 'admin') unauthorized();
+    const rows = db.pedidos.filter((p) => ABIERTOS_LOCAL.includes(p.estado));
+    let pedidosMostrador = 0;
+    let pedidosParaLlevar = 0;
+    let pedidosEnMesas = 0;
+    const pedidos = rows.map((p) => {
+      const mesa = db.mesas.find((m) => m.id_mesa === p.id_mesa);
+      const numero = mesa?.numero ?? 0;
+      const u = db.users.find((x) => x.id === p.id_usuario);
+      let canal: 'mostrador' | 'para_llevar' | 'mesa' = 'mesa';
+      if (esMesaMostradorNumero(numero, db.configOperativa)) {
+        pedidosMostrador += 1;
+        canal = 'mostrador';
+      } else if (esMesaParaLlevarNumero(numero, db.configOperativa)) {
+        pedidosParaLlevar += 1;
+        canal = 'para_llevar';
+      } else {
+        pedidosEnMesas += 1;
+      }
+      return {
+        id_pedido: p.id_pedido,
+        id_mesa: p.id_mesa,
+        mesa_numero: numero,
+        canal,
+        mesero: u ? `${u.nombre} ${u.apellido}`.trim() : '',
+      };
+    });
+    return {
+      total_pedidos: rows.length,
+      pedidos_mostrador: pedidosMostrador,
+      pedidos_para_llevar: pedidosParaLlevar,
+      pedidos_en_mesas: pedidosEnMesas,
+      pedidos,
+    } as T;
+  }
+
   if (path === '/pedidos/mis-activos' && method === 'GET') {
     if (actor.rol !== 'mesero' && actor.rol !== 'admin') unauthorized();
     const rows = db.pedidos.filter(
@@ -2388,12 +4134,16 @@ export async function localApi<T = unknown>(
     } as T;
   }
 
-  function detallePendienteRecogerLocal(d: PedidoDetalle, prod: { categoria_nombre?: string; es_empacable?: boolean } | undefined) {
+  function detallePendienteRecogerLocal(
+    dbRef: Db,
+    d: PedidoDetalle,
+    prod: { categoria_nombre?: string; es_empacable?: boolean } | undefined,
+  ) {
+    if (!detalleMarcaCocina(dbRef, d)) return false;
     const catNombre = prod?.categoria_nombre ?? '';
     const esBebida = catNombre.toLowerCase().includes('bebida');
     const esEmpacable = prod?.es_empacable ?? false;
     return (
-      d.marcar_cocina &&
       d.enviado_cocina &&
       !d.listo_cocina &&
       !esBebida &&
@@ -2405,7 +4155,7 @@ export async function localApi<T = unknown>(
     let total = 0;
     for (const d of p.detalles) {
       const prod = db.productos.find((x) => x.id_producto === d.id_producto);
-      if (detallePendienteRecogerLocal(d, prod)) {
+      if (detallePendienteRecogerLocal(db, d, prod)) {
         total += d.cantidad;
       }
     }
@@ -2542,6 +4292,55 @@ export async function localApi<T = unknown>(
     } as T;
   }
 
+  if (path === '/pedidos/movimientos-caja' && method === 'POST') {
+    if (actor.rol !== 'admin') unauthorized();
+    const tipo = String(body.tipo ?? '');
+    if (tipo !== 'entrada_manual' && tipo !== 'salida_manual') {
+      badRequest('Tipo de movimiento inválido');
+    }
+    const motivo = String(body.motivo ?? '').trim();
+    if (!motivo) badRequest('Indica el motivo del movimiento');
+    const monto = Math.round(Number(body.monto));
+    if (!Number.isFinite(monto) || monto <= 0) badRequest('Monto inválido');
+    let fecha = String(body.fecha ?? '').trim().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) fecha = toDateKey(todayIso());
+    const row: MovimientoCajaRow = {
+      id_movimiento: db.seq.movimientoCaja++,
+      fecha,
+      tipo,
+      monto,
+      motivo,
+      metodo_devolucion: null,
+      id_pedido: null,
+      id_factura: null,
+      id_usuario: actor.id,
+      creado_en: todayIso(),
+    };
+    db.movimientosCaja.push(row);
+    await writeDb(db);
+    return {
+      fecha,
+      movimiento: mapMovimientoCajaLocal(db, row),
+    } as T;
+  }
+
+  {
+    const mMovDel = /^\/pedidos\/movimientos-caja\/(\d+)$/.exec(path);
+    if (mMovDel && method === 'DELETE') {
+      if (actor.rol !== 'admin') unauthorized();
+      const idMov = Number(mMovDel[1]);
+      const idx = db.movimientosCaja.findIndex((x) => x.id_movimiento === idMov);
+      if (idx < 0) badRequest('Movimiento no encontrado');
+      const row = db.movimientosCaja[idx]!;
+      if (row.tipo !== 'entrada_manual' && row.tipo !== 'salida_manual') {
+        badRequest('Solo se pueden eliminar entradas o salidas manuales');
+      }
+      db.movimientosCaja.splice(idx, 1);
+      await writeDb(db);
+      return { ok: true, id_movimiento: idMov } as T;
+    }
+  }
+
   if (path === '/pedidos/config-descuentos' && method === 'GET') {
     return mapConfigDescuentosLocal(db.configDescuentos) as T;
   }
@@ -2556,6 +4355,10 @@ export async function localApi<T = unknown>(
         body.sopas_monto_por_unidad != null
           ? Math.round(Number(body.sopas_monto_por_unidad))
           : prev.sopas_monto_por_unidad,
+      sopas_min_unidades:
+        body.sopas_min_unidades != null
+          ? Math.max(1, Math.round(Number(body.sopas_min_unidades)))
+          : prev.sopas_min_unidades,
       muleros_activo:
         body.muleros_activo != null
           ? Boolean(body.muleros_activo)
@@ -2564,6 +4367,18 @@ export async function localApi<T = unknown>(
         body.muleros_monto_por_plato_principal != null
           ? Math.round(Number(body.muleros_monto_por_plato_principal))
           : prev.muleros_monto_por_plato_principal,
+      muleros_min_platos_principales:
+        body.muleros_min_platos_principales != null
+          ? Math.max(1, Math.round(Number(body.muleros_min_platos_principales)))
+          : prev.muleros_min_platos_principales,
+      umbral_subtotal_otros:
+        body.umbral_subtotal_otros != null
+          ? Math.round(Number(body.umbral_subtotal_otros))
+          : prev.umbral_subtotal_otros,
+      reglas_promocion:
+        body.reglas_promocion != null
+          ? parseReglasPromocion(body.reglas_promocion)
+          : prev.reglas_promocion,
     };
     if (next.sopas_activo && next.sopas_monto_por_unidad <= 0) {
       badRequest('Indica el monto por unidad de sopa al activar el descuento');
@@ -2578,6 +4393,110 @@ export async function localApi<T = unknown>(
     return mapConfigDescuentosLocal(next) as T;
   }
 
+  if (path === '/pedidos/config-operativa' && method === 'GET') {
+    return mapConfigOperativaLocal(db.configOperativa, db.productos) as T;
+  }
+
+  if (path === '/pedidos/config-operativa' && method === 'PUT') {
+    if (actor.rol !== 'admin') badRequest('Solo admin');
+    const prev = db.configOperativa;
+    const nuevoParaLlevar =
+      body.numero_mesa_para_llevar != null
+        ? Math.round(Number(body.numero_mesa_para_llevar))
+        : prev.numero_mesa_para_llevar;
+    const nuevoMostrador =
+      body.numero_mesa_mostrador != null
+        ? Math.round(Number(body.numero_mesa_mostrador))
+        : prev.numero_mesa_mostrador;
+    if (nuevoParaLlevar === nuevoMostrador) {
+      badRequest('Para llevar y mostrador deben usar números de mesa distintos');
+    }
+    if (
+      body.numero_mesa_para_llevar != null &&
+      nuevoParaLlevar !== prev.numero_mesa_para_llevar
+    ) {
+      sincronizarNumeroMesaVirtualLocal(
+        db,
+        prev.numero_mesa_para_llevar,
+        nuevoParaLlevar,
+      );
+    }
+    if (
+      body.numero_mesa_mostrador != null &&
+      nuevoMostrador !== prev.numero_mesa_mostrador
+    ) {
+      sincronizarNumeroMesaVirtualLocal(
+        db,
+        prev.numero_mesa_mostrador,
+        nuevoMostrador,
+      );
+    }
+    const next: ConfigOperativaRow = {
+      precio_empaque_para_llevar:
+        body.precio_empaque_para_llevar != null
+          ? Math.round(Number(body.precio_empaque_para_llevar))
+          : prev.precio_empaque_para_llevar,
+      mazorca_activa:
+        body.mazorca_activa != null
+          ? Boolean(body.mazorca_activa)
+          : prev.mazorca_activa,
+      id_producto_mazorca:
+        body.id_producto_mazorca !== undefined
+          ? body.id_producto_mazorca == null
+            ? null
+            : Number(body.id_producto_mazorca)
+          : prev.id_producto_mazorca,
+      id_producto_cuota_pendiente:
+        body.id_producto_cuota_pendiente !== undefined
+          ? body.id_producto_cuota_pendiente == null
+            ? null
+            : Number(body.id_producto_cuota_pendiente)
+          : prev.id_producto_cuota_pendiente,
+      numero_mesa_para_llevar: nuevoParaLlevar,
+      numero_mesa_mostrador: nuevoMostrador,
+      etiqueta_para_llevar:
+        body.etiqueta_para_llevar != null
+          ? String(body.etiqueta_para_llevar).trim()
+          : prev.etiqueta_para_llevar,
+      etiqueta_mostrador:
+        body.etiqueta_mostrador != null
+          ? String(body.etiqueta_mostrador).trim()
+          : prev.etiqueta_mostrador,
+      mostrador_activo:
+        body.mostrador_activo != null
+          ? Boolean(body.mostrador_activo)
+          : prev.mostrador_activo,
+      para_llevar_activo:
+        body.para_llevar_activo != null
+          ? Boolean(body.para_llevar_activo)
+          : prev.para_llevar_activo,
+      beneficio_soda_almuerzo_activo:
+        body.beneficio_soda_almuerzo_activo != null
+          ? Boolean(body.beneficio_soda_almuerzo_activo)
+          : prev.beneficio_soda_almuerzo_activo,
+      id_producto_soda_almuerzo:
+        body.id_producto_soda_almuerzo !== undefined
+          ? body.id_producto_soda_almuerzo == null
+            ? null
+            : Number(body.id_producto_soda_almuerzo)
+          : prev.id_producto_soda_almuerzo,
+      soda_almuerzo_descontar_stock:
+        body.soda_almuerzo_descontar_stock != null
+          ? Boolean(body.soda_almuerzo_descontar_stock)
+          : prev.soda_almuerzo_descontar_stock,
+    };
+    if (next.id_producto_mazorca != null) {
+      for (const p of db.productos) {
+        p.es_acompanamiento_mazorca =
+          p.id_producto === next.id_producto_mazorca;
+      }
+    }
+    db.configOperativa = next;
+    await writeDb(db);
+    notifyConfigUpdated('mesas');
+    return mapConfigOperativaLocal(next, db.productos) as T;
+  }
+
   {
     const url = new URL(`http://local${path}`);
     const fechaQ = (url.searchParams.get('fecha') ?? '').trim();
@@ -2589,6 +4508,37 @@ export async function localApi<T = unknown>(
       return {
         fecha: fechaQ || toDateKey(todayIso()),
         total_pedidos: 0,
+        comandas_impresas: 0,
+        comandas_omitidas: 0,
+        facturas_impresas: 0,
+        errores: [
+          'Impresión de cierre solo disponible con el API en el PC del restaurante',
+        ],
+        detenido_sin_papel: false,
+      } as T;
+    }
+    if (pathKey === '/sistema/conexion-celulares' && method === 'GET') {
+    if (actor.rol !== 'admin') unauthorized();
+    return {
+      ip: '127.0.0.1',
+      adaptador: 'local',
+      tipo_red: 'otro',
+      puerto_api: 3000,
+      puerto_web: 8080,
+      url_api: 'http://127.0.0.1:3000',
+      url_web_celular: 'http://127.0.0.1:8080',
+      url_web_local: 'http://localhost:8080',
+      health_celular: 'http://127.0.0.1:3000/health',
+      aviso: 'Modo local: conecta el API del restaurante para ver la IP real.',
+    } as T;
+  }
+  if (
+      pathKey === '/pedidos/resumen-diario/imprimir-seleccion' &&
+      method === 'POST'
+    ) {
+      if (actor.rol !== 'admin') unauthorized();
+      return {
+        fecha: fechaQ || toDateKey(todayIso()),
         comandas_impresas: 0,
         comandas_omitidas: 0,
         facturas_impresas: 0,
@@ -2631,6 +4581,12 @@ export async function localApi<T = unknown>(
         .filter((d) => d.id_factura === idFactura)
         .map((d) => {
           const prod = db.productos.find((x) => x.id_producto === d.id_producto);
+          const cat = prod
+            ? db.categorias.find((c) => c.id_categoria === prod.id_categoria)
+            : undefined;
+          const reglas = cat
+            ? inferirReglasCategoriaDesdeNombre(cat.nombre)
+            : null;
           const nombre = prod?.nombre ?? `Producto #${d.id_producto}`;
           const pu = d.precio_unitario;
           const opcionIds = Array.isArray(d.opcion_ids) ? d.opcion_ids : [];
@@ -2647,6 +4603,11 @@ export async function localApi<T = unknown>(
             subtotal_linea: pu * d.cantidad,
             nota_cocina: d.nota_cocina ?? null,
             cobrado: d.id_factura != null,
+            categoria_nombre: cat?.nombre,
+            es_plato_principal: prod?.es_plato_principal,
+            es_bebida: reglas?.es_bebida,
+            es_empacable: prod?.es_empacable,
+            es_acompanamiento_mazorca: prod?.es_acompanamiento_mazorca,
             personalizaciones: pers.map((o) => ({
               id_opcion: o.id_opcion,
               descripcion: o.descripcion,
@@ -2655,6 +4616,119 @@ export async function localApi<T = unknown>(
         }),
     );
     return { id_factura: idFactura, detalles } as T;
+  }
+
+  function idsPedidosReabiertosPendientesLocal(_target: string): number[] {
+    return db.pedidos
+      .filter((p) => {
+        if (!ABIERTOS_LOCAL.includes(p.estado)) return false;
+        if (db.facturas.some((f) => f.id_pedido === p.id_pedido)) return false;
+        if (p.detalles.length === 0) return false;
+        return db.pedidoHistorial.some(
+          (h) => h.id_pedido === p.id_pedido && h.tipo === 'cobro_reabierto',
+        );
+      })
+      .map((p) => p.id_pedido);
+  }
+
+  if (
+    pathKey === '/pedidos/resumen-diario/cancelar-reabiertos' &&
+    method === 'POST'
+  ) {
+    if (actor.rol !== 'admin') unauthorized();
+    if (String(body.confirmar ?? '').trim().toUpperCase() !== 'CANCELAR') {
+      badRequest('Escribe confirmar: "CANCELAR"');
+    }
+    const url = new URL(`http://local${path}`);
+    const fecha = (url.searchParams.get('fecha') ?? '').trim();
+    const target = fecha || toDateKey(todayIso());
+    const ids = idsPedidosReabiertosPendientesLocal(target);
+    const mesasLiberadas = new Set<number>();
+    let cancelados = 0;
+    for (const idPedido of ids) {
+      const idx = db.pedidos.findIndex((x) => x.id_pedido === idPedido);
+      if (idx < 0) continue;
+      const p = db.pedidos[idx];
+      if (db.facturas.some((f) => f.id_pedido === idPedido)) continue;
+      const idMesaP = p.id_mesa;
+      db.pedidoHistorial = db.pedidoHistorial.filter((h) => h.id_pedido !== idPedido);
+      db.pedidos.splice(idx, 1);
+      const abiertosRest = db.pedidos.filter(
+        (x) => x.id_mesa === idMesaP && ABIERTOS_LOCAL.includes(x.estado),
+      ).length;
+      const mesa = db.mesas.find((m) => m.id_mesa === idMesaP);
+      if (mesa && abiertosRest === 0) {
+        mesa.estado = 'libre';
+        mesasLiberadas.add(idMesaP);
+      }
+      cancelados += 1;
+    }
+    await writeDb(db);
+    return {
+      fecha: target,
+      pedidos_cancelados: cancelados,
+      mesas_liberadas: mesasLiberadas.size,
+    } as T;
+  }
+
+  if (pathKey === '/pedidos/resumen-diario/vaciar' && method === 'POST') {
+    if (actor.rol !== 'admin') unauthorized();
+    if (String(body.confirmar ?? '').trim().toUpperCase() !== 'VACIAR') {
+      badRequest('Escribe confirmar: "VACIAR"');
+    }
+    const url = new URL(`http://local${path}`);
+    const fecha = (url.searchParams.get('fecha') ?? '').trim();
+    const target = fecha || toDateKey(todayIso());
+    const facturasDia = db.facturas.filter((f) => toDateKey(f.emitida_en) === target);
+    const idsFacturas = facturasDia.map((f) => f.id_factura);
+    const pedidoIds = [...new Set(facturasDia.map((f) => f.id_pedido))];
+    let pedidosReabiertos = 0;
+
+    for (const d of db.pedidos.flatMap((p) => p.detalles)) {
+      if (d.id_factura != null && idsFacturas.includes(d.id_factura)) {
+        d.id_factura = null;
+      }
+    }
+    db.facturas = db.facturas.filter((f) => !idsFacturas.includes(f.id_factura));
+    db.movimientosCaja = db.movimientosCaja.filter((m) => m.fecha !== target);
+    db.cajaDiaria = db.cajaDiaria.filter((c) => c.fecha !== target);
+
+    for (const idPedido of pedidoIds) {
+      if (db.facturas.some((f) => f.id_pedido === idPedido)) continue;
+      const p = db.pedidos.find((x) => x.id_pedido === idPedido);
+      if (!p || p.detalles.length === 0) continue;
+      if (p.estado === 'facturado') {
+        const enCocina = p.detalles.some((d) => d.enviado_cocina);
+        p.estado = enCocina ? 'en_cocina' : 'abierto';
+        p.cerrado_en = null;
+        const mesa = db.mesas.find((m) => m.id_mesa === p.id_mesa);
+        if (mesa) mesa.estado = 'ocupada';
+      }
+      const yaHistorial = db.pedidoHistorial.some(
+        (h) => h.id_pedido === idPedido && h.tipo === 'cobro_reabierto',
+      );
+      if (!yaHistorial) {
+        db.pedidoHistorial.push({
+          id_historial: db.seq.historial++,
+          id_pedido: idPedido,
+          id_usuario: actor.id,
+          tipo: 'cobro_reabierto',
+          detalle: {
+            motivo: 'Vaciado resumen diario (pruebas)',
+            origen: 'vaciar_resumen_diario',
+          },
+          creado_en: todayIso(),
+        });
+      }
+      pedidosReabiertos += 1;
+    }
+
+    await writeDb(db);
+    return {
+      fecha: target,
+      facturas_eliminadas: idsFacturas.length,
+      pedidos_reabiertos: pedidosReabiertos,
+    } as T;
   }
 
   if (pathKey.startsWith('/pedidos/resumen-diario') && method === 'GET') {
@@ -2705,6 +4779,7 @@ export async function localApi<T = unknown>(
           subtotal: f.subtotal,
           descuento_sopas: f.descuento_sopas,
           descuento_muleros: f.descuento_muleros,
+          descuento_promociones: f.descuento_promociones ?? 0,
           total: f.total,
           metodo_pago: f.metodo_pago,
           emitida_en: f.emitida_en,
@@ -2735,6 +4810,26 @@ export async function localApi<T = unknown>(
     }
     const ventas = agregarVentasResumenDiario(lineasVenta);
 
+    const movimientosDia = db.movimientosCaja
+      .filter((m) => m.fecha === target)
+      .sort((a, b) => a.creado_en.localeCompare(b.creado_en));
+    const movimientos_caja = movimientosDia.map((m) =>
+      mapMovimientoCajaLocal(db, m),
+    );
+    const cuadre = calcularEfectivoEsperadoEnCaja({
+      monto_base_efectivo: montoBaseEfectivo,
+      ventas_efectivo: totalesPorMetodo.efectivo,
+      total_pagos_meseros: 0,
+      movimientos: movimientos_caja.map((m) => ({
+        tipo: m.tipo,
+        monto: m.monto,
+        metodo_devolucion: m.metodo_devolucion,
+      })),
+    });
+    const devoluciones_exceso_transferencia = movimientos_caja.filter(
+      (m) => m.tipo === 'devolucion_exceso_transferencia',
+    );
+
     return {
       fecha: target,
       total_facturado: facturas.reduce((s, f) => s + f.total, 0),
@@ -2744,9 +4839,21 @@ export async function localApi<T = unknown>(
       pedidos_detalle: pedidosDetalle,
       monto_base_efectivo: montoBaseEfectivo,
       totales_por_metodo: totalesPorMetodo,
-      efectivo_esperado_en_caja: montoBaseEfectivo + totalesPorMetodo.efectivo,
+      total_pagos_meseros: 0,
+      pagos_meseros: [],
+      movimientos_caja,
+      devoluciones_exceso_transferencia,
+      total_entradas_manual: cuadre.total_entradas_manual,
+      total_salidas_manual: cuadre.total_salidas_manual,
+      total_devoluciones_efectivo: cuadre.total_devoluciones_efectivo,
+      total_pagos_domicilio: cuadre.total_pagos_domicilio,
+      total_pagos_mesero_exceso: cuadre.total_pagos_mesero_exceso,
+      subtotal_entradas_caja: cuadre.subtotal_entradas_caja,
+      subtotal_salidas_caja: cuadre.subtotal_salidas_caja,
+      efectivo_esperado_en_caja: cuadre.efectivo_esperado_en_caja,
       platos_por_categoria: ventas.platos_por_categoria,
       items_menu: ventas.items_menu,
+      pedidos_reabiertos_pendientes: idsPedidosReabiertosPendientesLocal(target).length,
     } as T;
   }
 
@@ -2782,6 +4889,397 @@ export async function localApi<T = unknown>(
     const p = db.pedidos.find((x) => x.id_pedido === id);
     if (!p) badRequest('Pedido no encontrado');
     return serializePedido(db, p) as T;
+  }
+
+  if (pathKey === '/meseros-operativos/resumen' && method === 'GET') {
+    if (actor.rol !== 'admin') unauthorized();
+    const url = new URL(`http://local${path}`);
+    const fechaQ = (url.searchParams.get('fecha') ?? '').trim() || toDateKey(todayIso());
+    const op = mapConfigOperativaLocal(db.configOperativa, db.productos);
+    const meseros = db.users
+      .filter((u) => u.rol === 'mesero' && u.activo)
+      .map((u) => ({
+        id_usuario: u.id,
+        nombre: u.nombre,
+        apellido: u.apellido,
+        soda_almuerzo: null,
+        pago_turno: null,
+      }));
+    return {
+      fecha: fechaQ,
+      delegacion_cierre_anulacion: null,
+      config: {
+        beneficio_soda_almuerzo_activo: op.beneficio_soda_almuerzo_activo,
+        id_producto_soda_almuerzo: op.id_producto_soda_almuerzo,
+        producto_soda_nombre: op.producto_soda_nombre,
+        soda_almuerzo_descontar_stock: op.soda_almuerzo_descontar_stock,
+        producto_control_stock: false,
+        producto_stock_disponible: null,
+      },
+      meseros,
+      totales: {
+        sodas_aplicadas: 0,
+        pagos_registrados: 0,
+        monto_pagos_total: 0,
+      },
+    } as T;
+  }
+
+  if (pathKey === '/permisos/efectivos' && method === 'GET') {
+    return permisosEfectivosLocal(db, actor) as T;
+  }
+
+  if (pathKey === '/permisos/resumen' && method === 'GET') {
+    if (actor.rol !== 'admin') unauthorized();
+    const urlPermisos = new URL(`http://local${path}`);
+    const fechaQ =
+      (urlPermisos.searchParams.get('fecha') ?? '').trim() || toDateKey(todayIso());
+    const meseros = db.users
+      .filter((u) => u.rol === 'mesero' && u.activo)
+      .map((u) => ({
+        id_usuario: u.id,
+        nombre: u.nombre,
+        apellido: u.apellido,
+      }));
+    return {
+      fecha: fechaQ,
+      permisos_mesero: db.permisosMesero,
+      delegacion_cierre_anulacion: delegacionCierreLocal(db, fechaQ),
+      meseros,
+    } as T;
+  }
+
+  if (pathKey === '/permisos/mesero' && method === 'PATCH') {
+    if (actor.rol !== 'admin') unauthorized();
+    const next = { ...db.permisosMesero };
+    for (const key of PERMISOS_MESERO_KEYS) {
+      if (body[key] !== undefined) next[key] = Boolean(body[key]);
+    }
+    db.permisosMesero = next;
+    await writeDb(db);
+    notifyConfigUpdated('menu');
+    return next as T;
+  }
+
+  if (pathKey === '/permisos/delegacion/cierre-anulacion' && method === 'PUT') {
+    if (actor.rol !== 'admin') unauthorized();
+    const fecha = String(body.fecha ?? '').trim() || toDateKey(todayIso());
+    const idUsuario =
+      body.id_usuario == null ? null : Number(body.id_usuario);
+    if (idUsuario == null) {
+      if (db.delegacionCierreAnulacion?.fecha === fecha) {
+        db.delegacionCierreAnulacion = null;
+      }
+    } else {
+      const mesero = db.users.find(
+        (u) => u.id === idUsuario && u.rol === 'mesero' && u.activo,
+      );
+      if (!mesero) badRequest('Mesero no encontrado o inactivo');
+      db.delegacionCierreAnulacion = {
+        fecha,
+        id_usuario: idUsuario,
+        asignado_en: todayIso(),
+      };
+    }
+    await writeDb(db);
+    notifyConfigUpdated('menu');
+    return {
+      fecha,
+      delegacion_cierre_anulacion: delegacionCierreLocal(db, fecha),
+    } as T;
+  }
+
+  if (pathKey === '/meseros-operativos/mi-delegacion' && method === 'GET') {
+    const efectivos = permisosEfectivosLocal(db, actor);
+    return {
+      puede_cerrar_anulando: efectivos.puede_cerrar_anulando,
+      es_admin: efectivos.es_admin,
+    } as T;
+  }
+
+  if (
+    pathKey.startsWith('/meseros-operativos/') &&
+    (method === 'POST' || method === 'DELETE' || method === 'PUT')
+  ) {
+    if (actor.rol !== 'admin') unauthorized();
+    badRequest(
+      'Beneficios y pagos de meseros solo están disponibles con el API del restaurante',
+    );
+  }
+
+  if (
+    path.match(/^\/pedidos\/\d+\/reabrir-cobro$/) &&
+    method === 'POST'
+  ) {
+    if (actor.rol !== 'admin') unauthorized();
+    const idPedido = Number(path.split('/')[2]);
+    const p = db.pedidos.find((x) => x.id_pedido === idPedido);
+    if (!p) badRequest('Pedido no encontrado');
+    const confirmar = String(body.confirmar ?? '').trim().toUpperCase();
+    if (confirmar !== 'REABRIR') {
+      badRequest('Escribe confirmar: "REABRIR"');
+    }
+    const motivo = String(body.motivo ?? '').trim();
+    if (motivo.length < 3) badRequest('Indica un motivo (mínimo 3 caracteres)');
+
+    const facturasPedido = db.facturas.filter((f) => f.id_pedido === idPedido);
+    if (facturasPedido.length === 0) {
+      badRequest('Este pedido no tiene cobros registrados');
+    }
+    const idsFacturas = facturasPedido.map((f) => f.id_factura);
+    const movAntes = db.movimientosCaja.length;
+    db.movimientosCaja = db.movimientosCaja.filter(
+      (m) =>
+        m.id_pedido !== idPedido &&
+        (m.id_factura == null || !idsFacturas.includes(m.id_factura)),
+    );
+    const movimientosEliminados = movAntes - db.movimientosCaja.length;
+    db.facturas = db.facturas.filter((f) => f.id_pedido !== idPedido);
+    for (const d of p.detalles) {
+      if (d.id_factura != null && idsFacturas.includes(d.id_factura)) {
+        d.id_factura = null;
+      }
+    }
+
+    const enCocina = p.detalles.some((d) => d.enviado_cocina);
+    p.estado = enCocina ? 'en_cocina' : 'abierto';
+    p.cerrado_en = null;
+    const mesa = db.mesas.find((m) => m.id_mesa === p.id_mesa);
+    if (mesa) mesa.estado = 'ocupada';
+
+    db.pedidoHistorial.push({
+      id_historial: db.seq.historial++,
+      id_pedido: idPedido,
+      id_usuario: actor.id,
+      tipo: 'cobro_reabierto',
+      detalle: {
+        motivo,
+        facturas_eliminadas: idsFacturas,
+      },
+      creado_en: todayIso(),
+    });
+
+    await writeDb(db);
+    return {
+      ok: true,
+      id_pedido: idPedido,
+      facturas_eliminadas: idsFacturas.length,
+      movimientos_caja_eliminados: movimientosEliminados,
+      pedido_reabierto: true,
+      estado: p.estado,
+    } as T;
+  }
+
+  if (
+    path.match(/^\/pedidos\/\d+\/revertir-tanda-cobro$/) &&
+    method === 'POST'
+  ) {
+    if (actor.rol !== 'admin') unauthorized();
+    const idPedido = Number(path.split('/')[2]);
+    const p = db.pedidos.find((x) => x.id_pedido === idPedido);
+    if (!p) badRequest('Pedido no encontrado');
+    const confirmar = String(body.confirmar ?? '').trim().toUpperCase();
+    if (confirmar !== 'REVERTIR') {
+      badRequest('Escribe confirmar: "REVERTIR"');
+    }
+    const motivo = String(body.motivo ?? '').trim();
+    if (motivo.length < 3) badRequest('Indica un motivo (mínimo 3 caracteres)');
+    const idFactura = Number(body.id_factura);
+    if (!Number.isFinite(idFactura) || idFactura < 1) {
+      badRequest('id_factura inválido');
+    }
+
+    const facturasPedido = db.facturas.filter((f) => f.id_pedido === idPedido);
+    if (facturasPedido.length === 0) {
+      badRequest('Este pedido no tiene cobros registrados');
+    }
+    const tanda = facturasDeTandaCobro(
+      facturasPedido.map((f) => ({
+        id_factura: f.id_factura,
+        metodo_pago: f.metodo_pago,
+        persona_plan_indice: f.persona_plan_indice,
+        cobro_mixto_grupo: f.cobro_mixto_grupo,
+        total: f.total,
+        emitida_en: f.emitida_en,
+      })),
+      idFactura,
+    );
+    if (tanda.length === 0) {
+      badRequest('La factura indicada no pertenece a este pedido');
+    }
+    const idsFacturas = tanda.map((f) => f.id_factura);
+    const quedanOtras = facturasPedido.some(
+      (f) => !idsFacturas.includes(f.id_factura),
+    );
+    const movAntes = db.movimientosCaja.length;
+    db.movimientosCaja = db.movimientosCaja.filter(
+      (m) => m.id_factura == null || !idsFacturas.includes(m.id_factura),
+    );
+    const movimientosEliminados = movAntes - db.movimientosCaja.length;
+    db.facturas = db.facturas.filter((f) => !idsFacturas.includes(f.id_factura));
+    for (const d of p.detalles) {
+      if (d.id_factura != null && idsFacturas.includes(d.id_factura)) {
+        d.id_factura = null;
+      }
+    }
+
+    const esInternoSaldoLocal = (d: PedidoDetalle) => {
+      const prod = db.productos.find((x) => x.id_producto === d.id_producto);
+      return (
+        Boolean(prod?.es_cuota_pendiente_reparto) ||
+        esNotaSaldoRestantePendiente(d.nota_cocina) ||
+        (d.nota_cocina ?? '').startsWith('saldo_restante:abono')
+      );
+    };
+
+    // Limpiar saldo/abonos huérfanos y desmarcar platos del plan.
+    p.detalles = p.detalles.filter(
+      (d) => !(d.id_factura == null && esInternoSaldoLocal(d)),
+    );
+    const facturasRestantes = db.facturas.filter((f) => f.id_pedido === idPedido);
+    const idsPlan = new Set<number>();
+    for (const f of facturasRestantes) {
+      if (f.persona_plan_indice != null) idsPlan.add(f.id_factura);
+    }
+    for (const d of p.detalles) {
+      if (d.id_factura != null && esInternoSaldoLocal(d)) {
+        idsPlan.add(d.id_factura);
+      }
+    }
+    for (const d of p.detalles) {
+      if (
+        d.id_factura != null &&
+        idsPlan.has(d.id_factura) &&
+        !esInternoSaldoLocal(d)
+      ) {
+        d.id_factura = null;
+      }
+    }
+    if (idsPlan.size > 0) {
+      const cobradoPlan = facturasRestantes
+        .filter((f) => idsPlan.has(f.id_factura))
+        .reduce((s, f) => s + Math.round(f.total), 0);
+      const realesPend = p.detalles.filter(
+        (d) =>
+          d.id_factura == null &&
+          d.id_detalle_padre == null &&
+          !esInternoSaldoLocal(d),
+      );
+      const totalPend = realesPend.reduce(
+        (s, d) => s + Math.round(d.precio_unitario) * d.cantidad,
+        0,
+      );
+      const montoSaldo = Math.max(0, totalPend - cobradoPlan);
+      if (montoSaldo > 0 && cobradoPlan > 0) {
+        const idProdSaldo = ensureProductoCuotaPendienteLocal(
+          db.productos,
+          db.categorias,
+          () => Math.max(0, ...db.productos.map((x) => x.id_producto)) + 1,
+        );
+        const idSaldoDet = db.seq.detalle++;
+        p.detalles.push({
+          id_detalle: idSaldoDet,
+          id_producto: idProdSaldo,
+          id_detalle_padre: null,
+          cantidad: 1,
+          precio_unitario: montoSaldo,
+          nota_cocina: 'saldo_restante',
+          enviado_cocina: false,
+          listo_cocina: false,
+          listo_para_recoger: false,
+          id_factura: null,
+          opcion_ids: [],
+        });
+        // Repartir en unidades de plato de inmediato.
+        const dist = distribuirSaldoEnPlatos(
+          montoSaldo,
+          realesPend.map((d) => ({
+            id_detalle: d.id_detalle,
+            precio_unitario: d.precio_unitario,
+            cantidad: d.cantidad,
+          })),
+        );
+        const liberarPorId = new Map(
+          dist.liberaciones.map((l) => [l.id_detalle, l.cantidad]),
+        );
+        const idFacturaRef = [...idsPlan].sort((a, b) => b - a)[0] ?? null;
+        for (const d of [...realesPend]) {
+          const liberar = liberarPorId.get(d.id_detalle) ?? 0;
+          const marcar = d.cantidad - liberar;
+          if (marcar <= 0 || idFacturaRef == null) continue;
+          if (marcar === d.cantidad) {
+            d.id_factura = idFacturaRef;
+          } else {
+            d.cantidad = liberar;
+            p.detalles.push({
+              id_detalle: db.seq.detalle++,
+              id_producto: d.id_producto,
+              id_detalle_padre: d.id_detalle_padre,
+              cantidad: marcar,
+              precio_unitario: d.precio_unitario,
+              nota_cocina: d.nota_cocina,
+              opcion_ids: [...d.opcion_ids],
+              listo_cocina: d.listo_cocina,
+              listo_para_recoger: d.listo_para_recoger,
+              enviado_cocina: d.enviado_cocina,
+              id_factura: idFacturaRef,
+            });
+          }
+        }
+        const saldoLine = p.detalles.find((d) => d.id_detalle === idSaldoDet);
+        if (saldoLine) {
+          if (dist.montoSaldoRestante <= 0) {
+            p.detalles = p.detalles.filter((d) => d.id_detalle !== idSaldoDet);
+          } else {
+            saldoLine.precio_unitario = dist.montoSaldoRestante;
+            saldoLine.nota_cocina = SALDO_RESTANTE_FRAGMENTO_NOTA;
+          }
+        }
+      }
+    }
+
+    const enCocina = p.detalles.some((d) => d.enviado_cocina);
+    p.estado = enCocina ? 'en_cocina' : 'abierto';
+    p.cerrado_en = null;
+    const mesa = db.mesas.find((m) => m.id_mesa === p.id_mesa);
+    if (mesa) mesa.estado = 'ocupada';
+
+    db.pedidoHistorial.push({
+      id_historial: db.seq.historial++,
+      id_pedido: idPedido,
+      id_usuario: actor.id,
+      tipo: 'cobro_reabierto',
+      detalle: {
+        motivo,
+        alcance: 'tanda',
+        id_factura_solicitada: idFactura,
+        facturas_eliminadas: idsFacturas,
+        quedan_otras_facturas: quedanOtras,
+      },
+      creado_en: todayIso(),
+    });
+
+    await writeDb(db);
+    const pedidoSerial = serializePedido(db, p);
+    return {
+      ok: true,
+      id_pedido: idPedido,
+      facturas_eliminadas: idsFacturas,
+      movimientos_caja_eliminados: movimientosEliminados,
+      quedan_cobros: quedanOtras,
+      pedido_reabierto: true,
+      estado: p.estado,
+      pedido: pedidoSerial,
+    } as T;
+  }
+
+  if (
+    path.match(/^\/pedidos\/\d+\/cerrar-anulando-pendiente$/) &&
+    method === 'POST'
+  ) {
+    badRequest(
+      'Cierre con anulación solo está disponible con el API del restaurante',
+    );
   }
 
   if (path === '/usuarios' && method === 'GET') {
@@ -2840,8 +5338,16 @@ export async function localApi<T = unknown>(
       if (!validacion.ok) badRequest(validacion.mensaje);
     }
     if (typeof body.activo === 'boolean') u.activo = body.activo;
-    if (typeof body.password === 'string' && body.password.trim()) u.password = body.password.trim();
+    if (typeof body.password === 'string' && body.password.trim()) {
+      u.password = body.password.trim();
+    }
     await writeDb(db);
+    if (typeof body.activo === 'boolean' && body.activo === false) {
+      notifyAuthSesionInvalidada(id, 'desactivado');
+    }
+    if (typeof body.password === 'string' && body.password.trim()) {
+      notifyAuthSesionInvalidada(id, 'credenciales');
+    }
     return { id: u.id, nombre: u.nombre, apellido: u.apellido, email: u.email, rol: u.rol, activo: u.activo } as T;
   }
 

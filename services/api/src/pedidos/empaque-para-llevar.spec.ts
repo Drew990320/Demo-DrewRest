@@ -50,5 +50,15 @@ describe('empaque-para-llevar', () => {
         }),
       ).toBe(false);
     });
+
+    it('cobra empaque si el producto está marcado plato principal aunque la categoría no sea plato fuerte', () => {
+      expect(
+        productoCobraEmpaqueParaLlevarPorPlatoFuerte({
+          es_plato_principal: true,
+          es_empacable: false,
+          categoria_nombre: 'Para compartir',
+        }),
+      ).toBe(true);
+    });
   });
 });

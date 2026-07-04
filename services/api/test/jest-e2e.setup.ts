@@ -9,3 +9,4 @@ if (process.env.DATABASE_URL_TEST?.trim()) {
 
 process.env.PRINTER_ENABLED = 'false';
 process.env.JWT_SECRET ??= 'e2e-test-jwt-secret';
+process.env.LICENSE_SKIP = 'true';

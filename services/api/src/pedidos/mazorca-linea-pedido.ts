@@ -19,19 +19,49 @@ export {
 
 let cachedMazorcaProductId: number | null = null;
 
+export function invalidateMazorcaProductIdCache(): void {
+  cachedMazorcaProductId = null;
+}
+
 export async function idProductoMazorcaAcompanamiento(
   prisma: Pick<Prisma.TransactionClient, 'producto'>,
+  idConfigurado?: number | null,
 ): Promise<number> {
+  if (idConfigurado != null) {
+    const p = await prisma.producto.findUnique({
+      where: { idProducto: idConfigurado },
+      select: { idProducto: true, activo: true },
+    });
+    if (!p) {
+      throw new BadRequestException(
+        'El producto de mazorca configurado ya no existe',
+      );
+    }
+    cachedMazorcaProductId = p.idProducto;
+    return p.idProducto;
+  }
+
   if (cachedMazorcaProductId != null) {
     return cachedMazorcaProductId;
   }
+
+  const porFlag = await prisma.producto.findFirst({
+    where: { esAcompanamientoMazorca: true, activo: true },
+    orderBy: { idProducto: 'asc' },
+    select: { idProducto: true },
+  });
+  if (porFlag) {
+    cachedMazorcaProductId = porFlag.idProducto;
+    return porFlag.idProducto;
+  }
+
   const p = await prisma.producto.findFirst({
     where: { nombre: NOMBRE_PRODUCTO_MAZORCA, activo: true },
     select: { idProducto: true },
   });
   if (!p) {
     throw new BadRequestException(
-      'Producto de mazorca (acompañamiento) no configurado en el sistema',
+      'Producto de mazorca (acompañamiento) no configurado. Márcalo en el menú o elige uno en Configuración.',
     );
   }
   cachedMazorcaProductId = p.idProducto;
@@ -64,9 +94,13 @@ export async function sincronizarLineaMazorcaAcompanamiento(
     estadoPedido: EstadoPedido;
     /** Si no se indica, depende del número de mesa (no en 98/99). */
     usaLineaMazorca?: boolean;
+    idProductoMazorca?: number | null;
   },
 ): Promise<void> {
-  const productoId = await idProductoMazorcaAcompanamiento(tx);
+  const productoId = await idProductoMazorcaAcompanamiento(
+    tx,
+    params.idProductoMazorca,
+  );
 
   const lineas = await tx.detallePedido.findMany({
     where: { idPedido: params.idPedido, idProducto: productoId },
@@ -155,15 +189,23 @@ export async function crearLineaMazorcaInicial(
     idPedido: number;
     numComensales: number;
     mesaNumero: number;
+    mazorcaActiva?: boolean;
+    idProductoMazorca?: number | null;
   },
 ): Promise<void> {
-  const productoId = await idProductoMazorcaAcompanamiento(tx);
+  const productoId = await idProductoMazorcaAcompanamiento(
+    tx,
+    params.idProductoMazorca,
+  );
   const existe = await tx.detallePedido.findFirst({
     where: { idPedido: params.idPedido, idProducto: productoId },
     select: { idDetalle: true },
   });
   const cantidad = cantidadLineaMazorcaInicial({
-    usa_linea_mazorca: pedidoUsaLineaMazorca(params.mesaNumero),
+    usa_linea_mazorca: pedidoUsaLineaMazorca(
+      params.mesaNumero,
+      params.mazorcaActiva ?? true,
+    ),
     ya_tiene_linea: Boolean(existe),
     num_comensales: params.numComensales,
   });

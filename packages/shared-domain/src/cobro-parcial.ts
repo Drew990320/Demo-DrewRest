@@ -149,7 +149,9 @@ export function lineasDescuentoDesdeSolicitudes<
     precio_unitario: number;
     nombre_producto: string;
     categoria_nombre?: string;
+    id_categoria?: number;
     es_plato_principal?: boolean;
+    participa_descuento_sopas?: boolean;
   },
 >(detalles: T[], solicitudes: DetalleCobroCantidad[]) {
   const qty = new Map(solicitudes.map((s) => [s.id_detalle, s.cantidad]));
@@ -159,11 +161,14 @@ export function lineasDescuentoDesdeSolicitudes<
       const q = qty.get(d.id_detalle)!;
       const pu = d.precio_unitario;
       return {
+        id_detalle: d.id_detalle,
         cantidad: q,
         subtotal_linea: pu * q,
         nombre_producto: d.nombre_producto,
         categoria_nombre: d.categoria_nombre ?? '',
+        id_categoria: d.id_categoria,
         es_plato_principal: d.es_plato_principal,
+        participa_descuento_sopas: d.participa_descuento_sopas,
       };
     });
 }

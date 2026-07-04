@@ -2,6 +2,8 @@
  * Catálogo local (1 mesero) — mismo contenido que `services/api/prisma/seed.ts`.
  * Incluye personalizaciones en platos fuertes (omitir / aderezos).
  */
+import type { TipoLineaCocinaCategoria } from '@la-reserva/shared-domain/categoria-reglas';
+import { inferirReglasCategoriaDesdeNombre } from '@la-reserva/shared-domain/categoria-reglas';
 import type { Producto } from '../lib/local-api-types';
 import { inferirTipoProteina } from '../lib/cocina-prioridad';
 
@@ -21,7 +23,15 @@ export type DiasCategoria = {
 export type CategoriaLocal = {
   id_categoria: number;
   nombre: string;
-} & DiasCategoria;
+} & DiasCategoria & {
+  es_bebida: boolean;
+  cobra_empaque_para_llevar: boolean;
+  participa_descuento_sopas: boolean;
+  es_linea_empaque: boolean;
+  visible_en_mostrador: boolean;
+  tipo_linea_cocina_default: TipoLineaCocinaCategoria;
+  es_plato_principal_default: boolean;
+};
 
 const ALL: DiasCategoria = {
   disponible_lunes: true,
@@ -166,11 +176,15 @@ const CATEGORIAS: CatRow[] = [
 ];
 
 export function buildLocalCategorias(): CategoriaLocal[] {
-  return CATEGORIAS.map((cat, i) => ({
-    id_categoria: i + 1,
-    nombre: cat.nombre,
-    ...cat.dias,
-  }));
+  return CATEGORIAS.map((cat, i) => {
+    const { nombre: _n, ...reglas } = inferirReglasCategoriaDesdeNombre(cat.nombre);
+    return {
+      id_categoria: i + 1,
+      nombre: cat.nombre,
+      ...cat.dias,
+      ...reglas,
+    };
+  });
 }
 
 export function buildLocalMenuProductos(): Producto[] {
@@ -183,7 +197,11 @@ export function buildLocalMenuProductos(): Producto[] {
     const id_categoria = ci + 1;
     for (const it of cat.items) {
       const opciones: Producto['opciones'] = [];
-      if (cat.nombre.startsWith('Platos fuertes')) {
+      if (
+        cat.nombre.startsWith('Platos fuertes') ||
+        cat.nombre === 'Menú infantil' ||
+        cat.nombre === 'Para compartir'
+      ) {
         for (const d of omitir) {
           opciones.push({
             id_opcion: idOpcion++,

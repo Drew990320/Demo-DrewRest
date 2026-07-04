@@ -1,8 +1,7 @@
+import { categoriaVisibleEnMostrador } from '@la-reserva/shared-domain/categoria-reglas';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
-  ActivityIndicator,
-  Alert,
   Platform,
   Pressable,
   ScrollView,
@@ -15,24 +14,39 @@ import {
   type SectionListData,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ActionIconBar } from '../../../../src/components/ActionIconBar';
+import { ActionIconBar, type ActionIconItem } from '../../../../src/components/ActionIconBar';
+import { AnimatedPressable } from '../../../../src/components/AnimatedPressable';
 import { IconTooltipButton } from '../../../../src/components/IconTooltipButton';
+import { ScreenLoading } from '../../../../src/components/ScreenLoading';
+import { ScreenHeader } from '../../../../src/components/ScreenHeader';
+import { useScreenScrollPadding } from '../../../../src/hooks/useScreenScrollPadding';
 import { useAuth } from '../../../../src/context/AuthContext';
-import { AccionIcon, AdminIcon } from '../../../../src/lib/app-icons';
-import { showBriefNotice } from '../../../../src/lib/app-dialog';
+import { usePedidoToolsRail } from '../../../../src/context/ResumenDiarioToolsRailContext';
+import { usePermisosMesero } from '../../../../src/hooks/usePermisosMesero';
+import { usePedidoRailRefreshSuave } from '../../../../src/hooks/usePedidoRailRefreshSuave';
+import { useMesasVirtuales } from '../../../../src/hooks/useMesasVirtuales';
+import { PedidoIcon } from '../../../../src/lib/app-icons';
+import { alertarSiSinPapel } from '../../../../src/lib/alarma-impresora';
+import { confirmAppDialog, showBriefNotice, showNotice } from '../../../../src/lib/app-dialog';
+import { pasarCocinaPedido } from '../../../../src/lib/pasar-cocina-pedido';
 import { formStyles } from '../../../../src/lib/form-layout';
 import { categoriaMenuIcon } from '../../../../src/lib/categoria-menu-icon';
 import {
   menuProductoQueryParams,
   productoTieneOpcionesPersonalizacion,
 } from '../../../../src/lib/menu-agregar-rapido';
+import { warmMenuTodayCache } from '../../../../src/lib/menu-prefetch';
+import { preloadCategoriaMenuIcons } from '../../../../src/lib/categoria-menu-icon-font';
+import {
+  manejarErrorOperacion,
+  parseRecursoNoDisponible,
+} from '../../../../src/lib/recurso-disponible';
 import { useResponsive } from '../../../../src/hooks/useResponsive';
+import { useConfigSync } from '../../../../src/hooks/useConfigSync';
 import { api } from '../../../../src/lib/api';
 import {
   readMenuTodayCache,
-  writeMenuTodayCache,
 } from '../../../../src/lib/menu-cache';
 import { formatCOP } from '../../../../src/lib/format';
 import { colors } from '../../../../src/lib/theme';
@@ -40,6 +54,10 @@ import {
   scrollHeaderIntoView,
   scrollSectionListToY,
 } from '../../../../src/lib/scroll-section-list';
+import {
+  productoAgotado,
+  stockEtiqueta,
+} from '@la-reserva/shared-domain/stock-producto';
 
 type Opcion = { id_opcion: number; tipo: string; descripcion: string };
 type Producto = {
@@ -48,11 +66,33 @@ type Producto = {
   precio: number;
   es_plato_principal?: boolean;
   es_empacable?: boolean;
+  control_stock?: boolean;
+  stock_disponible?: number;
+  ocultar_sin_stock?: boolean;
+  agotado?: boolean;
   opciones: Opcion[];
 };
-type Categoria = { id_categoria: number; nombre: string; productos: Producto[] };
+type Categoria = {
+  id_categoria: number;
+  nombre: string;
+  es_bebida?: boolean;
+  visible_en_mostrador?: boolean;
+  productos: Producto[];
+};
 
 type MenuSection = SectionListData<Producto, { title: string }>;
+
+type PedidoMenuSnapshot = {
+  id_pedido: number;
+  id_mesa: number;
+  mesa_numero: number;
+  estado: string;
+  detalles: {
+    marcar_cocina?: boolean;
+    enviado_cocina?: boolean;
+  }[];
+  facturas?: { id_factura: number }[];
+};
 
 /** Alturas estimadas para scroll por offset (SectionList + web). */
 const EST_SECTION_HEADER = 42;
@@ -86,14 +126,24 @@ export default function MenuPedidoScreen() {
   const soloBebidas = bebidas === '1' || bebidas === 'true';
   const soloParaLlevar = paraLlevar === '1' || paraLlevar === 'true';
   const { token } = useAuth();
+  const { permisos: permMesero } = usePermisosMesero();
+  const mv = useMesasVirtuales();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const r = useResponsive();
+  const idPedidoNum = Number(pedidoId);
   const listRef = useRef<SectionList<Producto, { title: string }>>(null);
   const scrollRef = useRef<ScrollView>(null);
-  const [data, setData] = useState<{ categorias: Categoria[] } | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [idMesaPedido, setIdMesaPedido] = useState<number | null>(null);
+  const [data, setData] = useState<{ categorias: Categoria[] } | null>(() =>
+    readMenuTodayCache<{ categorias: Categoria[] }>() ?? null,
+  );
+  const [loading, setLoading] = useState(
+    () => readMenuTodayCache<{ categorias: Categoria[] }>() == null,
+  );
+  const [pedidoSnap, setPedidoSnap] = useState<PedidoMenuSnapshot | null>(null);
+  const [pantallaEnFoco, setPantallaEnFoco] = useState(true);
+  const [busyPasarCocina, setBusyPasarCocina] = useState(false);
+  const [busyReimprimir, setBusyReimprimir] = useState(false);
+  const [busyCancelar, setBusyCancelar] = useState(false);
   const [activeSection, setActiveSection] = useState(0);
   const [agregandoRapidoId, setAgregandoRapidoId] = useState<number | null>(null);
   const [modoSeleccion, setModoSeleccion] = useState(false);
@@ -103,65 +153,302 @@ export default function MenuPedidoScreen() {
   const scrollYRef = useRef(0);
   const measuredSectionY = useRef<Record<number, number>>({});
   const headerRefs = useRef<Map<number, View>>(new Map());
+  const categoriaPorProductoRef = useRef<Map<number, string>>(new Map());
 
-  useEffect(() => {
-    let cancelled = false;
-    api<{ id_mesa: number }>(`/pedidos/${pedidoId}`, {
-      token,
-      cacheKey: `pedido_${pedidoId}`,
-    })
-      .then((p) => {
-        if (!cancelled) setIdMesaPedido(p.id_mesa);
-      })
-      .catch(() => {
-        if (!cancelled) setIdMesaPedido(null);
+  const cargarPedidoSnap = useCallback(async () => {
+    try {
+      const p = await api<PedidoMenuSnapshot>(`/pedidos/${pedidoId}`, {
+        token,
+        cacheKey: `pedido_${pedidoId}`,
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [pedidoId, token]);
-
-  const load = useCallback(async () => {
-    const cached = readMenuTodayCache<{ categorias: Categoria[] }>();
-    if (cached) {
-      setData(cached);
-      return;
+      setPedidoSnap(p);
+    } catch {
+      setPedidoSnap(null);
     }
-    const res = await api<{ categorias: Categoria[] }>('/menu/today', {
-      token,
-      cacheKey: 'menu_today',
-    });
-    writeMenuTodayCache(res);
-    setData(res);
-  }, [token]);
+  }, [pedidoId, token]);
 
   useFocusEffect(
     useCallback(() => {
+      setPantallaEnFoco(true);
+      void cargarPedidoSnap();
+      return () => setPantallaEnFoco(false);
+    }, [cargarPedidoSnap]),
+  );
+
+  const platosPendientesServidor = useMemo(
+    () =>
+      pedidoSnap?.detalles.filter(
+        (d) => d.marcar_cocina && !d.enviado_cocina,
+      ).length ?? 0,
+    [pedidoSnap],
+  );
+
+  const { notificarItemAgregado, aplicarPendientesOptimistas } =
+    usePedidoRailRefreshSuave(
+      cargarPedidoSnap,
+      categoriaPorProductoRef,
+      pedidoId,
+      platosPendientesServidor,
+    );
+
+  const platosPendientesCocina = useMemo(
+    () => aplicarPendientesOptimistas(platosPendientesServidor),
+    [platosPendientesServidor, aplicarPendientesOptimistas],
+  );
+
+  const platosEnCocina = useMemo(
+    () =>
+      pedidoSnap?.detalles.filter(
+        (d) => d.marcar_cocina && d.enviado_cocina,
+      ).length ?? 0,
+    [pedidoSnap],
+  );
+
+  const tieneCobrosParciales = (pedidoSnap?.facturas?.length ?? 0) > 0;
+  const esMesaVirtual =
+    pedidoSnap != null && mv.esVirtual(pedidoSnap.mesa_numero);
+
+  async function reimprimirComandaCocina() {
+    setBusyReimprimir(true);
+    try {
+      const res = await api<{
+        impresion_comanda?: {
+          impreso: boolean;
+          error?: string;
+          destino?: string;
+        };
+      }>(`/pedidos/${pedidoId}/reimprimir-comanda`, {
+        method: 'POST',
+        token,
+      });
+      if (alertarSiSinPapel(res)) return;
+      const imp = res.impresion_comanda;
+      await showNotice(
+        imp?.impreso ? 'Comanda reimpresa' : 'Sin imprimir',
+        imp?.impreso
+          ? `Ticket impreso (${imp.destino ?? 'impresora'}). Marca REIMPRESIÓN en el papel.`
+          : imp?.error ?? 'No se pudo reimprimir la comanda de cocina.',
+        imp?.impreso ? 'success' : 'error',
+      );
+    } catch (e) {
+      await manejarErrorOperacion(e, {
+        title: 'Reimprimir',
+        message: 'No se pudo reimprimir la comanda.',
+      });
+    } finally {
+      setBusyReimprimir(false);
+    }
+  }
+
+  async function pasarACocinaManual() {
+    setBusyPasarCocina(true);
+    try {
+      await pasarCocinaPedido(idPedidoNum, token, {
+        onReimprimir: reimprimirComandaCocina,
+      });
+      await cargarPedidoSnap();
+    } finally {
+      setBusyPasarCocina(false);
+    }
+  }
+
+  async function cancelarPedidoMenu() {
+    if (busyCancelar || tieneCobrosParciales) return;
+    const ok = await confirmAppDialog(
+      'Cancelar pedido',
+      'Se eliminará el pedido sin cobrar. ¿Continuar?',
+    );
+    if (!ok) return;
+    setBusyCancelar(true);
+    try {
+      await api(`/pedidos/${pedidoId}/cancelar`, { method: 'POST', token });
+      if (pedidoSnap) {
+        router.replace(`/(app)/mesa/${pedidoSnap.id_mesa}`);
+      } else {
+        router.back();
+      }
+    } catch (e) {
+      await manejarErrorOperacion(e, {
+        title: 'Cancelar',
+        message: 'No se pudo cancelar el pedido.',
+      });
+    } finally {
+      setBusyCancelar(false);
+    }
+  }
+
+  const pedidoActions = useMemo((): ActionIconItem[] => {
+    if (!pedidoSnap) return [];
+    return [
+      permMesero.enviar_cocina
+        ? {
+            key: 'cocina',
+            icon: PedidoIcon.pasarCocina,
+            label: busyPasarCocina
+              ? 'Enviando a cocina…'
+              : platosPendientesCocina > 0
+                ? `Pasar a cocina (${platosPendientesCocina})`
+                : 'Pasar a cocina',
+            variant: 'cocina' as const,
+            disabled:
+              busyPasarCocina ||
+              (platosPendientesCocina === 0 && platosPendientesServidor === 0),
+            badge:
+              platosPendientesCocina > 0 ? platosPendientesCocina : undefined,
+            onPress: () => void pasarACocinaManual(),
+          }
+        : null,
+      permMesero.reimprimir_comanda
+        ? {
+            key: 'reimprimir-cocina',
+            icon: PedidoIcon.reimprimirComanda,
+            label: busyReimprimir
+              ? 'Imprimiendo…'
+              : platosEnCocina > 0
+                ? `Reimprimir comanda (${platosEnCocina})`
+                : 'Reimprimir comanda',
+            variant: 'secondary' as const,
+            disabled: busyReimprimir || platosEnCocina === 0,
+            badge: platosEnCocina > 0 ? platosEnCocina : undefined,
+            onPress: () => void reimprimirComandaCocina(),
+          }
+        : null,
+      permMesero.cobrar
+        ? {
+            key: 'cobrar',
+            icon: PedidoIcon.cobrar,
+            label: 'Cobrar / facturar',
+            variant: 'money' as const,
+            onPress: () => router.push(`/(app)/pedido/${pedidoId}/factura`),
+          }
+        : null,
+      {
+        key: 'volver',
+        icon: 'arrow-back-outline',
+        label: 'Volver al pedido',
+        onPress: () => router.back(),
+      },
+      permMesero.cancelar_pedido
+        ? {
+            key: 'cancelar',
+            icon: 'close-circle-outline',
+            label: tieneCobrosParciales
+              ? 'Cancelar (hay cobros)'
+              : 'Cancelar pedido',
+            variant: 'danger' as const,
+            disabled: busyCancelar || tieneCobrosParciales,
+            onPress: () => void cancelarPedidoMenu(),
+          }
+        : null,
+    ].filter((x): x is NonNullable<typeof x> => x != null);
+  }, [
+    pedidoSnap,
+    permMesero,
+    busyPasarCocina,
+    platosPendientesCocina,
+    platosPendientesServidor,
+    busyReimprimir,
+    platosEnCocina,
+    busyCancelar,
+    tieneCobrosParciales,
+    pedidoId,
+    router,
+  ]);
+
+  const toolsRail = r.navSidebar && pantallaEnFoco && !!pedidoSnap;
+
+  usePedidoToolsRail(
+    toolsRail,
+    {
+      pedidoActions,
+      pedidoHint:
+        'Agrega platos y bebidas. Pulsa «Pasar a cocina» en la barra cuando quieras imprimir la comanda.',
+      transfer:
+        pedidoSnap && !esMesaVirtual && permMesero.transferir_mesa
+          ? {
+              pedidoId: pedidoSnap.id_pedido,
+              mesaOrigenId: pedidoSnap.id_mesa,
+              mesaOrigenNumero: pedidoSnap.mesa_numero,
+              token,
+              disabled: busyPasarCocina || busyCancelar,
+              onTransferido: (idMesa) => router.replace(`/(app)/mesa/${idMesa}`),
+            }
+          : null,
+    },
+    [
+      pedidoSnap?.id_pedido,
+      pedidoSnap?.id_mesa,
+      pedidoSnap?.mesa_numero,
+      esMesaVirtual,
+      permMesero.transferir_mesa,
+      permMesero.enviar_cocina,
+      permMesero.reimprimir_comanda,
+      permMesero.cobrar,
+      permMesero.cancelar_pedido,
+      busyPasarCocina,
+      busyReimprimir,
+      busyCancelar,
+      platosPendientesCocina,
+      platosPendientesServidor,
+      platosEnCocina,
+      tieneCobrosParciales,
+      token,
+    ],
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      void preloadCategoriaMenuIcons();
       let active = true;
       const cached = readMenuTodayCache<{ categorias: Categoria[] }>();
       if (cached) {
         setData(cached);
         setLoading(false);
+        void warmMenuTodayCache(token, { forceNetwork: true }).then(() => {
+          if (!active) return;
+          const fresh = readMenuTodayCache<{ categorias: Categoria[] }>();
+          if (fresh) setData(fresh);
+        });
         return () => {
           active = false;
         };
       }
       setLoading(true);
-      load()
+      void warmMenuTodayCache(token)
         .catch(() => undefined)
         .finally(() => {
-          if (active) setLoading(false);
+          if (!active) return;
+          const fresh = readMenuTodayCache<{ categorias: Categoria[] }>();
+          if (fresh) setData(fresh);
+          setLoading(false);
         });
       return () => {
         active = false;
       };
-    }, [load]),
+    }, [token]),
   );
+
+  const refrescarMenu = useCallback(() => {
+    void warmMenuTodayCache(token, { forceNetwork: true })
+      .catch(() => undefined)
+      .finally(() => {
+        const fresh = readMenuTodayCache<{ categorias: Categoria[] }>();
+        if (fresh) setData(fresh);
+      });
+  }, [token]);
+
+  useConfigSync(refrescarMenu, { scopes: ['menu', 'categorias'] });
 
   const categorias = useMemo(() => {
     if (!data) return [];
     const base = soloBebidas
-      ? data.categorias.filter((c) => c.nombre.toLowerCase().includes('bebida'))
+      ? data.categorias.filter((c) =>
+          categoriaVisibleEnMostrador({
+            nombre: c.nombre,
+            visible_en_mostrador: c.visible_en_mostrador,
+            es_bebida: c.es_bebida,
+          }),
+        )
       : data.categorias;
     return base.filter((c) => c.productos.length > 0);
   }, [data, soloBebidas]);
@@ -190,6 +477,18 @@ export default function MenuPedidoScreen() {
     return map;
   }, [sections]);
 
+  const categoriaPorProducto = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const section of sections) {
+      for (const p of section.data) {
+        map.set(p.id_producto, section.title);
+      }
+    }
+    return map;
+  }, [sections]);
+
+  categoriaPorProductoRef.current = categoriaPorProducto;
+
   const seleccionados = useMemo(
     () =>
       Array.from(seleccionIds)
@@ -199,9 +498,22 @@ export default function MenuPedidoScreen() {
   );
 
   const seleccionConPersonalizacion = useMemo(
-    () => seleccionados.filter(productoTieneOpcionesPersonalizacion).length,
-    [seleccionados],
+    () =>
+      seleccionados.filter((p) =>
+        productoTieneOpcionesPersonalizacion(
+          p,
+          categoriaPorProducto.get(p.id_producto),
+        ),
+      ).length,
+    [seleccionados, categoriaPorProducto],
   );
+
+  function productoEsPersonalizable(item: Producto): boolean {
+    return productoTieneOpcionesPersonalizacion(
+      item,
+      categoriaPorProducto.get(item.id_producto),
+    );
+  }
 
   function salirModoSeleccion() {
     setModoSeleccion(false);
@@ -238,8 +550,11 @@ export default function MenuPedidoScreen() {
         try {
           await postDetalleUnitario(item.id_producto);
           ok++;
-        } catch {
-          /* sigue con el resto */
+          notificarItemAgregado(item);
+        } catch (e) {
+          if (parseRecursoNoDisponible(e)?.kind === 'producto') {
+            await refrescarMenuTrasOcultar();
+          }
         }
       }
       if (ok > 0) {
@@ -250,9 +565,10 @@ export default function MenuPedidoScreen() {
         );
       }
       if (ok < seleccionados.length) {
-        Alert.alert(
-          'Aviso',
-          `Se agregaron ${ok} de ${seleccionados.length}. Revisa los que faltaron.`,
+        await showNotice(
+          'Menú actualizado',
+          `Se agregaron ${ok} de ${seleccionados.length}. Algunos platos ya no están disponibles.`,
+          'warning',
         );
       }
       salirModoSeleccion();
@@ -262,11 +578,9 @@ export default function MenuPedidoScreen() {
   }
 
   async function personalizarSeleccionYAgregar() {
-    const conPers = seleccionados.filter(productoTieneOpcionesPersonalizacion);
+    const conPers = seleccionados.filter((p) => productoEsPersonalizable(p));
     if (conPers.length === 0 || agregandoLote) return;
-    const sinPers = seleccionados.filter(
-      (p) => !productoTieneOpcionesPersonalizacion(p),
-    );
+    const sinPers = seleccionados.filter((p) => !productoEsPersonalizable(p));
 
     setAgregandoLote(true);
     try {
@@ -275,6 +589,7 @@ export default function MenuPedidoScreen() {
         try {
           await postDetalleUnitario(item.id_producto);
           ok++;
+          notificarItemAgregado(item);
         } catch {
           /* sigue */
         }
@@ -379,9 +694,11 @@ export default function MenuPedidoScreen() {
 
   function renderProductRow(item: Producto, index: number, total: number) {
     const last = index === total - 1;
+    const agotado = item.agotado ?? productoAgotado(item);
     const agregando = agregandoRapidoId === item.id_producto;
-    const personalizable = productoTieneOpcionesPersonalizacion(item);
+    const personalizable = productoEsPersonalizable(item);
     const seleccionado = seleccionIds.has(item.id_producto);
+    const stockLabel = stockEtiqueta(item);
     return (
       <View
         key={String(item.id_producto)}
@@ -392,12 +709,14 @@ export default function MenuPedidoScreen() {
           last && styles.rowLast,
           !last && styles.rowMid,
           modoSeleccion && seleccionado && styles.rowSelected,
+          agotado && styles.rowAgotado,
         ]}
       >
         {modoSeleccion ? (
           <Pressable
             style={styles.rowCheck}
-            onPress={() => toggleSeleccion(item.id_producto)}
+            onPress={() => !agotado && toggleSeleccion(item.id_producto)}
+            disabled={agotado}
             accessibilityRole="checkbox"
             accessibilityState={{ checked: seleccionado }}
           >
@@ -406,17 +725,21 @@ export default function MenuPedidoScreen() {
         ) : null}
         <Pressable
           style={styles.rowMain}
-          onPress={() =>
-            modoSeleccion
-              ? toggleSeleccion(item.id_producto)
-              : openProducto(item)
-          }
+          onPress={() => {
+            if (agotado) return;
+            if (modoSeleccion) toggleSeleccion(item.id_producto);
+            else openProducto(item);
+          }}
+          disabled={agotado}
           accessibilityRole="button"
           accessibilityLabel={`${item.nombre}, ${formatCOP(item.precio)}`}
         >
           <Text style={styles.name} numberOfLines={2}>
             {item.nombre}
           </Text>
+          {stockLabel ? (
+            <Text style={styles.stockHint}>{stockLabel}</Text>
+          ) : null}
           <Text style={styles.price}>{formatCOP(item.precio)}</Text>
           {!modoSeleccion ? <Text style={styles.chev}>›</Text> : null}
         </Pressable>
@@ -433,7 +756,7 @@ export default function MenuPedidoScreen() {
             variant="primary"
             size={22}
             fixedSize
-            disabled={agregando}
+            disabled={agregando || agotado}
             onPress={() => agregarRapido(item)}
             style={styles.quickAddBtn}
           />
@@ -443,9 +766,7 @@ export default function MenuPedidoScreen() {
   }
 
   const selectionBarVisible = modoSeleccion;
-  const listBottomPad =
-    (idMesaPedido != null ? 8 : r.contentPadding) +
-    (selectionBarVisible ? 72 : 0);
+  const listBottomPad = useScreenScrollPadding(selectionBarVisible ? 72 : 0);
 
   function openProducto(item: Producto) {
     router.push(
@@ -455,17 +776,27 @@ export default function MenuPedidoScreen() {
     );
   }
 
+  async function refrescarMenuTrasOcultar() {
+    await warmMenuTodayCache(token, { forceNetwork: true });
+    const fresh = readMenuTodayCache<{ categorias: Categoria[] }>();
+    if (fresh) setData(fresh);
+  }
+
   async function agregarRapido(item: Producto) {
     if (agregandoRapidoId != null) return;
     setAgregandoRapidoId(item.id_producto);
     try {
       await postDetalleUnitario(item.id_producto);
+      notificarItemAgregado(item);
       void showBriefNotice('Agregado', `${item.nombre} × 1`, 'success');
     } catch (e) {
-      Alert.alert(
-        'Error',
-        e instanceof Error ? e.message : 'No se pudo agregar al pedido',
-      );
+      if (parseRecursoNoDisponible(e)?.kind === 'producto') {
+        await refrescarMenuTrasOcultar();
+      }
+      await manejarErrorOperacion(e, {
+        title: 'No se pudo agregar',
+        message: 'El plato pudo haberse ocultado del menú. Actualiza e intenta de nuevo.',
+      });
     } finally {
       setAgregandoRapidoId(null);
     }
@@ -483,6 +814,9 @@ export default function MenuPedidoScreen() {
     if (modoSeleccion) {
       return 'Marca los ítems y confirma con los botones de abajo.';
     }
+    if (r.navSidebar && !soloBebidas && permMesero.enviar_cocina) {
+      return '+ agrega 1 · la barra derecha se actualiza. Tú pasas a cocina cuando quieras.';
+    }
     if (soloBebidas) {
       return '+ al instante · toca la fila para cantidad o nota.';
     }
@@ -490,14 +824,14 @@ export default function MenuPedidoScreen() {
       return '+ estándar · toca el plato para empaque, notas u opciones.';
     }
     return '+ agrega 1 al instante · toca el plato para personalizar.';
-  }, [modoSeleccion, soloBebidas, soloParaLlevar]);
+  }, [modoSeleccion, soloBebidas, soloParaLlevar, r.navSidebar, permMesero.enviar_cocina]);
 
   function renderModosSeleccion() {
     return (
       <View style={styles.modesBlock}>
         <Text style={styles.modesLabel}>Modos de selección</Text>
         <View style={styles.modesRow}>
-          <Pressable
+          <AnimatedPressable
             style={[
               styles.modeBtn,
               !modoSeleccion && styles.modeBtnActive,
@@ -519,8 +853,8 @@ export default function MenuPedidoScreen() {
             >
               Uno a uno
             </Text>
-          </Pressable>
-          <Pressable
+          </AnimatedPressable>
+          <AnimatedPressable
             style={[
               styles.modeBtn,
               modoSeleccion && styles.modeBtnActive,
@@ -542,48 +876,51 @@ export default function MenuPedidoScreen() {
             >
               Varios
             </Text>
-          </Pressable>
+          </AnimatedPressable>
         </View>
         <Text style={styles.modeHint}>{hintModoActivo}</Text>
       </View>
     );
   }
 
-  if (loading || !data) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
+  if (loading && !data) {
+    return <ScreenLoading />;
   }
 
-  if (sections.length === 0) {
+  if (!data || sections.length === 0) {
     return (
-      <View style={[styles.container, { padding: r.contentPadding }]}>
-        <View style={styles.header}>
-          <Text style={styles.kicker}>Menú</Text>
-          <Text style={[styles.h1, { fontSize: r.fontSize.h1 }]}>
-            {soloBebidas ? 'Solo bebidas' : 'Disponible hoy'}
+      <View style={styles.container}>
+        <ScreenHeader
+          variant="plain"
+          align="center"
+          eyebrow="Menú"
+          title={soloBebidas ? 'Solo bebidas' : 'Disponible hoy'}
+          titleStyle={{ fontSize: r.fontSize.h1 }}
+          style={{ paddingHorizontal: r.contentPadding }}
+        />
+        <View style={{ flex: 1, paddingHorizontal: r.contentPadding }}>
+          <Text style={styles.empty}>
+            {soloBebidas
+              ? 'No hay categorías de bebidas en el menú de hoy.'
+              : 'No hay productos disponibles hoy.'}
           </Text>
         </View>
-        <Text style={styles.empty}>
-          {soloBebidas
-            ? 'No hay categorías de bebidas en el menú de hoy.'
-            : 'No hay productos disponibles hoy.'}
-        </Text>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { paddingHorizontal: r.contentPadding }]}>
-        <Text style={styles.kicker}>Menú</Text>
-        <Text style={[styles.h1, { fontSize: r.fontSize.h1 }]}>
-          {soloBebidas ? 'Solo bebidas' : 'Disponible hoy'}
-        </Text>
+      <ScreenHeader
+        variant="plain"
+        align="center"
+        eyebrow="Menú"
+        title={soloBebidas ? 'Solo bebidas' : 'Disponible hoy'}
+        titleStyle={{ fontSize: r.fontSize.h1 }}
+        style={{ paddingHorizontal: r.contentPadding }}
+      >
         {renderModosSeleccion()}
-      </View>
+      </ScreenHeader>
 
       {sections.length > 1 ? (
         <View style={[styles.catNavWrap, { paddingHorizontal: r.contentPadding }]}>
@@ -699,41 +1036,6 @@ export default function MenuPedidoScreen() {
           />
         </View>
       ) : null}
-
-      {idMesaPedido != null ? (
-        <View
-          style={[
-            styles.menuFooter,
-            {
-              paddingHorizontal: r.contentPadding,
-              paddingBottom: Math.max(insets.bottom, 12),
-            },
-          ]}
-        >
-          <ActionIconBar
-            style={formStyles.screenActions}
-            actions={[
-              {
-                key: 'mesa',
-                icon: AccionIcon.confirmarEnMesa,
-                label: 'Volver a mesa',
-                variant: 'primary',
-                onPress: () => router.replace(`/(app)/mesa/${idMesaPedido}`),
-              },
-              {
-                key: 'mesas',
-                icon: AdminIcon.volverMesas,
-                label: 'Volver a mesas',
-                variant: 'secondary',
-                onPress: () => router.replace('/(app)/mesas'),
-              },
-            ]}
-          />
-          <Text style={styles.menuFooterHint}>
-            Si piden algo más tarde, abre de nuevo «Agregar del menú» en la mesa.
-          </Text>
-        </View>
-      ) : null}
     </View>
   );
 }
@@ -742,28 +1044,12 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   listFlex: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: {
-    paddingTop: 8,
-    paddingBottom: 6,
-    alignItems: 'center',
-  },
-  kicker: {
-    color: colors.textMuted,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-    textAlign: 'center',
-  },
-  h1: {
-    fontWeight: '800',
-    color: colors.text,
-    marginTop: 2,
-    textAlign: 'center',
-  },
   modesBlock: {
     marginTop: 10,
     width: '100%',
     maxWidth: 340,
     alignItems: 'center',
+    alignSelf: 'center',
   },
   modesLabel: {
     fontSize: 11,
@@ -856,23 +1142,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
-  menuFooter: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-    backgroundColor: colors.surfaceMuted,
-    paddingTop: 4,
-    alignItems: 'center',
-  },
-  menuFooterHint: {
-    marginTop: 4,
-    marginBottom: 4,
-    fontSize: 11,
-    color: colors.textMuted,
-    textAlign: 'center',
-    lineHeight: 16,
-    maxWidth: 520,
-    alignSelf: 'center',
-  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -887,6 +1156,14 @@ const styles = StyleSheet.create({
   },
   rowSelected: {
     backgroundColor: colors.surfaceMuted,
+  },
+  rowAgotado: {
+    opacity: 0.55,
+  },
+  stockHint: {
+    fontSize: 12,
+    color: colors.danger,
+    marginTop: 2,
   },
   rowCheck: {
     width: 28,

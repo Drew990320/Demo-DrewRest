@@ -14,5 +14,11 @@ export type Producto = {
   es_plato_principal?: boolean;
   es_empacable?: boolean;
   es_acompanamiento_mazorca?: boolean;
+  es_cuota_pendiente_reparto?: boolean;
+  control_stock?: boolean;
+  stock_disponible?: number;
+  ocultar_sin_stock?: boolean;
+  /** Calculado al serializar menú (stock agotado). */
+  agotado?: boolean;
   opciones: { id_opcion: number; tipo: string; descripcion: string }[];
 };

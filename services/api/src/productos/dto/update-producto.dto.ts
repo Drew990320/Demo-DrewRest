@@ -47,6 +47,24 @@ export class UpdateProductoDto {
   es_empacable?: boolean;
 
   @IsOptional()
+  @IsBoolean()
+  es_acompanamiento_mazorca?: boolean;
+
+  @IsOptional()
   @IsEnum(TipoProteina)
   tipo_proteina?: TipoProteina;
+
+  @IsOptional()
+  @IsBoolean()
+  control_stock?: boolean;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  stock_disponible?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  ocultar_sin_stock?: boolean;
 }

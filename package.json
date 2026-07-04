@@ -21,6 +21,8 @@
     "la-reserva:empaquetar-api": "npm run shared-domain:build && npm run api:build && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/empaquetar-api-la-reserva.ps1",
     "la-reserva:empaquetar-web": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/empaquetar-web-la-reserva.ps1",
     "la-reserva:empaquetar": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/empaquetar-la-reserva-completo.ps1",
+    "license:id": "node services/api/scripts/license/mostrar-id-maquina.js",
+    "license:generar": "node scripts/generar-licencia.js",
     "mobile:build:android:preview": "npm exec --prefix apps/mobile -- eas-cli build --platform android --profile preview",
     "mobile:eas:login": "npm exec --prefix apps/mobile -- eas-cli login"
   },

@@ -8,6 +8,7 @@ import {
   createE2eFixture,
   destroyE2eFixture,
   isDatabaseAvailable,
+  resetMesaE2e,
   type E2eFixture,
 } from './helpers/test-db';
 
@@ -121,5 +122,34 @@ describeE2e('Pedidos (e2e)', () => {
       actualizado.body.detalles as { es_acompanamiento_mazorca?: boolean; cantidad: number }[]
     ).find((d) => d.es_acompanamiento_mazorca);
     expect(lineaActualizada?.cantidad).toBe(5);
+  });
+
+  it('rechaza doble apertura concurrente en mesa física', async () => {
+    if (!dbAvailable) return;
+
+    await resetMesaE2e(fixture.prisma, fixture.idMesaE2e);
+
+    const server = app.getHttpServer();
+    const payload = { id_mesa: fixture.idMesaE2e, num_comensales: 2 };
+
+    const [resA, resB] = await Promise.all([
+      request(server).post('/pedidos').set(authHeader(token)).send(payload),
+      request(server).post('/pedidos').set(authHeader(token)).send(payload),
+    ]);
+
+    const statuses = [resA.status, resB.status].sort();
+    expect(statuses).toEqual([201, 409]);
+
+    const ok = resA.status === 201 ? resA : resB;
+    const idPedido = ok.body.id_pedido as number;
+    fixture.pedidoIds.push(idPedido);
+
+    const abiertos = await fixture.prisma.pedido.count({
+      where: {
+        idMesa: fixture.idMesaE2e,
+        estado: { in: ['abierto', 'en_cocina'] },
+      },
+    });
+    expect(abiertos).toBe(1);
   });
 });

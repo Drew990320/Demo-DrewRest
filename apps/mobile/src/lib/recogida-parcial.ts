@@ -20,6 +20,8 @@ export function detalleALineaPedido(d: DetalleCocinaView): LineaPedidoBase {
     id_detalle: d.id_detalle,
     id_detalle_padre: null,
     nombre_producto: d.nombre_producto,
+    categoria_nombre: d.categoria_nombre,
+    es_plato_principal: d.es_plato_principal,
     cantidad: d.cantidad,
     precio_unitario: 0,
     subtotal_linea: 0,

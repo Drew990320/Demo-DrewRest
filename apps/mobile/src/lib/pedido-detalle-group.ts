@@ -1,3 +1,5 @@
+import { ordenarLineasPedidoPorSeccion } from '@la-reserva/shared-domain/orden-lineas-pedido';
+
 export type LineaPedidoBase = {
   id_detalle: number;
   id_producto?: number;
@@ -7,6 +9,8 @@ export type LineaPedidoBase = {
   precio_unitario: number;
   subtotal_linea: number;
   nota_cocina: string | null;
+  categoria_nombre?: string;
+  es_plato_principal?: boolean;
   es_empacable?: boolean;
   es_bebida?: boolean;
   marcar_cocina?: boolean;
@@ -100,10 +104,11 @@ export function agruparLineasPedido(
   opts?: AgruparLineasOpciones,
 ): LineaPedidoGrupo[] {
   const byId = new Map(detalles.map((d) => [d.id_detalle, d]));
+  const ordenados = ordenarLineasPedidoPorSeccion(detalles);
   const orden: string[] = [];
   const map = new Map<string, LineaPedidoGrupo>();
 
-  for (const d of detalles) {
+  for (const d of ordenados) {
     const key = claveAgrupacion(d, opts);
     const prev = map.get(key);
     if (!prev) {

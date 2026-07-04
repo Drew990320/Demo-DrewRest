@@ -41,7 +41,7 @@ export interface MesaAdminDto extends MesaDto {
   disponible_domingo: boolean;
 }
 
-/** Respuesta admin `GET /categorias/admin` — visibilidad del menú por día. */
+/** Respuesta admin `GET /categorias/admin` — visibilidad del menú por día y reglas operativas. */
 export interface CategoriaAdminDto {
   id_categoria: number;
   nombre: string;
@@ -52,14 +52,23 @@ export interface CategoriaAdminDto {
   disponible_viernes: boolean;
   disponible_sabado: boolean;
   disponible_domingo: boolean;
+  es_bebida: boolean;
+  cobra_empaque_para_llevar: boolean;
+  participa_descuento_sopas: boolean;
+  es_linea_empaque: boolean;
+  visible_en_mostrador: boolean;
+  tipo_linea_cocina_default: 'plato' | 'entrada' | 'adicional';
+  es_plato_principal_default: boolean;
 }
 
 /** Reglas globales de descuento en facturación (`GET/PUT /pedidos/config-descuentos`). */
 export interface ConfigDescuentosDto {
   sopas_activo: boolean;
   sopas_monto_por_unidad: number;
+  sopas_min_unidades: number;
   muleros_activo: boolean;
   muleros_monto_por_plato_principal: number;
+  muleros_min_platos_principales: number;
   umbral_subtotal_otros: number;
 }
 

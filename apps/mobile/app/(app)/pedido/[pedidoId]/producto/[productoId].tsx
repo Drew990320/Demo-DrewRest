@@ -1,11 +1,8 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, useEffect } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
-  ActivityIndicator,
-  Alert,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Switch,
   Text,
@@ -13,12 +10,18 @@ import {
   View,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useAuth } from '../../../../../src/context/AuthContext';
+import { PedidoIcon, AdminIcon } from '../../../../../src/lib/app-icons';
 import { ActionIconBar } from '../../../../../src/components/ActionIconBar';
+import { EmptyState } from '../../../../../src/components/EmptyState';
+import { QtyStepper } from '../../../../../src/components/QtyStepper';
+import { ScreenLoading } from '../../../../../src/components/ScreenLoading';
+import { ScreenScroll } from '../../../../../src/components/ScreenScroll';
+import { ScreenHeader } from '../../../../../src/components/ScreenHeader';
+import { useAuth } from '../../../../../src/context/AuthContext';
 import { api } from '../../../../../src/lib/api';
-import { readMenuTodayCache, writeMenuTodayCache } from '../../../../../src/lib/menu-cache';
-import { showNotice } from '../../../../../src/lib/app-dialog';
-import { enteroConDefecto } from '../../../../../src/lib/form-validation';
+import { readMenuTodayCache } from '../../../../../src/lib/menu-cache';
+import { warmMenuTodayCache } from '../../../../../src/lib/menu-prefetch';
+import { manejarErrorAccion } from '../../../../../src/lib/recurso-disponible';
 import {
   menuProductoQueryParams,
   parseColaPersonalizarMenu,
@@ -29,10 +32,6 @@ import { formStyles } from '../../../../../src/lib/form-layout';
 import { formatCOP } from '../../../../../src/lib/format';
 import { appShadow } from '../../../../../src/lib/shadow';
 import { colors } from '../../../../../src/lib/theme';
-
-function alertDialog(title: string, message?: string) {
-  void showNotice(title, message, 'info');
-}
 
 type Opcion = { id_opcion: number; tipo: string; descripcion: string };
 type Producto = {
@@ -78,24 +77,37 @@ export default function ProductoPersonalizarScreen() {
   const router = useRouter();
   const [producto, setProducto] = useState<Producto | null>(null);
   const [loading, setLoading] = useState(true);
-  const [cantidad, setCantidad] = useState('');
+  const [cantidad, setCantidad] = useState(1);
   const [nota, setNota] = useState('');
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [busy, setBusy] = useState(false);
   const [sinEmpaqueAuto, setSinEmpaqueAuto] = useState(false);
-  const narrowField = useFormFieldStyle('narrow');
+  const [idMesaPedido, setIdMesaPedido] = useState<number | null>(null);
   const textField = useFormFieldStyle('text');
 
+  useEffect(() => {
+    let cancelled = false;
+    api<{ id_mesa: number }>(`/pedidos/${pedidoId}`, {
+      token,
+      cacheKey: `pedido_${pedidoId}`,
+    })
+      .then((p) => {
+        if (!cancelled) setIdMesaPedido(p.id_mesa);
+      })
+      .catch(() => {
+        if (!cancelled) setIdMesaPedido(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [pedidoId, token]);
+
   const load = useCallback(async () => {
-    let res = readMenuTodayCache<{
+    await warmMenuTodayCache(token);
+    const res = readMenuTodayCache<{
       categorias: { nombre: string; productos: Producto[] }[];
     }>();
-    if (!res) {
-      res = await api<{
-        categorias: { nombre: string; productos: Producto[] }[];
-      }>('/menu/today', { token, cacheKey: 'menu_today' });
-      writeMenuTodayCache(res);
-    }
+    if (!res) return;
     let found: Producto | null = null;
     for (const c of res.categorias) {
       const p = c.productos.find((x) => x.id_producto === pid);
@@ -139,7 +151,7 @@ export default function ProductoPersonalizarScreen() {
   }
 
   async function ejecutarAgregarLinea(): Promise<{ id_mesa: number }> {
-    const q = enteroConDefecto(cantidad, 1);
+    const q = Math.max(1, cantidad);
     const body: Record<string, unknown> = {
       id_producto: pid,
       cantidad: q,
@@ -188,7 +200,7 @@ export default function ProductoPersonalizarScreen() {
       const suf = menuQueryFromParams(bebidas, paraLlevar);
       router.replace(`/(app)/pedido/${pedidoId}/menu${suf}`);
     } catch (e) {
-      alertDialog('Error', e instanceof Error ? e.message : 'No se pudo agregar');
+      await manejarErrorAccion(e, 'agregar el ítem al pedido');
     } finally {
       setBusy(false);
     }
@@ -200,57 +212,66 @@ export default function ProductoPersonalizarScreen() {
       const ped = await ejecutarAgregarLinea();
       router.replace(`/(app)/mesa/${ped.id_mesa}`);
     } catch (e) {
-      alertDialog('Error', e instanceof Error ? e.message : 'No se pudo agregar');
+      await manejarErrorAccion(e, 'agregar el ítem al pedido');
     } finally {
       setBusy(false);
     }
   }
 
   if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
+    return <ScreenLoading />;
   }
 
   if (!producto) {
+    const suf = menuQueryFromParams(bebidas, paraLlevar);
     return (
       <View style={styles.center}>
-        <Text>Producto no encontrado en el menú de hoy.</Text>
+        <EmptyState
+          title="Plato no disponible"
+          message="Este plato ya no está en el menú de hoy. Un administrador pudo haberlo ocultado mientras lo seleccionabas."
+          actions={[
+            {
+              key: 'menu',
+              icon: PedidoIcon.agregarMenu,
+              label: 'Volver al menú',
+              variant: 'primary',
+              onPress: () =>
+                router.replace(`/(app)/pedido/${pedidoId}/menu${suf}`),
+            },
+            {
+              key: 'mesas',
+              icon: AdminIcon.volverMesas,
+              label: 'Volver a mesas',
+              variant: 'secondary',
+              onPress: () => router.replace('/(app)/mesas'),
+            },
+          ]}
+        />
       </View>
     );
   }
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={formStyles.pageScrollContent}
-    >
-      <View style={styles.headerCard}>
-        <Text style={styles.kicker}>Producto</Text>
+    <ScreenScroll>
+      <ScreenHeader eyebrow="Producto" title={producto.nombre}>
         {colaRestante.length > 0 ? (
           <Text style={styles.colaHint}>
             Personalización en lote · {colaRestante.length + 1} plato(s) en esta
             tanda
           </Text>
         ) : null}
-        <Text style={styles.h1}>{producto.nombre}</Text>
         <Text style={styles.price}>{formatCOP(producto.precio)} c/u</Text>
-      </View>
+      </ScreenHeader>
 
       <View style={styles.card}>
-        <Text style={styles.label}>Cantidad (opcional; 1 por defecto)</Text>
-        <TextInput
-          style={[styles.input, narrowField]}
-          keyboardType="number-pad"
-          placeholder="1 (opcional)"
-          placeholderTextColor={colors.textHint}
+        <QtyStepper
+          label="Cantidad"
           value={cantidad}
-          onChangeText={setCantidad}
+          onChange={setCantidad}
+          disabled={busy}
         />
 
-        <Text style={styles.label}>Nota para cocina (opcional)</Text>
+        <Text style={[styles.label, styles.notaLabel]}>Nota para cocina (opcional)</Text>
         <TextInput
           style={[styles.input, styles.multiline, textField]}
           multiline
@@ -347,30 +368,19 @@ export default function ProductoPersonalizarScreen() {
           },
         ]}
       />
-    </ScrollView>
+    </ScreenScroll>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background, padding: 16 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
-  headerCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: 14,
-    ...appShadow('elevated'),
-  },
-  kicker: { color: colors.textMuted, fontWeight: '700', letterSpacing: 0.3 },
   colaHint: {
     marginTop: 4,
     fontSize: 12,
     fontWeight: '700',
     color: colors.primary,
   },
-  h1: { fontSize: 20, fontWeight: '800', color: colors.text, marginTop: 6 },
   price: { fontSize: 16, color: colors.textMuted, marginTop: 8 },
   card: {
     backgroundColor: colors.surface,
@@ -382,6 +392,7 @@ const styles = StyleSheet.create({
     ...appShadow('soft'),
   },
   label: { fontWeight: '700', marginBottom: 6, color: colors.text },
+  notaLabel: { marginTop: 16 },
   input: {
     borderWidth: 1,
     borderColor: colors.borderInput,
@@ -434,6 +445,7 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     lineHeight: 18,
   },
-  addActions: { marginTop: 8, marginBottom: 16 },
+  addActions: { marginTop: 8, marginBottom: 8 },
+  volverNav: { marginTop: 4, marginBottom: 16 },
   disabled: { opacity: 0.6 },
 });

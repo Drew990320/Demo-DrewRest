@@ -56,6 +56,68 @@ function urlTargetsLocalhost(url: string): boolean {
  * En dev, Metro sirve el bundle como http://IP_LAN:8081/... — misma IP que el API en el PC.
  * Así la app nativa puede usar el API sin poner la IP en .env (si .env sigue en localhost).
  */
+function inferDevWebOriginFromMetro(): string | null {
+  if (!__DEV__ || Platform.OS === 'web') return null;
+  try {
+    const scriptURL = (NativeModules.SourceCode as { scriptURL?: string })
+      ?.scriptURL;
+    if (!scriptURL) return null;
+    const normalized =
+      scriptURL.startsWith('http://') || scriptURL.startsWith('https://')
+        ? scriptURL
+        : `http://${scriptURL}`;
+    const u = new URL(normalized);
+    if (hostnameIsPrivateLan(u.hostname)) {
+      return u.origin;
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+/** URL que deben abrir los celulares (QR / enlace). */
+export function resolveUrlWebCelular(data: {
+  ip: string | null;
+  url_web_celular: string | null;
+  puerto_web: number;
+} | null): string | null {
+  if (!data?.ip) return data?.url_web_celular ?? null;
+
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    const { hostname, port, protocol } = window.location;
+    if (hostnameIsPrivateLan(hostname)) {
+      const p = port || (protocol === 'https:' ? '443' : '80');
+      return `${protocol}//${hostname}${p ? `:${p}` : ''}`;
+    }
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      const p = port || process.env.EXPO_PUBLIC_WEB_PORT?.trim() || '8081';
+      return `http://${data.ip}:${p}`;
+    }
+  }
+
+  if (__DEV__) {
+    const fromMetro = inferDevWebOriginFromMetro();
+    if (fromMetro) return fromMetro;
+    const envPort = process.env.EXPO_PUBLIC_WEB_PORT?.trim();
+    if (envPort) {
+      return `http://${data.ip}:${envPort}`;
+    }
+  }
+
+  return data.url_web_celular;
+}
+
+export function puertoDesdeUrlWeb(url: string | null): number | null {
+  if (!url) return null;
+  try {
+    const p = new URL(url).port;
+    return p ? Number(p) : null;
+  } catch {
+    return null;
+  }
+}
+
 function inferLanHostFromDevBundle(): string | null {
   if (!__DEV__ || Platform.OS === 'web') return null;
   try {
@@ -117,8 +179,8 @@ function resolveApiUrl(): string {
     return trimmed;
   }
 
-  // Dispositivo físico (app nativa): localhost en .env/manifest = el propio móvil, no el PC.
-  if (Constants.isDevice && urlTargetsLocalhost(trimmed)) {
+  // App nativa: localhost en .env/manifest apunta al móvil, no al PC.
+  if (Platform.OS !== 'web' && urlTargetsLocalhost(trimmed)) {
     const inferred = inferLanHostFromDevBundle();
     if (inferred) {
       return `http://${inferred}:${apiPortFromBaseUrl(trimmed)}`;

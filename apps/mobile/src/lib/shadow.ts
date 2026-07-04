@@ -2,56 +2,46 @@ import { Platform, type ViewStyle } from 'react-native';
 
 type ShadowLevel = 'card' | 'elevated' | 'soft' | 'dialog' | 'login';
 
+/** Sombras muy suaves: diseño plano con ligera profundidad en modales. */
 const WEB: Record<ShadowLevel, string> = {
-  card: '0 3px 8px rgba(0,0,0,0.06)',
-  elevated: '0 4px 10px rgba(0,0,0,0.06)',
-  soft: '0 4px 10px rgba(0,0,0,0.04)',
-  dialog: '0 20px 50px rgba(0,0,0,0.18)',
-  login: '0 5px 12px rgba(0,0,0,0.08)',
+  card: 'none',
+  elevated: '0 1px 3px rgba(61, 54, 48, 0.04)',
+  soft: 'none',
+  dialog: '0 8px 32px rgba(61, 54, 48, 0.12)',
+  login: '0 2px 8px rgba(61, 54, 48, 0.06)',
 };
 
 const NATIVE: Record<ShadowLevel, ViewStyle> = {
-  card: {
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
-  },
+  card: {},
   elevated: {
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
-  },
-  soft: {
-    shadowColor: '#000',
+    shadowColor: '#3D3630',
     shadowOpacity: 0.04,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
+  soft: {},
   dialog: {
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 12,
+    shadowColor: '#3D3630',
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
   },
   login: {
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 4,
+    shadowColor: '#3D3630',
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
 };
 
 /** Sombra multiplataforma (boxShadow en web, shadow* en nativo). */
 export function appShadow(level: ShadowLevel): ViewStyle {
   if (Platform.OS === 'web') {
-    return { boxShadow: WEB[level] } as ViewStyle;
+    const v = WEB[level];
+    return v === 'none' ? {} : ({ boxShadow: v } as ViewStyle);
   }
   return NATIVE[level];
 }

@@ -4,6 +4,12 @@ import { colors } from './theme';
 /** Campos cortos: cantidad, número de mesa, comensales. */
 export const FORM_FIELD_NARROW = 168;
 
+/** Ancho mínimo uniforme para chips y botones secundarios centrados. */
+export const ACTION_CHIP_MIN_WIDTH = 48;
+
+/** Ancho mínimo para botones de texto/enlace centrados (p. ej. «Volver», sugerencias). */
+export const CENTERED_TEXT_BTN_MIN_WIDTH = 220;
+
 export type FormShellVariant = 'page' | 'centered' | 'modal' | 'modalWide';
 
 /** Contenedor de página: ocupa todo el ancho del marco de la app. */
@@ -110,10 +116,10 @@ export const formStyles = StyleSheet.create({
   },
   modalCard: {
     backgroundColor: colors.background,
-    borderRadius: 16,
+    borderRadius: 12,
     padding: 16,
     width: '100%',
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
   },
   modalTitle: {
@@ -165,6 +171,36 @@ export const formStyles = StyleSheet.create({
   },
   pageScrollContent: {
     width: '100%',
-    paddingBottom: 24,
+    paddingBottom: 8,
+    gap: 0,
+  },
+  /** Fila de chips/botones secundarios centrada con tamaño uniforme. */
+  centeredChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    width: '100%',
+  },
+  /** Botón de texto o enlace centrado con ancho mínimo uniforme. */
+  centeredTextBtn: {
+    alignSelf: 'center',
+    minWidth: CENTERED_TEXT_BTN_MIN_WIDTH,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  centeredTextBtnLabel: {
+    textAlign: 'center',
+    fontWeight: '800',
+  },
+  /** Contenedor para una acción con icono centrada bajo un bloque de contenido. */
+  centeredSingleAction: {
+    width: '100%',
+    alignItems: 'center',
+    marginTop: 8,
   },
 });

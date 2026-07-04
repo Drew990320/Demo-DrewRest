@@ -4,7 +4,10 @@ import type { Usuario } from '@prisma/client';
 import type { Request } from 'express';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
+import { VerifyPasswordDto } from './dto/verify-password.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
+import { RolesGuard } from './roles.guard';
+import { Roles } from './roles.decorator';
 import { nombreUsuarioPublico } from '../usuarios/usuario-display';
 
 @Controller('auth')
@@ -34,5 +37,17 @@ export class AuthController {
       email: u.email,
       rol: u.rol.nombre,
     };
+  }
+
+  /** Confirma la contraseña del admin (p. ej. habilitar acciones de prueba en caja). */
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  @Post('verify-password')
+  verifyPassword(
+    @Body() dto: VerifyPasswordDto,
+    @Req() req: Request & { user: Usuario },
+  ) {
+    return this.auth.verifyPassword(req.user, dto.password);
   }
 }

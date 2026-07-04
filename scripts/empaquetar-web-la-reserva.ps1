@@ -6,9 +6,13 @@
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
+$LaReservaRoot = Join-Path $RepoRoot "LaReserva\LaReserva"
+if (-not (Test-Path (Join-Path $LaReservaRoot "inicio.bat"))) {
+  $LaReservaRoot = Join-Path $RepoRoot "LaReserva"
+}
 $Mobile = Join-Path $RepoRoot "apps\mobile"
 $ExportOut = Join-Path $Mobile "dist"
-$WebDst = Join-Path $RepoRoot "LaReserva\web"
+$WebDst = Join-Path $LaReservaRoot "web"
 
 if (-not (Test-Path (Join-Path $Mobile "package.json"))) {
   Write-Host "No se encuentra apps\mobile." -ForegroundColor Red
@@ -66,6 +70,13 @@ if (Test-Path $PublicDir) {
   Get-ChildItem -Path $PublicDir -File | ForEach-Object {
     Copy-Item -Path $_.FullName -Destination (Join-Path $WebDst $_.Name) -Force
   }
+}
+
+$iconSrc = Join-Path $WebDst "favicon.ico"
+$iconDst = Join-Path $LaReservaRoot "icon.ico"
+if (Test-Path $iconSrc) {
+  Copy-Item -Path $iconSrc -Destination $iconDst -Force
+  Write-Host "Icono de acceso directo: LaReserva\icon.ico" -ForegroundColor DarkGray
 }
 
 Write-Host ""

@@ -4,8 +4,48 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { PedidosGateway } from '../pedidos/pedidos.gateway';
+import { flagsProductoMenuPorCategoria } from '@la-reserva/shared-domain/empaque-para-llevar';
+import { invalidateMazorcaProductIdCache } from '../pedidos/mazorca-linea-pedido';
 import { CreateProductoDto } from './dto/create-producto.dto';
 import { UpdateProductoDto } from './dto/update-producto.dto';
+
+function resolverFlagsProducto(
+  cat: {
+    nombre: string;
+    esLineaEmpaque?: boolean;
+    esPlatoPrincipalDefault?: boolean;
+  },
+  explicit: {
+    es_plato_principal?: boolean | null;
+    es_empacable?: boolean | null;
+  },
+  existing?: { esPlatoPrincipal: boolean; esEmpacable: boolean },
+): { esPlatoPrincipal: boolean; esEmpacable: boolean } {
+  const auto = flagsProductoMenuPorCategoria(cat);
+
+  let esEmpacable: boolean;
+  if (explicit.es_empacable != null) {
+    esEmpacable = explicit.es_empacable;
+  } else if (existing != null) {
+    esEmpacable = existing.esEmpacable;
+  } else {
+    esEmpacable = auto.es_empacable;
+  }
+
+  let esPlatoPrincipal: boolean;
+  if (esEmpacable) {
+    esPlatoPrincipal = false;
+  } else if (explicit.es_plato_principal != null) {
+    esPlatoPrincipal = explicit.es_plato_principal;
+  } else if (existing != null) {
+    esPlatoPrincipal = existing.esPlatoPrincipal;
+  } else {
+    esPlatoPrincipal = auto.es_plato_principal;
+  }
+
+  return { esPlatoPrincipal, esEmpacable };
+}
 
 function mapProducto(p: {
   idProducto: number;
@@ -16,8 +56,12 @@ function mapProducto(p: {
   activo: boolean;
   esPlatoPrincipal: boolean;
   esEmpacable: boolean;
+  esAcompanamientoMazorca: boolean;
   tipoProteina: string;
-  categoria: { nombre: string };
+  controlStock: boolean;
+  stockDisponible: number;
+  ocultarSinStock: boolean;
+  categoria: { nombre: string; esBebida?: boolean };
 }) {
   return {
     id_producto: p.idProducto,
@@ -29,13 +73,41 @@ function mapProducto(p: {
     activo: p.activo,
     es_plato_principal: p.esPlatoPrincipal,
     es_empacable: p.esEmpacable,
+    es_acompanamiento_mazorca: p.esAcompanamientoMazorca,
     tipo_proteina: p.tipoProteina,
+    control_stock: p.controlStock,
+    stock_disponible: p.stockDisponible,
+    ocultar_sin_stock: p.ocultarSinStock,
+    es_bebida: p.categoria.esBebida ?? false,
   };
 }
 
 @Injectable()
 export class ProductosService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly gateway: PedidosGateway,
+  ) {}
+
+  private async asegurarUnicoMazorca(
+    idProducto: number,
+    esMazorca: boolean,
+  ): Promise<void> {
+    if (!esMazorca) return;
+    await this.prisma.producto.updateMany({
+      where: {
+        esAcompanamientoMazorca: true,
+        idProducto: { not: idProducto },
+      },
+      data: { esAcompanamientoMazorca: false },
+    });
+    await this.prisma.configOperativa.upsert({
+      where: { id: 1 },
+      create: { id: 1, idProductoMazorca: idProducto },
+      update: { idProductoMazorca: idProducto },
+    });
+    invalidateMazorcaProductIdCache();
+  }
 
   async listarCategorias() {
     const rows = await this.prisma.categoria.findMany({
@@ -51,7 +123,7 @@ export class ProductosService {
   async listarProductos(incluirInactivos: boolean) {
     const rows = await this.prisma.producto.findMany({
       where: incluirInactivos ? {} : { activo: true },
-      include: { categoria: { select: { nombre: true } } },
+      include: { categoria: { select: { nombre: true, esBebida: true } } },
       orderBy: [{ categoria: { nombre: 'asc' } }, { nombre: 'asc' }],
     });
     return rows.map(mapProducto);
@@ -64,19 +136,36 @@ export class ProductosService {
     if (!cat) {
       throw new BadRequestException('Categoría no encontrada');
     }
+    const flags = resolverFlagsProducto(cat, {
+      es_plato_principal: dto.es_plato_principal,
+      es_empacable: dto.es_empacable,
+    });
+    const esMazorca = Boolean(dto.es_acompanamiento_mazorca);
     const created = await this.prisma.producto.create({
       data: {
         idCategoria: dto.id_categoria,
         nombre: dto.nombre.trim(),
         descripcion: dto.descripcion?.trim() || null,
         precio: dto.precio,
-        esPlatoPrincipal: dto.es_plato_principal ?? false,
-        esEmpacable: dto.es_empacable ?? false,
+        esPlatoPrincipal: flags.esPlatoPrincipal,
+        esEmpacable: flags.esEmpacable,
+        esAcompanamientoMazorca: esMazorca,
         tipoProteina: dto.tipo_proteina ?? 'ninguno',
         activo: true,
+        ...(dto.control_stock != null ? { controlStock: dto.control_stock } : {}),
+        ...(dto.stock_disponible != null
+          ? { stockDisponible: Math.round(dto.stock_disponible) }
+          : {}),
+        ...(dto.ocultar_sin_stock != null
+          ? { ocultarSinStock: dto.ocultar_sin_stock }
+          : {}),
       },
-      include: { categoria: { select: { nombre: true } } },
+      include: { categoria: { select: { nombre: true, esBebida: true } } },
     });
+    if (esMazorca) {
+      await this.asegurarUnicoMazorca(created.idProducto, true);
+    }
+    this.gateway.emitConfigActualizada('menu');
     return mapProducto(created);
   }
 
@@ -88,14 +177,31 @@ export class ProductosService {
     if (!existing) {
       throw new NotFoundException('Producto no encontrado');
     }
+    let cat = existing.categoria;
     if (dto.id_categoria != null) {
-      const cat = await this.prisma.categoria.findUnique({
+      const nueva = await this.prisma.categoria.findUnique({
         where: { idCategoria: dto.id_categoria },
       });
-      if (!cat) {
+      if (!nueva) {
         throw new BadRequestException('Categoría no encontrada');
       }
+      cat = nueva;
     }
+    const flags = resolverFlagsProducto(
+      cat,
+      {
+        es_plato_principal: dto.es_plato_principal,
+        es_empacable: dto.es_empacable,
+      },
+      {
+        esPlatoPrincipal: existing.esPlatoPrincipal,
+        esEmpacable: existing.esEmpacable,
+      },
+    );
+    const esMazorca =
+      dto.es_acompanamiento_mazorca != null
+        ? dto.es_acompanamiento_mazorca
+        : existing.esAcompanamientoMazorca;
     const updated = await this.prisma.producto.update({
       where: { idProducto },
       data: {
@@ -106,18 +212,29 @@ export class ProductosService {
           : {}),
         ...(dto.precio != null ? { precio: dto.precio } : {}),
         ...(dto.activo != null ? { activo: dto.activo } : {}),
-        ...(dto.es_plato_principal != null
-          ? { esPlatoPrincipal: dto.es_plato_principal }
-          : {}),
-        ...(dto.es_empacable != null ? { esEmpacable: dto.es_empacable } : {}),
+        esPlatoPrincipal: flags.esPlatoPrincipal,
+        esEmpacable: flags.esEmpacable,
+        esAcompanamientoMazorca: esMazorca,
         ...(dto.tipo_proteina != null ? { tipoProteina: dto.tipo_proteina } : {}),
+        ...(dto.control_stock != null ? { controlStock: dto.control_stock } : {}),
+        ...(dto.stock_disponible != null
+          ? { stockDisponible: Math.round(dto.stock_disponible) }
+          : {}),
+        ...(dto.ocultar_sin_stock != null
+          ? { ocultarSinStock: dto.ocultar_sin_stock }
+          : {}),
       },
-      include: { categoria: { select: { nombre: true } } },
+      include: { categoria: { select: { nombre: true, esBebida: true } } },
     });
+    if (dto.es_acompanamiento_mazorca != null) {
+      await this.asegurarUnicoMazorca(idProducto, esMazorca);
+    }
+    this.gateway.emitConfigActualizada('menu');
     return mapProducto(updated);
   }
 
   async desactivar(idProducto: number) {
-    return this.actualizar(idProducto, { activo: false });
+    const result = await this.actualizar(idProducto, { activo: false });
+    return result;
   }
 }

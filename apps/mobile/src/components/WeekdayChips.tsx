@@ -76,9 +76,7 @@ export function WeekdayChips({ flags, onToggle, onSetAll, disabled }: Props) {
               </Text>
             </Pressable>
           </View>
-        ) : (
-          <View />
-        )}
+        ) : null}
         <Text style={styles.count}>{active}/7</Text>
       </View>
     </View>
@@ -117,16 +115,26 @@ const styles = StyleSheet.create({
   },
   chipTextOn: { color: colors.surface },
   footer: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
+    gap: 6,
     marginTop: 8,
   },
-  quick: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  quick: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
   quickLink: {
     fontSize: 12,
     fontWeight: '800',
     color: colors.primary,
+    minWidth: 72,
+    minHeight: 36,
+    textAlign: 'center',
+    lineHeight: 36,
   },
   quickLinkMuted: { color: colors.textHint },
   quickSep: { color: colors.textHint, fontSize: 12 },

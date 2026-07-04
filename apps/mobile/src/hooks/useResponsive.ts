@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { Platform, useWindowDimensions } from 'react-native';
+import { SIDEBAR_NAV_WIDTH } from '../lib/layout-constants';
 
 const GRID_GAP = 10;
 
@@ -10,6 +11,8 @@ export type ResponsiveLayout = {
   isCompact: boolean;
   isTablet: boolean;
   isWide: boolean;
+  /** Barra lateral de navegación (tablet+). */
+  navSidebar: boolean;
   contentPadding: number;
   contentMaxWidth: number | undefined;
   /** Ancho útil para grillas (descontando padding y tope en pantallas anchas). */
@@ -28,9 +31,8 @@ export type ResponsiveLayout = {
 };
 
 function contentMaxWidthFor(width: number): number | undefined {
-  if (width >= 1280) return 1120;
+  if (width >= 1280) return undefined;
   if (width >= 1024) return 960;
-  if (width >= 768) return 720;
   return undefined;
 }
 
@@ -49,13 +51,16 @@ export function useResponsive(): ResponsiveLayout {
     const isWeb = Platform.OS === 'web';
     const contentPadding = width < 400 ? 12 : width < 768 ? 16 : 20;
     const contentMaxWidth = contentMaxWidthFor(width);
-    const contentWidth =
-      (contentMaxWidth ? Math.min(width, contentMaxWidth) : width) -
-      contentPadding * 2;
 
     const isCompact = width < 480;
     const isTablet = width >= 768 && width < 1024;
     const isWide = width >= 1024;
+    const navSidebar = width >= 768;
+
+    const innerCap = contentMaxWidth != null ? Math.min(width, contentMaxWidth) : width;
+    const sidebarReserve = navSidebar ? SIDEBAR_NAV_WIDTH : 0;
+    const contentWidth =
+      Math.max(280, innerCap - sidebarReserve) - contentPadding * 2;
 
     const iconSize = isCompact ? 20 : isWide ? 24 : 22;
     const iconBtnSize = isCompact ? 40 : isWide ? 48 : 44;
@@ -68,6 +73,7 @@ export function useResponsive(): ResponsiveLayout {
       isCompact,
       isTablet,
       isWide,
+      navSidebar,
       contentPadding,
       contentMaxWidth,
       contentWidth,

@@ -1,4 +1,10 @@
-export type LineaComandaAgrupable = {
+import {
+  ordenTipoLineaCocina,
+  tipoLineaCocina,
+  type LineaCocinaTipoInput,
+} from './cocina-producto';
+
+export type LineaComandaAgrupable = LineaCocinaTipoInput & {
   id_detalle: number;
   id_producto?: number;
   id_detalle_padre: number | null;
@@ -29,16 +35,27 @@ function claveComanda(d: LineaComandaAgrupable): string {
   ].join('|');
 }
 
+function compararLineasComanda(
+  a: LineaComandaAgrupable,
+  b: LineaComandaAgrupable,
+): number {
+  const ta = ordenTipoLineaCocina(tipoLineaCocina(a));
+  const tb = ordenTipoLineaCocina(tipoLineaCocina(b));
+  if (ta !== tb) return ta - tb;
+  return a.id_detalle - b.id_detalle;
+}
+
 export function lineasComandaParaTicket(
   detalles: LineaComandaAgrupable[],
 ): LineaComandaTicket[] {
+  const ordenados = [...detalles].sort(compararLineasComanda);
   const orden: string[] = [];
   const map = new Map<
     string,
     LineaComandaTicket & { _ids: number[] }
   >();
 
-  for (const d of detalles) {
+  for (const d of ordenados) {
     const key = claveComanda(d);
     const prev = map.get(key);
     if (!prev) {

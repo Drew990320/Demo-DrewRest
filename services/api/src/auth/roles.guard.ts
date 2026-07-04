@@ -1,6 +1,7 @@
 import {
   CanActivate,
   ExecutionContext,
+  ForbiddenException,
   Injectable,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
@@ -21,8 +22,11 @@ export class RolesGuard implements CanActivate {
     const req = context.switchToHttp().getRequest<{ user?: { rol?: { nombre: string } } }>();
     const nombre = req.user?.rol?.nombre;
     if (!nombre) {
-      return false;
+      throw new ForbiddenException('No tienes permiso para esta acción');
     }
-    return roles.includes(nombre);
+    if (!roles.includes(nombre)) {
+      throw new ForbiddenException('No tienes permiso para esta acción');
+    }
+    return true;
   }
 }

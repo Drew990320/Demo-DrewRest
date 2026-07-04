@@ -66,8 +66,13 @@ export {
   ordenarMesasPorCola,
   ordenarPedidosCocinaPorLlegada,
   porcionesVisiblesEnCocina,
+  conteoPorTipoEnCocina,
+  textoResumenTiposCocina,
+  etiquetaTipoLineaCocina,
+  tipoLineaCocina,
   type LineaCocinaGrupo,
   type PlatoPendienteResumen,
+  type TipoLineaCocina,
 } from '@la-reserva/shared-domain/cocina-vista';
 
 export { ordenarPedidosCocina } from '@la-reserva/shared-domain/cocina-prioridad';

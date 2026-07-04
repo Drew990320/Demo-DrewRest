@@ -11,13 +11,17 @@ import {
   mesaDisponibleHoyBogota,
 } from '../common/mesa-dia';
 import { PrismaService } from '../prisma/prisma.service';
+import { PedidosGateway } from '../pedidos/pedidos.gateway';
 import { weekdayBogota } from '../common/timezone';
+import {
+  getCachedConfigOperativaRow,
+} from '../common/config-operativa-cache';
 import { CreateMesaDto } from './dto/create-mesa.dto';
 import { UpdateMesaDto } from './dto/update-mesa.dto';
 import { nombreUsuarioPublico } from '../usuarios/usuario-display';
 import {
-  MESA_MOSTRADOR_NUMERO,
-  MESA_PARA_LLEVAR_NUMERO,
+  numerosMesasVirtuales,
+  resolverMesasVirtuales,
 } from '@la-reserva/shared-domain/mesa-label';
 import {
   type PatchDisponibilidadMesa,
@@ -27,18 +31,34 @@ import {
   validarPatchMesaAdmin,
 } from '@la-reserva/shared-domain/mesa-admin-validacion';
 
-export { MESA_MOSTRADOR_NUMERO, MESA_PARA_LLEVAR_NUMERO };
+export { MESA_MOSTRADOR_NUMERO, MESA_PARA_LLEVAR_NUMERO } from '@la-reserva/shared-domain/mesa-label';
 
 const PEDIDOS_ABIERTOS = ['abierto', 'en_cocina'] as const;
-
-const OCULTAS_GRILLA = [MESA_MOSTRADOR_NUMERO, MESA_PARA_LLEVAR_NUMERO];
 
 /** Valor legacy en BD; no se muestra ni se pide en la app. */
 const CAPACIDAD_MESA_DEFAULT = 4;
 
 @Injectable()
 export class MesasService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly gateway: PedidosGateway,
+  ) {}
+
+  private async configMesasVirtuales() {
+    const cached = getCachedConfigOperativaRow();
+    if (cached) {
+      return resolverMesasVirtuales(cached);
+    }
+    const row = await this.prisma.configOperativa.findUnique({
+      where: { id: 1 },
+    });
+    return resolverMesasVirtuales(row ?? undefined);
+  }
+
+  private async numerosOcultosGrilla(): Promise<number[]> {
+    return numerosMesasVirtuales(await this.configMesasVirtuales());
+  }
 
   private mapMesaPublic(m: {
     idMesa: number;
@@ -78,9 +98,10 @@ export class MesasService {
     if (!campo) {
       return [];
     }
+    const ocultas = await this.numerosOcultosGrilla();
     const mesas = await this.prisma.mesa.findMany({
       where: {
-        numero: { notIn: OCULTAS_GRILLA },
+        numero: { notIn: ocultas },
         [campo]: true,
       } as Prisma.MesaWhereInput,
       orderBy: { numero: 'asc' },
@@ -149,7 +170,8 @@ export class MesasService {
   }
 
   async crearMesa(dto: CreateMesaDto) {
-    const reservado = validarNumeroMesaReservado(dto.numero);
+    const mv = await this.configMesasVirtuales();
+    const reservado = validarNumeroMesaReservado(dto.numero, mv);
     if (!reservado.ok) {
       throw new BadRequestException(reservado.mensaje);
     }
@@ -172,6 +194,7 @@ export class MesasService {
         disponibleDomingo: dto.disponible_domingo ?? true,
       },
     });
+    this.gateway.emitConfigActualizada('mesas');
     return this.mapMesaAdmin(creada, 0, 0);
   }
 
@@ -241,6 +264,7 @@ export class MesasService {
     if (!m) {
       throw new NotFoundException('Mesa no encontrada');
     }
+    const mv = await this.configMesasVirtuales();
 
     if (dto.numero != null && dto.numero !== m.numero) {
       const { activos: pedidosActivos } =
@@ -249,6 +273,7 @@ export class MesasService {
         numeroActual: m.numero,
         numeroNuevo: dto.numero,
         pedidosActivos,
+        mesasVirtuales: mv,
       });
       if (!validacionNumero.ok) {
         throw new ConflictException(validacionNumero.mensaje);
@@ -270,6 +295,7 @@ export class MesasService {
         patch: patchDisponibilidad,
         pedidosActivos,
         weekdayHoy: weekdayBogota(),
+        mesasVirtuales: mv,
       });
       if (!validacion.ok) {
         throw new ConflictException(validacion.mensaje);
@@ -305,6 +331,7 @@ export class MesasService {
       },
     });
     const { activos, total } = await this.contadoresPedidosMesa(idMesa);
+    this.gateway.emitConfigActualizada('mesas');
     return this.mapMesaAdmin(actualizada, activos, total);
   }
 
@@ -314,15 +341,18 @@ export class MesasService {
       throw new NotFoundException('Mesa no encontrada');
     }
     const { activos, total } = await this.contadoresPedidosMesa(idMesa);
+    const mv = await this.configMesasVirtuales();
     const validacion = validarEliminarMesaAdmin({
       numeroMesa: m.numero,
       pedidosActivos: activos,
       totalPedidos: total,
+      mesasVirtuales: mv,
     });
     if (!validacion.ok) {
       throw new ConflictException(validacion.mensaje);
     }
     await this.prisma.mesa.delete({ where: { idMesa } });
+    this.gateway.emitConfigActualizada('mesas');
     return { ok: true, id_mesa: idMesa };
   }
 
@@ -340,12 +370,13 @@ export class MesasService {
   }
 
   async getMostrador() {
+    const mv = await this.configMesasVirtuales();
     const m = await this.prisma.mesa.findFirst({
-      where: { numero: MESA_MOSTRADOR_NUMERO },
+      where: { numero: mv.numero_mesa_mostrador },
     });
     if (!m) {
       throw new NotFoundException(
-        'Mostrador no configurado. Ejecuta el seed o crea la mesa 99.',
+        `Mostrador no configurado. Ejecuta el seed o crea la mesa ${mv.numero_mesa_mostrador}.`,
       );
     }
     if (!mesaDisponibleHoyBogota(m)) {
@@ -355,12 +386,13 @@ export class MesasService {
   }
 
   async getParaLlevar() {
+    const mv = await this.configMesasVirtuales();
     const m = await this.prisma.mesa.findFirst({
-      where: { numero: MESA_PARA_LLEVAR_NUMERO },
+      where: { numero: mv.numero_mesa_para_llevar },
     });
     if (!m) {
       throw new NotFoundException(
-        'Para llevar no configurado. Ejecuta el seed o crea la mesa 98.',
+        `Para llevar no configurado. Ejecuta el seed o crea la mesa ${mv.numero_mesa_para_llevar}.`,
       );
     }
     if (!mesaDisponibleHoyBogota(m)) {
