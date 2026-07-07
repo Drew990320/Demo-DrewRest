@@ -1,16 +1,22 @@
 /**
  * Arranque en la nube (plan free): prepara BD y luego inicia el API.
- * Render free no admite preDeployCommand, así que todo ocurre al arrancar.
  */
 const { execSync } = require('child_process');
 const path = require('path');
 
 const apiRoot = path.join(__dirname, '..');
 
-execSync('node scripts/prepare-cloud-db.js', {
-  cwd: apiRoot,
-  stdio: 'inherit',
-  env: process.env,
-});
+try {
+  console.log('[cloud-demo] Preparando base de datos...');
+  execSync('node scripts/prepare-cloud-db.js', {
+    cwd: apiRoot,
+    stdio: 'inherit',
+    env: process.env,
+  });
 
-require(path.join(apiRoot, 'dist', 'src', 'main'));
+  console.log('[cloud-demo] Iniciando API...');
+  require(path.join(apiRoot, 'dist', 'src', 'main'));
+} catch (error) {
+  console.error('[cloud-demo] Arranque fallido:', error);
+  process.exit(1);
+}

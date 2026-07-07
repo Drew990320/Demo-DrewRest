@@ -1,6 +1,6 @@
 /**
- * Prepara la BD en Render antes de cada deploy (preDeployCommand).
- * Migraciones, mesas virtuales y seed inicial si está vacía.
+ * Prepara la BD al arrancar en Render (plan free).
+ * Migraciones con reintentos, mesas virtuales y seed inicial si está vacía.
  */
 const { execSync } = require('child_process');
 const path = require('path');
@@ -8,20 +8,32 @@ const { PrismaClient } = require('@prisma/client');
 
 const apiRoot = path.join(__dirname, '..');
 
-function run(cmd) {
-  execSync(cmd, { cwd: apiRoot, stdio: 'inherit', env: process.env });
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function ensureDatabaseUrl() {
-  const url = process.env.DATABASE_URL?.trim();
-  if (!url) {
-    throw new Error('DATABASE_URL no está definida.');
+function run(cmd) {
+  execSync(cmd, {
+    cwd: apiRoot,
+    stdio: 'inherit',
+    env: process.env,
+    shell: true,
+  });
+}
+
+async function migrateWithRetry(maxAttempts = 8) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      run('npx prisma migrate deploy');
+      return;
+    } catch (error) {
+      if (attempt >= maxAttempts) throw error;
+      console.warn(
+        `[cloud-db] Migración falló (intento ${attempt}/${maxAttempts}). Reintentando en 5s...`,
+      );
+      await sleep(5000);
+    }
   }
-  if (url.includes('sslmode=') || !url.includes('render.com')) {
-    return;
-  }
-  const sep = url.includes('?') ? '&' : '?';
-  process.env.DATABASE_URL = `${url}${sep}sslmode=require`;
 }
 
 async function ensureMesasVirtuales(prisma) {
@@ -35,10 +47,12 @@ async function ensureMesasVirtuales(prisma) {
 }
 
 async function main() {
-  ensureDatabaseUrl();
+  if (!process.env.DATABASE_URL?.trim()) {
+    throw new Error('DATABASE_URL no está definida.');
+  }
 
   console.log('[cloud-db] Aplicando migraciones...');
-  run('npx prisma migrate deploy');
+  await migrateWithRetry();
 
   const prisma = new PrismaClient();
   try {
