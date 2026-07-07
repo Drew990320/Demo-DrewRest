@@ -591,6 +591,20 @@ export class PedidosService {
     });
   }
 
+  /** Créditos ligados bloquean borrar facturas/pedidos (FK); quitar antes en pruebas/reaperturas. */
+  private async eliminarCuentasCreditoEnTx(
+    tx: Prisma.TransactionClient,
+    filtro: { idPedido?: number; idFacturas?: number[] },
+  ) {
+    const or: Prisma.CuentaCreditoWhereInput[] = [];
+    if (filtro.idPedido != null) or.push({ idPedido: filtro.idPedido });
+    if (filtro.idFacturas?.length) {
+      or.push({ idFactura: { in: filtro.idFacturas } });
+    }
+    if (or.length === 0) return;
+    await tx.cuentaCredito.deleteMany({ where: { OR: or } });
+  }
+
   /**
    * Monto base de efectivo al abrir caja (día en Bogotá).
    */
@@ -2179,6 +2193,7 @@ export class PedidosService {
         for (const d of pedido.detalles) {
           await reintegrarStockBebidaTx(tx, d.producto, d.cantidad);
         }
+        await this.eliminarCuentasCreditoEnTx(tx, { idPedido });
         await tx.pedidoHistorial.deleteMany({ where: { idPedido } });
         await tx.pedido.delete({ where: { idPedido } });
         const abiertosRest = await tx.pedido.count({
@@ -2271,6 +2286,7 @@ export class PedidosService {
         where: { idFactura: { in: idsFacturas } },
         data: { idFactura: null },
       });
+      await this.eliminarCuentasCreditoEnTx(tx, { idFacturas: idsFacturas });
       await tx.factura.deleteMany({
         where: { idFactura: { in: idsFacturas } },
       });
@@ -2431,6 +2447,10 @@ export class PedidosService {
         data: { idFactura: null },
       });
 
+      await this.eliminarCuentasCreditoEnTx(tx, {
+        idPedido,
+        idFacturas: idsFacturas,
+      });
       await tx.factura.deleteMany({ where: { idPedido } });
 
       const cuotaDetalles = await tx.detallePedido.findMany({
@@ -2587,6 +2607,7 @@ export class PedidosService {
         data: { idFactura: null },
       });
 
+      await this.eliminarCuentasCreditoEnTx(tx, { idFacturas: idsFacturas });
       await tx.factura.deleteMany({
         where: { idPedido, idFactura: { in: idsFacturas } },
       });
@@ -8058,6 +8079,7 @@ export class PedidosService {
       for (const d of detalles) {
         await reintegrarStockBebidaTx(tx, d.producto, d.cantidad);
       }
+      await this.eliminarCuentasCreditoEnTx(tx, { idPedido });
       await tx.pedido.delete({ where: { idPedido } });
       const abiertosRest = await tx.pedido.count({
         where: { idMesa: idMesaPedido, estado: { in: ABIERTOS } },
