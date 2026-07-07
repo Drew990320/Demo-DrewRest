@@ -189,7 +189,7 @@ export class ComandaPrinterService {
   /** Imprime cuenta/factura con detalle y precios. */
   async imprimirFactura(ticket: FacturaTicket): Promise<ResultadoImpresion> {
     if (!this.enabled()) {
-      return this.resultadoVistaPreviaDemo(buildFacturaPreviewHtml(ticket));
+      return this.resultadoVistaPreviaDemo(await buildFacturaPreviewHtml(ticket));
     }
     let buffer: Buffer;
     try {

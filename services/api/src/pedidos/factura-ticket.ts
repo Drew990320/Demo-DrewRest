@@ -70,3 +70,10 @@ export function labelMetodoPago(
   if (mp === 'mixto') return 'Pago mixto';
   return mp;
 }
+
+/** Logo + datos del local (misma regla que ESC/POS en factura / pre-cuenta). */
+export function facturaLlevaLogoEncabezado(ticket: FacturaTicket): boolean {
+  if (ticket.es_total_pedido) return false;
+  if (ticket.es_precuenta === true) return true;
+  return ticket.copia_destinatario !== 'negocio';
+}

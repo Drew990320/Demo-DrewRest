@@ -1,12 +1,13 @@
 import type { ComandaTicket } from './comanda-ticket';
 import type { FacturaTicket } from './factura-ticket';
-import { labelMetodoPago } from './factura-ticket';
+import { facturaLlevaLogoEncabezado, labelMetodoPago } from './factura-ticket';
 import {
   DREWTECH_CREDITO_LINEA,
   DREWTECH_TELEFONO_LABEL,
   ticketDireccion,
   ticketNombreLocal,
   ticketTelefono,
+  logoTicketPreviewDataUri,
 } from './escpos-utils';
 import {
   restaurantMostrarCreditoDrewTech,
@@ -129,6 +130,13 @@ function wrapThermalPreviewHtml(titulo: string, cuerpo: string): string {
       text-align: center;
       font-weight: bold;
       margin: 4px 0;
+    }
+    .ticket-logo {
+      max-width: 100%;
+      height: auto;
+      max-height: 120px;
+      display: block;
+      margin: 0 auto 6px;
     }
     .demo-info {
       font-size: 10px;
@@ -256,8 +264,28 @@ ${lineas}
   return wrapThermalPreviewHtml(`Comanda #${ticket.id_pedido}`, cuerpo);
 }
 
+async function buildEncabezadoRestaurantePreviewHtml(): Promise<string> {
+  const logo = await logoTicketPreviewDataUri();
+  if (logo) {
+    return [
+      `<div class="center"><img src="${logo}" alt="${escapeHtml(ticketNombreLocal())}" class="ticket-logo" /></div>`,
+      ticketTelefono() ? `<div class="center">Tel: ${escapeHtml(ticketTelefono())}</div>` : '',
+      ticketDireccion() ? `<div class="center">${escapeHtml(ticketDireccion())}</div>` : '',
+    ]
+      .filter(Boolean)
+      .join('');
+  }
+  return [
+    `<div class="center bold">${escapeHtml(ticketNombreLocal())}</div>`,
+    ticketTelefono() ? `<div class="center">Tel: ${escapeHtml(ticketTelefono())}</div>` : '',
+    ticketDireccion() ? `<div class="center">${escapeHtml(ticketDireccion())}</div>` : '',
+  ]
+    .filter(Boolean)
+    .join('');
+}
+
 /** HTML estilo ticket térmico para factura / pre-cuenta. */
-export function buildFacturaPreviewHtml(ticket: FacturaTicket): string {
+export async function buildFacturaPreviewHtml(ticket: FacturaTicket): Promise<string> {
   const banners: string[] = [];
   if (ticket.copia_destinatario === 'negocio') {
     banners.push('<div class="banner">*** COPIA NEGOCIO ***</div>');
@@ -342,13 +370,9 @@ export function buildFacturaPreviewHtml(ticket: FacturaTicket): string {
     vuelto = partes.join('');
   }
 
-  const encabezado = [
-    `<div class="center bold">${escapeHtml(ticketNombreLocal())}</div>`,
-    ticketTelefono() ? `<div class="center">Tel: ${escapeHtml(ticketTelefono())}</div>` : '',
-    ticketDireccion() ? `<div class="center">${escapeHtml(ticketDireccion())}</div>` : '',
-  ]
-    .filter(Boolean)
-    .join('');
+  const encabezado = facturaLlevaLogoEncabezado(ticket)
+    ? await buildEncabezadoRestaurantePreviewHtml()
+    : '';
 
   const cuerpo = `
 ${encabezado}

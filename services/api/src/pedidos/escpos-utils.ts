@@ -11,7 +11,11 @@ import {
   DREWTECH_SOPORTE_TELEFONO,
   DREWTECH_SOPORTE_TELEFONO_LABEL,
 } from '@la-reserva/shared-domain/impresion-soporte';
-import { resolverAssetVisualPath } from '../visual/visual-assets.util';
+import {
+  resolverAssetVisualPath,
+  mimeFromAssetPath,
+} from '../visual/visual-assets.util';
+import * as fs from 'fs';
 
 export const DEFAULT_ESC_POS_WIDTH = 32;
 
@@ -192,6 +196,24 @@ function resolveTicketLogoPath(): string | null {
     resolverAssetVisualPath('login', null) ??
     resolveRestaurantLogoPath()
   );
+}
+
+/** Logo del ticket embebido en base64 para vista previa HTML/PDF. */
+export async function logoTicketPreviewDataUri(): Promise<string | null> {
+  const logoPath = resolveTicketLogoPath();
+  if (!logoPath) return null;
+  try {
+    const resized = await cargarLogoTicketRedimensionado(logoPath);
+    if (resized?.length) {
+      return `data:image/png;base64,${resized.toString('base64')}`;
+    }
+    const raw = fs.readFileSync(logoPath);
+    if (!raw.length) return null;
+    const mime = mimeFromAssetPath(logoPath);
+    return `data:${mime};base64,${raw.toString('base64')}`;
+  } catch {
+    return null;
+  }
 }
 
 /** Crédito DrewTech al pie: solo factura / pre-cuenta que ve el cliente (misma regla que el logo). */
