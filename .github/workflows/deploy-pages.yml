@@ -1,11 +1,7 @@
+# Demo web oficial: Render (drewrest-demo-web). Este workflow queda solo manual por si algún día quieres GitHub Pages.
 name: Deploy Web (GitHub Pages)
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'apps/mobile/**'
-      - '.github/workflows/deploy-pages.yml'
   workflow_dispatch:
 
 permissions:
