@@ -54,7 +54,6 @@ services:
   - type: web
     name: drewrest-demo-web
     runtime: static
-    plan: free
     rootDir: .
     buildCommand: >-
       cd packages/shared-domain && npm ci && npm run build &&
