@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { esRolAdministrativo } from '../lib/admin-capacidades';
 import { api } from '../lib/api';
 import { manejarErrorAccion } from '../lib/recurso-disponible';
 
@@ -30,13 +31,13 @@ export function useModoPruebasAdmin() {
   }, []);
 
   const habilitado = useMemo(() => {
-    if (user?.rol !== 'admin') return false;
+    if (!esRolAdministrativo(user?.rol)) return false;
     return habilitadoHasta != null && habilitadoHasta > Date.now();
   }, [user?.rol, habilitadoHasta]);
 
   const activarConPassword = useCallback(
     async (password: string) => {
-      if (user?.rol !== 'admin') return false;
+      if (!esRolAdministrativo(user?.rol)) return false;
       const pwd = password.trim();
       if (!pwd) return false;
       setVerificando(true);

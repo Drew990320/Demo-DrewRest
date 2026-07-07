@@ -1,8 +1,14 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import type { Usuario } from '@prisma/client';
+import { esAdminRestaurante } from '@la-reserva/shared-domain/roles';
 import { PrismaService } from '../prisma/prisma.service';
+import { AdminAccessService } from '../usuarios/admin-access.service';
 import { LoginDto } from './dto/login.dto';
 import { nombreUsuarioPublico } from '../usuarios/usuario-display';
 
@@ -11,11 +17,12 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
+    private readonly adminAccess: AdminAccessService,
   ) {}
 
   async login(dto: LoginDto) {
     const user = await this.prisma.usuario.findUnique({
-      where: { email: dto.email },
+      where: { email: dto.email.trim().toLowerCase() },
       include: { rol: true },
     });
     if (!user?.activo) {
@@ -25,6 +32,13 @@ export class AuthService {
     if (!ok) {
       throw new UnauthorizedException('Credenciales inválidas');
     }
+    if (esAdminRestaurante(user.rol.nombre)) {
+      await this.adminAccess.assertAccesoAdminEnHorario(user.idUsuario);
+    }
+    const capacidades = await this.adminAccess.capacidadesParaUsuario(
+      user.idUsuario,
+      user.rol.nombre,
+    );
     const pwdAt = (user.passwordCambiadoEn ?? user.creadoEn).getTime();
     const payload = {
       sub: user.idUsuario,
@@ -46,6 +60,8 @@ export class AuthService {
         apellido,
         email: user.email,
         rol: user.rol.nombre,
+        es_superadmin: capacidades.es_superadmin,
+        permisos_admin: capacidades.permisos_admin,
       },
     };
   }
@@ -59,6 +75,9 @@ export class AuthService {
     if (!user?.activo) {
       throw new UnauthorizedException('Sesión inválida');
     }
+    if (esAdminRestaurante(user.rol.nombre)) {
+      await this.adminAccess.assertAccesoAdminEnHorario(user.idUsuario);
+    }
     const pwdAt = (user.passwordCambiadoEn ?? user.creadoEn).getTime();
     const payload = {
       sub: user.idUsuario,
@@ -69,6 +88,28 @@ export class AuthService {
     return {
       access_token: await this.jwt.signAsync(payload),
       expires_in: this.jwtExpiresSeconds(),
+    };
+  }
+
+  async me(actor: Usuario & { rol: { nombre: string } }) {
+    const capacidades = await this.adminAccess.capacidadesParaUsuario(
+      actor.idUsuario,
+      actor.rol.nombre,
+    );
+    const { nombre, apellido } = nombreUsuarioPublico(
+      actor.nombre,
+      actor.apellido,
+      actor.rol.nombre,
+    );
+    return {
+      id: actor.idUsuario,
+      nombre,
+      apellido,
+      email: actor.email,
+      rol: actor.rol.nombre,
+      es_superadmin: capacidades.es_superadmin,
+      permisos_admin: capacidades.permisos_admin,
+      horarios_acceso: capacidades.horarios_acceso,
     };
   }
 

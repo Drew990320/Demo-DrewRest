@@ -8,7 +8,6 @@ import { VerifyPasswordDto } from './dto/verify-password.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RolesGuard } from './roles.guard';
 import { Roles } from './roles.decorator';
-import { nombreUsuarioPublico } from '../usuarios/usuario-display';
 
 @Controller('auth')
 export class AuthController {
@@ -24,19 +23,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Get('me')
   me(@Req() req: Request & { user: Usuario & { rol: { nombre: string } } }) {
-    const u = req.user;
-    const { nombre, apellido } = nombreUsuarioPublico(
-      u.nombre,
-      u.apellido,
-      u.rol.nombre,
-    );
-    return {
-      id: u.idUsuario,
-      nombre,
-      apellido,
-      email: u.email,
-      rol: u.rol.nombre,
-    };
+    return this.auth.me(req.user);
   }
 
   @SkipThrottle()

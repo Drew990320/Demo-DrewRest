@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { esRolAdministrativo } from '../lib/admin-capacidades';
 import { api } from '../lib/api';
 
 export type ModulosRestaurante = {
@@ -29,7 +30,7 @@ export function useModulosRestaurante(): ModulosRestaurante {
   );
 
   const load = useCallback(async () => {
-    if (!token || user?.rol !== 'admin') {
+    if (!token || !esRolAdministrativo(user?.rol)) {
       setModulos(DEFAULTS);
       return;
     }

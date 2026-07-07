@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { puedeCapacidadAdmin } from '../lib/admin-capacidades';
 import {
   getOperativosResumenSnapshot,
   loadOperativosResumen,
@@ -17,7 +18,7 @@ export function useOperativosResumen(enabled = true) {
     getOperativosResumenSnapshot(),
   );
 
-  const esAdmin = user?.rol === 'admin';
+  const veResumenDiario = puedeCapacidadAdmin(user, 'resumen_diario');
   const tomaPedidos = puedeTomarPedidos(user?.rol);
 
   useEffect(() => subscribeOperativosResumen(setSnap), []);
@@ -31,7 +32,7 @@ export function useOperativosResumen(enabled = true) {
       token,
       userId: user.id,
       userRol: user.rol,
-      esAdmin,
+      esAdmin: veResumenDiario,
       tomaPedidos,
       ayudaCompaneros: permMesero.ayuda_companeros,
     });
@@ -40,7 +41,7 @@ export function useOperativosResumen(enabled = true) {
     token,
     user?.id,
     user?.rol,
-    esAdmin,
+    veResumenDiario,
     tomaPedidos,
     permMesero.ayuda_companeros,
   ]);

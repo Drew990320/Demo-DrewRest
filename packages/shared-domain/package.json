@@ -173,6 +173,18 @@
     "./transferencia-pedido": {
       "types": "./dist/transferencia-pedido.d.ts",
       "default": "./dist/transferencia-pedido.js"
+    },
+    "./roles": {
+      "types": "./dist/roles.d.ts",
+      "default": "./dist/roles.js"
+    },
+    "./permisos-admin": {
+      "types": "./dist/permisos-admin.d.ts",
+      "default": "./dist/permisos-admin.js"
+    },
+    "./horario-acceso-admin": {
+      "types": "./dist/horario-acceso-admin.d.ts",
+      "default": "./dist/horario-acceso-admin.js"
     }
   },
   "scripts": {

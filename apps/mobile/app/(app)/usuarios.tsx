@@ -27,6 +27,12 @@ import { nombreUsuarioDisplay } from '../../src/lib/nombre-usuario-display';
 import { useVisualTheme } from '../../src/context/VisualThemeContext';
 import { useThemedStyles } from '../../src/hooks/useThemedStyles';
 import { useFormStyles } from '../../src/lib/form-layout';
+import { SuperadminAdminsPanel } from '../../src/components/SuperadminAdminsPanel';
+import {
+  esRolAdministrativo,
+  esSuperadmin,
+  puedeCapacidadAdmin,
+} from '../../src/lib/admin-capacidades';
 import type { AppColors } from '../../src/lib/theme';
 
 type UsuarioRow = {
@@ -42,6 +48,7 @@ function rolLabel(rol: string) {
   if (rol === 'mesero') return 'Mesero';
   if (rol === 'chef') return 'Cocina';
   if (rol === 'admin') return 'Administrador';
+  if (rol === 'superadmin') return 'Superadmin DrewTech';
   return rol;
 }
 
@@ -116,7 +123,7 @@ export default function UsuariosAdminScreen() {
     if (!user) {
       return;
     }
-    if (user.rol !== 'admin') {
+    if (!esRolAdministrativo(user.rol) || !puedeCapacidadAdmin(user, 'usuarios')) {
       setLoading(false);
       return;
     }
@@ -210,7 +217,7 @@ export default function UsuariosAdminScreen() {
   }
 
   async function toggleActivo(u: UsuarioRow) {
-    if (u.rol === 'admin') return;
+    if (u.rol === 'admin' || u.rol === 'superadmin') return;
     const next = !u.activo;
     const ok = await confirmSiNo(
       next ? 'Activar usuario' : 'Desactivar usuario',
@@ -232,7 +239,7 @@ export default function UsuariosAdminScreen() {
     }
   }
 
-  if (user && user.rol !== 'admin') {
+  if (user && (!esRolAdministrativo(user.rol) || !puedeCapacidadAdmin(user, 'usuarios'))) {
     return (
       <View style={styles.center}>
         <Text style={styles.denied}>Solo el administrador puede gestionar usuarios.</Text>
@@ -289,7 +296,7 @@ export default function UsuariosAdminScreen() {
                   {rolLabel(u.rol)} · {u.activo ? 'activo' : 'inactivo'}
                 </Text>
               </View>
-              {u.rol !== 'admin' && (
+              {u.rol !== 'admin' && u.rol !== 'superadmin' && (
                 <IconTooltipButton
                   icon={u.activo ? AdminIcon.desactivar : AdminIcon.activar}
                   label={u.activo ? 'Desactivar' : 'Activar'}
@@ -301,6 +308,22 @@ export default function UsuariosAdminScreen() {
             </View>
           ))}
         </View>
+
+        {esSuperadmin(user.rol) ? (
+          <SuperadminAdminsPanel
+            token={token!}
+            admins={rows
+              .filter((u) => u.rol === 'admin')
+              .map((u) => ({
+                id: u.id,
+                nombre: u.nombre,
+                apellido: u.apellido,
+                email: u.email,
+                activo: u.activo,
+              }))}
+            onChanged={load}
+          />
+        ) : null}
       </ScreenScroll>
 
       <FormModal visible={modal} title="Nuevo mesero" onClose={closeModal}>

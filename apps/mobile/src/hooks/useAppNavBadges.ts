@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { esRolAdministrativo, puedeCapacidadAdmin } from '../lib/admin-capacidades';
 import { useMesasVirtuales } from './useMesasVirtuales';
 import { puedeTomarPedidos, puedeVerMisPedidos } from './usePuedeTomarPedidos';
 import { useRefetchOnSync } from './useRefetchOnSync';
@@ -19,7 +20,7 @@ export type AppNavBadges = {
 
 export function useAppNavBadges() {
   const { user } = useAuth();
-  const esAdmin = user?.rol === 'admin';
+  const veResumenDiario = puedeCapacidadAdmin(user, 'resumen_diario');
   const tomaPedidos = puedeTomarPedidos(user?.rol);
   const mv = useMesasVirtuales();
   const {
@@ -49,7 +50,7 @@ export function useAppNavBadges() {
       next.ayudaCompaneros = ayudaPlatosParaRecoger;
     }
 
-    if (esAdmin && pendientesCobro) {
+    if (veResumenDiario && pendientesCobro) {
       next.resumenDiario =
         pendientesCobro.total_pedidos > 0
           ? pendientesCobro.total_pedidos
@@ -64,14 +65,14 @@ export function useAppNavBadges() {
     ayudaPlatosParaRecoger,
     pendientesCobro,
     tomaPedidos,
-    esAdmin,
+    veResumenDiario,
     user?.rol,
   ]);
 
   useRefetchOnSync(scheduleRefresh, { source: 'mesas' });
   useRefetchOnSync(scheduleRefresh, {
     source: 'pedido',
-    enabled: esAdmin || tomaPedidos,
+    enabled: veResumenDiario || tomaPedidos,
   });
 
   return {

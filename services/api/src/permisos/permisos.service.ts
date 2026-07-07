@@ -11,6 +11,7 @@ import {
   type PermisoChefKey,
   type PermisosChefConfig,
 } from '@la-reserva/shared-domain/permisos-chef';
+import { esRolAdministrativo } from '@la-reserva/shared-domain/roles';
 import {
   PERMISOS_MESERO_DEFAULTS,
   PERMISOS_MESERO_KEYS,
@@ -183,7 +184,7 @@ export class PermisosService {
     idUsuario: number,
     rol: string,
   ): Promise<boolean> {
-    if (rol === 'admin') return true;
+    if (esRolAdministrativo(rol)) return true;
     if (rol !== 'mesero') return false;
     const { date } = fechaBogotaDb();
     const row = await this.prisma.delegacionMeseroTurno.findUnique({
@@ -198,7 +199,7 @@ export class PermisosService {
     idUsuario: number,
     rol: string,
   ): Promise<PermisosMeseroEfectivos> {
-    if (rol === 'admin') {
+    if (esRolAdministrativo(rol)) {
       return permisosMeseroTodos();
     }
     if (rol === 'chef') {
@@ -243,7 +244,7 @@ export class PermisosService {
     opts?: { permitirChef?: boolean },
   ): Promise<void> {
     const rol = actor.rol.nombre;
-    if (rol === 'admin') return;
+    if (esRolAdministrativo(rol)) return;
     if (opts?.permitirChef && rol === 'chef') return;
     if (rol !== 'mesero') {
       throw new ForbiddenException('No tienes permiso para esta acción');

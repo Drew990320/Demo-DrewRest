@@ -17,6 +17,10 @@ import { MoneyTextInput } from '../../src/components/MoneyTextInput';
 import { ScreenLoading } from '../../src/components/ScreenLoading';
 import { ScreenScroll } from '../../src/components/ScreenScroll';
 import { useAuth } from '../../src/context/AuthContext';
+import {
+  esRolAdministrativo,
+  puedeCapacidadAdmin,
+} from '../../src/lib/admin-capacidades';
 import { useVisualTheme } from '../../src/context/VisualThemeContext';
 import { useThemedStyles } from '../../src/hooks/useThemedStyles';
 import type { AppColors } from '../../src/lib/theme';
@@ -115,7 +119,10 @@ export default function MeserosOperativosScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (user?.rol !== 'admin') {
+      if (
+        !esRolAdministrativo(user?.rol) ||
+        !puedeCapacidadAdmin(user, 'meseros_operativos')
+      ) {
         setLoading(false);
         return;
       }
@@ -269,7 +276,11 @@ export default function MeserosOperativosScreen() {
     return parts.join(' · ');
   }, [data]);
 
-  if (user && user.rol !== 'admin') {
+  if (
+    user &&
+    (!esRolAdministrativo(user.rol) ||
+      !puedeCapacidadAdmin(user, 'meseros_operativos'))
+  ) {
     return (
       <View style={styles.deniedWrap}>
         <Text style={styles.denied}>

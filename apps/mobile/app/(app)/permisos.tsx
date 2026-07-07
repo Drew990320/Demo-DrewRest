@@ -15,6 +15,10 @@ import { ActionIconBar } from '../../src/components/ActionIconBar';
 import { ScreenLoading } from '../../src/components/ScreenLoading';
 import { ScreenScroll } from '../../src/components/ScreenScroll';
 import { useAuth } from '../../src/context/AuthContext';
+import {
+  esRolAdministrativo,
+  puedeCapacidadAdmin,
+} from '../../src/lib/admin-capacidades';
 import { useVisualTheme } from '../../src/context/VisualThemeContext';
 import { useThemedStyles } from '../../src/hooks/useThemedStyles';
 import { useFormStyles } from '../../src/lib/form-layout';
@@ -88,7 +92,7 @@ export default function PermisosAdminScreen() {
   }, [fecha, token]);
 
   useEffect(() => {
-    if (!user || user.rol !== 'admin') {
+    if (!user || !esRolAdministrativo(user.rol) || !puedeCapacidadAdmin(user, 'permisos')) {
       setLoading(false);
       return;
     }
@@ -204,7 +208,10 @@ export default function PermisosAdminScreen() {
     [fecha],
   );
 
-  if (user && user.rol !== 'admin') {
+  if (
+    user &&
+    (!esRolAdministrativo(user.rol) || !puedeCapacidadAdmin(user, 'permisos'))
+  ) {
     return (
       <View style={styles.deniedWrap}>
         <Text style={styles.denied}>

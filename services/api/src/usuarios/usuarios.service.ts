@@ -5,15 +5,23 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
+import { normalizarPermisosAdmin } from '@la-reserva/shared-domain/permisos-admin';
+import {
+  esAdminRestaurante,
+  esSuperadmin,
+  SUPERADMIN_EMAIL,
+} from '@la-reserva/shared-domain/roles';
 import { PrismaService } from '../prisma/prisma.service';
 import { invalidateAuthUser } from '../auth/auth-user-cache';
 import { PedidosGateway } from '../pedidos/pedidos.gateway';
 import { CreateMeseroDto } from './dto/create-mesero.dto';
 import { PatchUsuarioDto } from './dto/patch-usuario.dto';
+import { CreateAdminDto, PatchAdminDto } from './dto/admin-usuario.dto';
 import { emailMeseroDesdeNombre } from './email-mesero';
 import { nombreUsuarioPublico } from './usuario-display';
 import { validarDesactivarUsuario } from '@la-reserva/shared-domain/mesa-admin-validacion';
 import { restaurantEmailSuffix } from '../common/restaurant-branding';
+import { AdminAccessService } from './admin-access.service';
 
 const PEDIDOS_ABIERTOS = ['abierto', 'en_cocina'] as const;
 
@@ -22,6 +30,7 @@ export class UsuariosService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly gateway: PedidosGateway,
+    private readonly adminAccess: AdminAccessService,
   ) {}
 
   async listar() {
@@ -47,7 +56,21 @@ export class UsuariosService {
     });
   }
 
-  async crearMesero(dto: CreateMeseroDto) {
+  async crearMesero(
+    dto: CreateMeseroDto,
+    actor?: { idUsuario: number; rol: { nombre: string } },
+  ) {
+    if (actor && !esSuperadmin(actor.rol.nombre)) {
+      const cap = await this.adminAccess.capacidadesParaUsuario(
+        actor.idUsuario,
+        actor.rol.nombre,
+      );
+      this.adminAccess.assertCapacidadAdmin(
+        actor.rol.nombre,
+        cap.permisos_admin,
+        'usuarios',
+      );
+    }
     const rolMesero = await this.prisma.rol.findFirst({
       where: { nombre: 'mesero' },
     });
@@ -109,6 +132,7 @@ export class UsuariosService {
     idUsuario: number,
     dto: PatchUsuarioDto,
     actorId: number,
+    actorRol?: string,
   ) {
     const target = await this.prisma.usuario.findUnique({
       where: { idUsuario },
@@ -117,7 +141,10 @@ export class UsuariosService {
     if (!target) {
       throw new NotFoundException('Usuario no encontrado');
     }
-    if (target.rol.nombre === 'admin') {
+    if (
+      (target.rol.nombre === 'admin' || target.rol.nombre === 'superadmin') &&
+      !esSuperadmin(actorRol)
+    ) {
       throw new ForbiddenException('No se puede modificar cuentas de administrador desde aquí');
     }
     if (dto.activo === false && idUsuario === actorId) {
@@ -173,6 +200,132 @@ export class UsuariosService {
       );
     }
     return this.mapOne(u);
+  }
+
+  async crearAdmin(dto: CreateAdminDto) {
+    const email = dto.email.trim().toLowerCase();
+    if (email === SUPERADMIN_EMAIL) {
+      throw new ConflictException('Este correo está reservado para el superadmin');
+    }
+    const exists = await this.prisma.usuario.findUnique({ where: { email } });
+    if (exists) {
+      throw new ConflictException('Ya existe un usuario con ese correo');
+    }
+    const rolAdmin = await this.prisma.rol.findFirst({ where: { nombre: 'admin' } });
+    if (!rolAdmin) {
+      throw new NotFoundException('Rol admin no configurado');
+    }
+    const horarios = dto.horarios ?? [];
+    const permisos = normalizarPermisosAdmin(dto.permisos);
+    this.adminAccess.validarHorarios(horarios);
+
+    const passwordHash = await bcrypt.hash(dto.password, 12);
+    const u = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.usuario.create({
+        data: {
+          idRol: rolAdmin.idRol,
+          nombre: dto.nombre.trim(),
+          apellido: dto.apellido.trim(),
+          email,
+          passwordHash,
+          passwordCambiadoEn: new Date(),
+          activo: true,
+        },
+        include: { rol: true },
+      });
+      await this.adminAccess.syncHorariosEnTx(tx, created.idUsuario, horarios);
+      await this.adminAccess.syncPermisosEnTx(tx, created.idUsuario, permisos);
+      return created;
+    });
+    return this.mapAdminDetalle(u.idUsuario);
+  }
+
+  async detalleAdmin(idUsuario: number) {
+    const u = await this.prisma.usuario.findUnique({
+      where: { idUsuario },
+      include: { rol: true },
+    });
+    if (!u || !esAdminRestaurante(u.rol.nombre)) {
+      throw new NotFoundException('Administrador no encontrado');
+    }
+    return this.mapAdminDetalle(idUsuario);
+  }
+
+  async actualizarAdmin(idUsuario: number, dto: PatchAdminDto, actorId: number) {
+    const target = await this.prisma.usuario.findUnique({
+      where: { idUsuario },
+      include: { rol: true },
+    });
+    if (!target || !esAdminRestaurante(target.rol.nombre)) {
+      throw new NotFoundException('Administrador no encontrado');
+    }
+    if (dto.activo === false && idUsuario === actorId) {
+      throw new ForbiddenException('No puedes desactivar tu propia sesión');
+    }
+
+    const data: {
+      activo?: boolean;
+      passwordHash?: string;
+      passwordCambiadoEn?: Date;
+      nombre?: string;
+      apellido?: string;
+    } = {};
+    if (dto.activo !== undefined) data.activo = dto.activo;
+    if (dto.nombre?.trim()) data.nombre = dto.nombre.trim();
+    if (dto.apellido !== undefined) data.apellido = dto.apellido.trim();
+    if (dto.password?.trim()) {
+      data.passwordHash = await bcrypt.hash(dto.password.trim(), 12);
+      data.passwordCambiadoEn = new Date();
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      if (Object.keys(data).length > 0) {
+        await tx.usuario.update({ where: { idUsuario }, data });
+      }
+      if (dto.horarios) {
+        await this.adminAccess.syncHorariosEnTx(tx, idUsuario, dto.horarios);
+      }
+      if (dto.permisos) {
+        await this.adminAccess.syncPermisosEnTx(
+          tx,
+          idUsuario,
+          normalizarPermisosAdmin(dto.permisos),
+        );
+      }
+    });
+
+    invalidateAuthUser(idUsuario);
+    if (dto.activo === false) {
+      this.gateway.emitAuthSesionInvalidada(
+        idUsuario,
+        'desactivado',
+        'Un superadministrador desactivó tu acceso.',
+      );
+    }
+    if (dto.password?.trim()) {
+      this.gateway.emitAuthSesionInvalidada(
+        idUsuario,
+        'credenciales',
+        'Tu contraseña fue actualizada. Inicia sesión de nuevo.',
+      );
+    }
+    return this.mapAdminDetalle(idUsuario);
+  }
+
+  private async mapAdminDetalle(idUsuario: number) {
+    const u = await this.prisma.usuario.findUniqueOrThrow({
+      where: { idUsuario },
+      include: { rol: true },
+    });
+    const cap = await this.adminAccess.capacidadesParaUsuario(
+      idUsuario,
+      u.rol.nombre,
+    );
+    return {
+      ...this.mapOne(u),
+      horarios_acceso: cap.horarios_acceso,
+      permisos_admin: cap.permisos_admin,
+    };
   }
 
   private mapOne(u: {

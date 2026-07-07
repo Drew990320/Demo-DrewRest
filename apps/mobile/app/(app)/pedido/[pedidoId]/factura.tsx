@@ -12,6 +12,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../../../src/context/AuthContext';
+import { esRolAdministrativo } from '../../../../src/lib/admin-capacidades';
 import { usePermisosMesero } from '../../../../src/hooks/usePermisosMesero';
 import { ActionIconBar } from '../../../../src/components/ActionIconBar';
 import { CobroMontoPanel } from '../../../../src/components/CobroMontoPanel';
@@ -317,7 +318,7 @@ export default function FacturaScreen() {
   const { pedidoId } = useLocalSearchParams<{ pedidoId: string }>();
   const { token, user } = useAuth();
   const { permisos: permMesero } = usePermisosMesero();
-  const esAdmin = user?.rol === 'admin';
+  const esAdmin = esRolAdministrativo(user?.rol);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const nav = useAppNavLayout();

@@ -9,6 +9,7 @@ import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../../../src/context/AuthContext';
+import { esRolAdministrativo } from '../../../src/lib/admin-capacidades';
 import { useVisualTheme } from '../../../src/context/VisualThemeContext';
 import { AnimatedEnter } from '../../../src/components/AnimatedEnter';
 import { MesaTarjeta } from '../../../src/components/MesaTarjeta';
@@ -141,7 +142,7 @@ export default function MesasScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const esAdmin = user?.rol === 'admin';
+  const esAdmin = esRolAdministrativo(user?.rol);
   const esChef = user?.rol === 'chef';
   const { permisos: permMesero } = usePermisosMesero();
 
@@ -252,6 +253,7 @@ export default function MesasScreen() {
     if (!rol) return '';
     if (rol === 'mesero') return 'Mesero';
     if (rol === 'chef') return 'Cocina';
+    if (rol === 'superadmin') return 'Superadmin DrewTech';
     if (rol === 'admin') return 'Administrador';
     return rol;
   }

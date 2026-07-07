@@ -260,7 +260,7 @@ export function AppNavBar({ variant, style }: Props) {
       });
     }
 
-    if (caps.esAdmin && modulos.modulo_resumen_diario_activo) {
+    if (caps.esAdmin && caps.veResumenDiario && modulos.modulo_resumen_diario_activo) {
       list.push({
         key: 'caja',
         label: 'Caja',
@@ -270,7 +270,7 @@ export function AppNavBar({ variant, style }: Props) {
         active: pathname.includes('/resumen-diario'),
       });
     }
-    if (caps.esAdmin) {
+    if (caps.tieneMenuAdmin) {
       list.push({
         key: 'mas',
         label: 'Más',

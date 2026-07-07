@@ -14,6 +14,7 @@ import { api } from '../lib/api';
 import { puertoDesdeUrlWeb, resolveUrlWebCelular } from '../lib/config';
 import { showNotice } from '../lib/app-dialog';
 import { manejarErrorOperacion } from '../lib/recurso-disponible';
+import { esRolAdministrativo } from '../lib/admin-capacidades';
 import { colors } from '../lib/theme';
 
 type ConexionCelulares = {
@@ -55,7 +56,7 @@ export function ConexionCelularesCard({
   const [loading, setLoading] = useState(false);
 
   const cargar = useCallback(async () => {
-    if (!token || user?.rol !== 'admin') return;
+    if (!token || !esRolAdministrativo(user?.rol)) return;
     setLoading(true);
     try {
       const res = await api<ConexionCelulares>('/sistema/conexion-celulares', { token });
@@ -76,7 +77,7 @@ export function ConexionCelularesCard({
     }
   }, [open, isPage, data, loading, cargar]);
 
-  if (user?.rol !== 'admin') return null;
+  if (!esRolAdministrativo(user?.rol)) return null;
 
   const urlCelular = resolveUrlWebCelular(data);
   const esDemoNube = data?.modo_conexion === 'demo_nube';

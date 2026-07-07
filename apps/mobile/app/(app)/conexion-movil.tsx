@@ -1,9 +1,12 @@
 import { ScreenScroll } from '../../src/components/ScreenScroll';
 import { ConexionCelularesCard } from '../../src/components/ConexionCelularesCard';
 import { useAuth } from '../../src/context/AuthContext';
-import { useVisualTheme } from '../../src/context/VisualThemeContext';
 import { useThemedStyles } from '../../src/hooks/useThemedStyles';
 import { useResponsive } from '../../src/hooks/useResponsive';
+import {
+  esRolAdministrativo,
+  puedeCapacidadAdmin,
+} from '../../src/lib/admin-capacidades';
 import { Redirect } from 'expo-router';
 import { StyleSheet, Text } from 'react-native';
 import type { AppColors } from '../../src/lib/theme';
@@ -23,7 +26,11 @@ export default function ConexionMovilScreen() {
   const r = useResponsive();
   const styles = useThemedStyles(createStyles);
 
-  if (user?.rol !== 'admin') {
+  if (
+    user &&
+    (!esRolAdministrativo(user.rol) ||
+      !puedeCapacidadAdmin(user, 'conexion_movil'))
+  ) {
     return <Redirect href="/(app)/mesas" />;
   }
 

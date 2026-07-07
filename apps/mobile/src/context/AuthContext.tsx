@@ -34,6 +34,8 @@ export type User = {
   apellido: string;
   email: string;
   rol: string;
+  es_superadmin?: boolean;
+  permisos_admin?: Record<string, boolean> | null;
 };
 
 type AuthState = {

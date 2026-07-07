@@ -13,10 +13,26 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useVisualTheme } from '../context/VisualThemeContext';
+import type { PermisoAdminKey } from '@la-reserva/shared-domain/permisos-admin';
 import type { NavIconKey } from '@la-reserva/shared-domain/nav-app-icon';
+import { puedeCapacidadAdmin } from '../lib/admin-capacidades';
 import { MOTION } from '../lib/motion';
 
 type IonName = ComponentProps<typeof Ionicons>['name'];
+
+const MORE_ITEM_PERMISO: Partial<Record<NavIconKey, PermisoAdminKey>> = {
+  usuarios: 'usuarios',
+  editar_menu: 'menu',
+  categorias: 'menu',
+  mesas_admin: 'mesas',
+  descuentos_promociones: 'menu',
+  creditos: 'creditos',
+  personalizacion: 'personalizacion',
+  configuracion: 'configuracion',
+  conexion: 'conexion_movil',
+  permisos: 'permisos',
+  turno: 'meseros_operativos',
+};
 
 type MoreItem = {
   key: NavIconKey;
@@ -39,10 +55,10 @@ export function AppNavMoreSheet({
 }: Props) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const { colors, navIcon } = useVisualTheme();
 
-  const items: MoreItem[] = [
+  const allItems: MoreItem[] = [
     { key: 'usuarios', label: 'Usuarios', href: '/(app)/usuarios' },
     { key: 'editar_menu', label: 'Editar menú', href: '/(app)/menu-admin' },
     { key: 'categorias', label: 'Días del menú', href: '/(app)/categorias-admin' },
@@ -61,6 +77,12 @@ export function AppNavMoreSheet({
       ? [{ key: 'turno' as const, label: 'Turno y beneficios', href: '/(app)/meseros-operativos' }]
       : []),
   ];
+
+  const items = allItems.filter((item) => {
+    const clave = MORE_ITEM_PERMISO[item.key];
+    if (!clave) return true;
+    return puedeCapacidadAdmin(user, clave);
+  });
 
   function go(href: string) {
     onClose();

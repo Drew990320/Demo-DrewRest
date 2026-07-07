@@ -24,7 +24,10 @@ export class RolesGuard implements CanActivate {
     if (!nombre) {
       throw new ForbiddenException('No tienes permiso para esta acción');
     }
-    if (!roles.includes(nombre)) {
+    const allowed =
+      roles.includes(nombre) ||
+      (nombre === 'superadmin' && roles.includes('admin'));
+    if (!allowed) {
       throw new ForbiddenException('No tienes permiso para esta acción');
     }
     return true;

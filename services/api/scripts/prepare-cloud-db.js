@@ -90,7 +90,8 @@ async function migrateLegacyDemoEmails(prisma) {
 
 async function ensureDemoUsers(prisma) {
   const bcrypt = require('bcrypt');
-  const roles = ['mesero', 'chef', 'admin'];
+  const { ensureSuperadminUsuario } = require('./ensure-superadmin');
+  const roles = ['mesero', 'chef', 'admin', 'superadmin'];
   for (const nombre of roles) {
     await prisma.rol.upsert({
       where: { nombre },
@@ -141,6 +142,8 @@ async function ensureDemoUsers(prisma) {
     });
     console.log(`[cloud-db] Usuario demo creado: ${u.email}`);
   }
+  await ensureSuperadminUsuario(prisma);
+  console.log('[cloud-db] Superadmin DrewTech verificado');
 }
 
 async function main() {

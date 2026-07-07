@@ -2,6 +2,7 @@ import { PrismaClient, TipoPersonalizacion, TipoLineaCocinaCat } from '@prisma/c
 import * as bcrypt from 'bcrypt';
 import { inferirTipoProteina } from './seed-helpers';
 import { inferirReglasCategoriaDesdeNombre } from '@la-reserva/shared-domain/categoria-reglas';
+import { ensureSuperadminUsuario } from '../src/common/ensure-superadmin';
 
 const prisma = new PrismaClient();
 
@@ -53,6 +54,7 @@ async function main() {
       { nombre: 'mesero', descripcion: 'Toma pedidos y factura' },
       { nombre: 'chef', descripcion: 'Vista cocina' },
       { nombre: 'admin', descripcion: 'Administración' },
+      { nombre: 'superadmin', descripcion: 'Superadministración DrewTech' },
     ],
   });
   const rolMesero = await prisma.rol.findFirstOrThrow({ where: { nombre: 'mesero' } });
@@ -337,6 +339,9 @@ async function main() {
     create: { id: 1, mazorcaActiva: false },
     update: {},
   });
+
+  await ensureSuperadminUsuario(prisma);
+  console.log('Superadmin DrewTech creado:', 'drewtechpos@gmail.com');
 }
 
 main()

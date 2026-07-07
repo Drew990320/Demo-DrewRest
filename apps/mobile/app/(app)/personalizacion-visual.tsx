@@ -21,6 +21,10 @@ import { VisualStylePresetPanel } from '../../src/components/VisualStylePresetPa
 import { VisualMesaStylePanel } from '../../src/components/VisualMesaStylePanel';
 import { useAuth } from '../../src/context/AuthContext';
 import {
+  esRolAdministrativo,
+  puedeCapacidadAdmin,
+} from '../../src/lib/admin-capacidades';
+import {
   useVisualTheme,
   VisualChromePreviewProvider,
   VisualThemePreviewProvider,
@@ -585,7 +589,10 @@ export default function PersonalizacionVisualScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (user?.rol !== 'admin') return;
+      if (
+        !esRolAdministrativo(user?.rol) ||
+        !puedeCapacidadAdmin(user, 'personalizacion')
+      ) return;
       setLoading(true);
       void load().catch((e) => {
         void manejarErrorAccion(e, 'cargar la personalización visual');
@@ -594,7 +601,10 @@ export default function PersonalizacionVisualScreen() {
     }, [load, user?.rol]),
   );
 
-  if (user?.rol !== 'admin') {
+  if (
+    !esRolAdministrativo(user?.rol) ||
+    !puedeCapacidadAdmin(user, 'personalizacion')
+  ) {
     return (
       <View style={styles.denied}>
         <Text style={styles.deniedText}>Solo el administrador puede personalizar la apariencia.</Text>

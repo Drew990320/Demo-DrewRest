@@ -15,6 +15,10 @@ import { MoneyTextInput } from '../../src/components/MoneyTextInput';
 import { ScreenLoading } from '../../src/components/ScreenLoading';
 import { ScreenScroll } from '../../src/components/ScreenScroll';
 import { useAuth } from '../../src/context/AuthContext';
+import {
+  esRolAdministrativo,
+  puedeCapacidadAdmin,
+} from '../../src/lib/admin-capacidades';
 import { useVisualTheme } from '../../src/context/VisualThemeContext';
 import { useThemedStyles } from '../../src/hooks/useThemedStyles';
 import type { AppColors } from '../../src/lib/theme';
@@ -167,7 +171,10 @@ export default function ConfiguracionScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (user?.rol !== 'admin') {
+      if (
+        !esRolAdministrativo(user?.rol) ||
+        !puedeCapacidadAdmin(user, 'configuracion')
+      ) {
         setLoading(false);
         return;
       }
@@ -306,7 +313,10 @@ export default function ConfiguracionScreen() {
     setDirty(true);
   }
 
-  if (user && user.rol !== 'admin') {
+  if (
+    user &&
+    (!esRolAdministrativo(user.rol) || !puedeCapacidadAdmin(user, 'configuracion'))
+  ) {
     return (
       <View style={styles.deniedWrap}>
         <Text style={styles.denied}>

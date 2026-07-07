@@ -122,8 +122,40 @@ model Usuario {
   delegacionesMeseroRegistradas DelegacionMeseroTurno[] @relation("DelegacionRegistradaPor")
   movimientosCaja               MovimientoCaja[]
   cuentasCredito                CuentaCredito[]
+  horariosAcceso                HorarioAccesoUsuario[]
+  permisosAdmin                 PermisosAdminUsuario?
 
   @@map("usuario")
+}
+
+model HorarioAccesoUsuario {
+  idHorario  Int     @id @default(autoincrement()) @map("id_horario")
+  idUsuario  Int     @map("id_usuario")
+  diaSemana  Int     @map("dia_semana")
+  horaInicio String  @map("hora_inicio") @db.VarChar(5)
+  horaFin    String  @map("hora_fin") @db.VarChar(5)
+  usuario    Usuario @relation(fields: [idUsuario], references: [idUsuario], onDelete: Cascade)
+
+  @@unique([idUsuario, diaSemana])
+  @@index([idUsuario])
+  @@map("horario_acceso_usuario")
+}
+
+model PermisosAdminUsuario {
+  idUsuario         Int     @id @map("id_usuario")
+  permUsuarios      Boolean @default(true) @map("perm_usuarios")
+  permPermisos      Boolean @default(true) @map("perm_permisos")
+  permMenu          Boolean @default(true) @map("perm_menu")
+  permMesas         Boolean @default(true) @map("perm_mesas")
+  permConfiguracion Boolean @default(true) @map("perm_configuracion")
+  permResumenDiario Boolean @default(true) @map("perm_resumen_diario")
+  permCreditos      Boolean @default(true) @map("perm_creditos")
+  permPersonalizacion Boolean @default(true) @map("perm_personalizacion")
+  permMeserosOperativos Boolean @default(true) @map("perm_meseros_operativos")
+  permConexionMovil Boolean @default(true) @map("perm_conexion_movil")
+  usuario           Usuario @relation(fields: [idUsuario], references: [idUsuario], onDelete: Cascade)
+
+  @@map("permisos_admin_usuario")
 }
 
 model Mesa {
