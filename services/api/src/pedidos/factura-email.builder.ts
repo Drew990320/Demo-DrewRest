@@ -1,8 +1,19 @@
 import {
   DREWTECH_CREDITO_LINEA,
   DREWTECH_TELEFONO_LABEL,
+  ticketDireccion,
+  ticketNombreLocal,
+  ticketTelefono,
 } from './escpos-utils';
+import {
+  restaurantMostrarCreditoDrewTech,
+  restaurantName,
+  restaurantTextoAvisoNoDian,
+  restaurantTextoGraciasTicket,
+  restaurantTextoPieCorreo,
+} from '../common/restaurant-branding';
 import { labelMetodoPago, type FacturaTicket } from './factura-ticket';
+import { lineasTicketExcesoCobro } from '@la-reserva/shared-domain/factura-vuelto';
 
 function formatCop(n: number): string {
   return new Intl.NumberFormat('es-CO', {
@@ -31,8 +42,10 @@ function fechaTicket(iso: string): string {
 
 /** Cuerpo texto plano del recibo para correo. */
 export function buildFacturaEmailText(ticket: FacturaTicket): string {
-  const lines: string[] = [
-    'LA RESERVA',
+  const lines: string[] = [ticketNombreLocal()];
+  if (ticketTelefono()) lines.push(`Tel: ${ticketTelefono()}`);
+  if (ticketDireccion()) lines.push(ticketDireccion());
+  lines.push(
     'Cuenta / Factura',
     '',
     `${ticket.mesa_etiqueta}`,
@@ -45,7 +58,7 @@ export function buildFacturaEmailText(ticket: FacturaTicket): string {
     '',
     'Detalle',
     '--------',
-  ];
+  );
 
   for (const l of ticket.lineas) {
     lines.push(`${l.cantidad}× ${l.nombre_producto}  ${formatCop(l.subtotal_linea)}`);
@@ -69,11 +82,51 @@ export function buildFacturaEmailText(ticket: FacturaTicket): string {
     lines.push(`Desc. promociones: -${formatCop(ticket.descuento_promociones)}`);
   }
   lines.push(`TOTAL: ${formatCop(ticket.total)}`);
+  if (
+    !ticket.es_precuenta &&
+    !ticket.es_total_pedido &&
+    ticket.detalle_exceso_cobro
+  ) {
+    const instrucciones = lineasTicketExcesoCobro(ticket.detalle_exceso_cobro);
+    if (instrucciones.length > 0) {
+      lines.push('');
+      for (const l of instrucciones) {
+        lines.push(`${l.etiqueta}: ${formatCop(l.monto)}`);
+      }
+    }
+  } else if (
+    !ticket.es_precuenta &&
+    !ticket.es_total_pedido &&
+    ticket.vuelto_cliente &&
+    ticket.vuelto_cliente.vuelto_total > 0
+  ) {
+    const v = ticket.vuelto_cliente;
+    if (v.monto_recibido_efectivo != null && v.monto_recibido_efectivo > 0) {
+      lines.push(`Recibido efectivo: ${formatCop(v.monto_recibido_efectivo)}`);
+    }
+    if (
+      v.monto_transferencia_recibido != null &&
+      v.monto_transferencia_recibido > 0
+    ) {
+      lines.push(
+        `Recibido transferencia: ${formatCop(v.monto_transferencia_recibido)}`,
+      );
+    }
+    if (v.vuelto_efectivo > 0 && v.vuelto_transferencia > 0) {
+      lines.push(`Vuelto efectivo: ${formatCop(v.vuelto_efectivo)}`);
+      lines.push(`Vuelto transferencia: ${formatCop(v.vuelto_transferencia)}`);
+    }
+    lines.push(`VUELTO: ${formatCop(v.vuelto_total)}`);
+  }
   lines.push('');
-  lines.push('Gracias por su visita.');
-  lines.push(DREWTECH_CREDITO_LINEA);
-  lines.push(DREWTECH_TELEFONO_LABEL);
-  lines.push('Este es un recibo electrónico del restaurante (no es factura DIAN).');
+  lines.push(restaurantTextoGraciasTicket());
+  const pieCorreo = restaurantTextoPieCorreo();
+  if (pieCorreo) lines.push(pieCorreo);
+  if (restaurantMostrarCreditoDrewTech()) {
+    lines.push(DREWTECH_CREDITO_LINEA);
+    lines.push(DREWTECH_TELEFONO_LABEL);
+  }
+  lines.push(restaurantTextoAvisoNoDian());
 
   return lines.filter((x) => x !== '').join('\n');
 }
@@ -113,12 +166,72 @@ export function buildFacturaEmailHtml(ticket: FacturaTicket): string {
     );
   }
 
+  const vueltoHtml =
+    !ticket.es_precuenta &&
+    !ticket.es_total_pedido &&
+    ticket.detalle_exceso_cobro
+      ? (() => {
+          const instrucciones = lineasTicketExcesoCobro(
+            ticket.detalle_exceso_cobro!,
+          );
+          if (instrucciones.length === 0) return '';
+          const filas = instrucciones.map((l) => {
+            const bold = l.destacado
+              ? 'font-weight:bold;color:#8b3a2b'
+              : '';
+            return `<tr><td style="${bold}">${escapeHtml(l.etiqueta)}</td><td style="text-align:right;${bold}">${formatCop(l.monto)}</td></tr>`;
+          });
+          return `<table style="width:100%;margin-top:12px;font-size:14px;border-top:1px solid #eee;padding-top:8px">${filas.join('')}</table>`;
+        })()
+      : !ticket.es_precuenta &&
+          !ticket.es_total_pedido &&
+          ticket.vuelto_cliente &&
+          ticket.vuelto_cliente.vuelto_total > 0
+        ? (() => {
+          const v = ticket.vuelto_cliente!;
+          const filasVuelto: string[] = [];
+          if (v.monto_recibido_efectivo != null && v.monto_recibido_efectivo > 0) {
+            filasVuelto.push(
+              `<tr><td>Recibido efectivo</td><td style="text-align:right">${formatCop(v.monto_recibido_efectivo)}</td></tr>`,
+            );
+          }
+          if (
+            v.monto_transferencia_recibido != null &&
+            v.monto_transferencia_recibido > 0
+          ) {
+            filasVuelto.push(
+              `<tr><td>Recibido transferencia</td><td style="text-align:right">${formatCop(v.monto_transferencia_recibido)}</td></tr>`,
+            );
+          }
+          if (v.vuelto_efectivo > 0 && v.vuelto_transferencia > 0) {
+            filasVuelto.push(
+              `<tr><td>Vuelto efectivo</td><td style="text-align:right">${formatCop(v.vuelto_efectivo)}</td></tr>`,
+              `<tr><td>Vuelto transferencia</td><td style="text-align:right">${formatCop(v.vuelto_transferencia)}</td></tr>`,
+            );
+          }
+          filasVuelto.push(
+            `<tr><td style="padding-top:8px"><strong>VUELTO</strong></td><td style="padding-top:8px;text-align:right;color:#8b3a2b"><strong>${formatCop(v.vuelto_total)}</strong></td></tr>`,
+          );
+          return `<table style="width:100%;margin-top:12px;font-size:14px;border-top:1px solid #eee;padding-top:8px">${filasVuelto.join('')}</table>`;
+        })()
+      : '';
+
   return `<!DOCTYPE html>
 <html lang="es">
-<head><meta charset="utf-8" /><title>Factura La Reserva</title></head>
+<head><meta charset="utf-8" /><title>Factura ${escapeHtml(restaurantName())}</title></head>
 <body style="margin:0;padding:0;background:#f6f4f1;font-family:Segoe UI,Arial,sans-serif;color:#2c241c">
   <div style="max-width:520px;margin:24px auto;background:#fff;border-radius:12px;padding:24px;border:1px solid #e8e0d8">
-    <h1 style="margin:0 0 4px;font-size:22px;color:#8b3a2b">La Reserva</h1>
+    <h1 style="margin:0 0 4px;font-size:22px;color:#8b3a2b">${escapeHtml(ticketNombreLocal())}</h1>
+    ${
+      ticketTelefono()
+        ? `<p style="margin:0 0 2px;color:#555;font-size:14px">Tel: ${escapeHtml(ticketTelefono())}</p>`
+        : ''
+    }
+    ${
+      ticketDireccion()
+        ? `<p style="margin:0 0 12px;color:#555;font-size:14px">${escapeHtml(ticketDireccion())}</p>`
+        : '<p style="margin:0 0 12px"></p>'
+    }
     <p style="margin:0 0 16px;color:#666;font-size:14px">Cuenta / Factura</p>
     <p style="margin:0 0 4px"><strong>${escapeHtml(ticket.mesa_etiqueta)}</strong></p>
     <p style="margin:0 0 4px;font-size:14px;color:#555">Pedido #${ticket.id_pedido}${
@@ -134,10 +247,20 @@ export function buildFacturaEmailHtml(ticket: FacturaTicket): string {
       <tr><td style="padding-top:8px;font-size:18px"><strong>Total</strong></td>
           <td style="padding-top:8px;text-align:right;font-size:18px;color:#8b3a2b"><strong>${formatCop(ticket.total)}</strong></td></tr>
     </table>
-    <p style="margin:20px 0 0;font-size:13px;color:#666">Gracias por su visita.</p>
-    <p style="margin:12px 0 0;font-size:11px;color:#999">${escapeHtml(DREWTECH_CREDITO_LINEA)}</p>
-    <p style="margin:2px 0 0;font-size:11px;color:#999">${escapeHtml(DREWTECH_TELEFONO_LABEL)}</p>
-    <p style="margin:8px 0 0;font-size:11px;color:#999">Recibo electrónico del restaurante. No constituye factura electrónica DIAN.</p>
+    ${vueltoHtml}
+    <p style="margin:20px 0 0;font-size:13px;color:#666">${escapeHtml(restaurantTextoGraciasTicket())}</p>
+    ${
+      restaurantTextoPieCorreo()
+        ? `<p style="margin:8px 0 0;font-size:12px;color:#888">${escapeHtml(restaurantTextoPieCorreo()!)}</p>`
+        : ''
+    }
+    ${
+      restaurantMostrarCreditoDrewTech()
+        ? `<p style="margin:12px 0 0;font-size:11px;color:#999">${escapeHtml(DREWTECH_CREDITO_LINEA)}</p>
+    <p style="margin:2px 0 0;font-size:11px;color:#999">${escapeHtml(DREWTECH_TELEFONO_LABEL)}</p>`
+        : ''
+    }
+    <p style="margin:8px 0 0;font-size:11px;color:#999">${escapeHtml(restaurantTextoAvisoNoDian())}</p>
   </div>
 </body>
 </html>`;

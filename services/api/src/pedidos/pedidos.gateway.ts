@@ -19,7 +19,7 @@ type SocketUser = {
   rol: string;
 };
 
-export type ConfigScope = 'menu' | 'mesas' | 'categorias';
+export type ConfigScope = 'menu' | 'mesas' | 'categorias' | 'visual';
 
 @WebSocketGateway({
   cors: { origin: '*' },
@@ -65,6 +65,12 @@ export class PedidosGateway implements OnGatewayConnection {
       }
       const cached = getCachedAuthUser(idUsuario);
       if (cached?.activo) {
+        const pwdAtEsperado = (
+          cached.passwordCambiadoEn ?? cached.creadoEn
+        ).getTime();
+        if (payload.pwdAt == null || payload.pwdAt < pwdAtEsperado) {
+          return null;
+        }
         return { idUsuario: cached.idUsuario, rol: cached.rol.nombre };
       }
       const user = await this.prisma.usuario.findUnique({
@@ -72,6 +78,10 @@ export class PedidosGateway implements OnGatewayConnection {
         include: { rol: true },
       });
       if (!user?.activo) {
+        return null;
+      }
+      const pwdAtEsperado = (user.passwordCambiadoEn ?? user.creadoEn).getTime();
+      if (payload.pwdAt == null || payload.pwdAt < pwdAtEsperado) {
         return null;
       }
       setCachedAuthUser(user);
@@ -100,7 +110,7 @@ export class PedidosGateway implements OnGatewayConnection {
   }
 
   @SubscribeMessage('join')
-  handleJoin(
+  async handleJoin(
     client: Socket,
     data: { mesaId?: number; cocina?: boolean; resumen?: boolean },
   ) {
@@ -115,9 +125,33 @@ export class PedidosGateway implements OnGatewayConnection {
       void client.join('resumen');
     }
     if (data?.mesaId != null) {
+      const autorizado = await this.puedeUnirseMesa(user, data.mesaId);
+      if (!autorizado) {
+        return { ok: false, error: 'mesa_no_autorizada' };
+      }
       void client.join(`mesa:${data.mesaId}`);
     }
     return { ok: true };
+  }
+
+  private async puedeUnirseMesa(
+    user: SocketUser,
+    mesaId: number,
+  ): Promise<boolean> {
+    if (user.rol === 'admin' || user.rol === 'chef') {
+      return true;
+    }
+    if (user.rol !== 'mesero') {
+      return false;
+    }
+    const activos = await this.prisma.pedido.count({
+      where: {
+        idMesa: mesaId,
+        idUsuario: user.idUsuario,
+        estado: { in: ['abierto', 'en_cocina'] },
+      },
+    });
+    return activos > 0;
   }
 
   emitPedidoActualizado(
@@ -201,9 +235,13 @@ export class PedidosGateway implements OnGatewayConnection {
     accion?: 'agregado' | 'quitado' | 'reducido';
     at: string;
   }) {
-    this.server
-      .to(`mesero:${payload.idMeseroDueno}`)
-      .emit('mesero:companero-agrego', payload);
+    const destinos = [
+      `mesero:${payload.idMeseroDueno}`,
+      `usuario:${payload.idMeseroDueno}`,
+    ];
+    for (const room of destinos) {
+      this.server.to(room).emit('mesero:companero-agrego', payload);
+    }
   }
 
   emitImpresoraAlerta(payload: {

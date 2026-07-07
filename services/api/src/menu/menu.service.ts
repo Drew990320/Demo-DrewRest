@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { normalizarIconoMenuGuardado } from '@la-reserva/shared-domain/categoria-menu-icon';
 import { PrismaService } from '../prisma/prisma.service';
 import { categoriaDisponibleEnDia } from '../common/categoria-dia';
 import {
@@ -42,10 +43,12 @@ export class MenuService {
     });
 
     const out = categorias
+      .filter((c) => c.activo)
       .filter((c) => categoriaDisponibleHoy(c, weekday))
       .map((c) => ({
         id_categoria: c.idCategoria,
         nombre: c.nombre,
+        icono_menu: normalizarIconoMenuGuardado(c.iconoMenu, c.nombre),
         es_bebida: c.esBebida,
         visible_en_mostrador: c.visibleEnMostrador,
         productos: c.productos

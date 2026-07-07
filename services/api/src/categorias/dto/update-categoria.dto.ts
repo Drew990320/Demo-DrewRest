@@ -1,7 +1,17 @@
-import { IsBoolean, IsIn, IsOptional } from 'class-validator';
+import { IsBoolean, IsIn, IsNotEmpty, IsOptional, IsString, ValidateIf } from 'class-validator';
 import type { TipoLineaCocinaCategoria } from '@la-reserva/shared-domain/categoria-reglas';
+import { CATEGORIA_MENU_ICON_IDS } from '@la-reserva/shared-domain/categoria-menu-icon';
 
 export class UpdateCategoriaDto {
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  nombre?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  activo?: boolean;
+
   @IsOptional()
   @IsBoolean()
   disponible_lunes?: boolean;
@@ -57,4 +67,10 @@ export class UpdateCategoriaDto {
   @IsOptional()
   @IsIn(['plato', 'entrada', 'adicional'])
   tipo_linea_cocina_default?: TipoLineaCocinaCategoria;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v != null && v !== '')
+  @IsString()
+  @IsIn(CATEGORIA_MENU_ICON_IDS)
+  icono_menu?: string | null;
 }

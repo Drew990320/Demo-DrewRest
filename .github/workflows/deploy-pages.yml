@@ -29,7 +29,17 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: apps/mobile/package-lock.json
+          cache-dependency-path: |
+            apps/mobile/package-lock.json
+            packages/shared-domain/package-lock.json
+
+      - name: Install shared-domain
+        working-directory: packages/shared-domain
+        run: npm ci
+
+      - name: Test shared-domain
+        working-directory: packages/shared-domain
+        run: npm test
 
       - name: Install dependencies
         working-directory: apps/mobile

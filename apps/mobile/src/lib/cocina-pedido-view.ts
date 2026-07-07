@@ -15,6 +15,7 @@ export type PedidoCocinaView = Omit<PedidoCocinaLike, 'detalles' | 'mesero'> & {
   id_pedido: number;
   id_mesa: number;
   estado: string;
+  modo_servicio?: 'en_mesa' | 'para_llevar';
   num_comensales: number;
   creado_en: string;
   mesero?: {

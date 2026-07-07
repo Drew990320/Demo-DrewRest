@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Redirect, Stack } from 'expo-router';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
@@ -7,6 +7,7 @@ import { HeaderHomeTitle } from '../../src/components/HeaderHomeTitle';
 import { MOTION } from '../../src/lib/motion';
 import { useAuth } from '../../src/context/AuthContext';
 import { useNetwork } from '../../src/context/NetworkContext';
+import { useVisualTheme } from '../../src/context/VisualThemeContext';
 import { useAuthSessionGuard } from '../../src/hooks/useAuthSessionGuard';
 import { useImpresoraAlertas } from '../../src/hooks/useImpresoraAlertas';
 import { usePedidoNotificaciones } from '../../src/hooks/usePedidoNotificaciones';
@@ -18,7 +19,7 @@ import { NotificationProvider } from '../../src/context/NotificationCenterContex
 import { AppNavFabLayer, AppNavShell } from '../../src/components/AppNavShell';
 import { NotificationHeaderButton } from '../../src/components/NotificationHeaderButton';
 import { LlamarMeseroFab } from '../../src/components/LlamarMeseroFab';
-import { colors } from '../../src/lib/theme';
+import { colors as staticColors } from '../../src/lib/theme';
 import { warmMenuTodayCache } from '../../src/lib/menu-prefetch';
 import { preloadCategoriaMenuIcons } from '../../src/lib/categoria-menu-icon-font';
 
@@ -30,10 +31,29 @@ function PedidoNotificacionesListener() {
 export default function AppGroupLayout() {
   const { token, loading } = useAuth();
   const { online } = useNetwork();
+  const { colors } = useVisualTheme();
   const { isWeb } = useResponsive();
   useImpresoraAlertas();
   useAuthSessionGuard();
   useBlurFocusOnRouteChange();
+
+  const stackScreenOptions = useMemo(
+    () => ({
+      headerStyle: { backgroundColor: colors.backgroundAlt },
+      headerTintColor: colors.text,
+      headerTitleStyle: { fontWeight: '700' as const },
+      headerTitleAlign: 'center' as const,
+      contentStyle: { backgroundColor: colors.background },
+      animation: 'slide_from_right' as const,
+      animationDuration: MOTION.normal,
+      headerTitle: (props: { children?: string }) => (
+        <HeaderHomeTitle>{String(props.children ?? '')}</HeaderHomeTitle>
+      ),
+      headerRight: () => <NotificationHeaderButton />,
+      headerShadowVisible: false,
+    }),
+    [colors],
+  );
 
   useEffect(() => {
     void preloadCategoriaMenuIcons();
@@ -43,8 +63,8 @@ export default function AppGroupLayout() {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" />
+      <View style={[styles.center, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
@@ -76,21 +96,7 @@ export default function AppGroupLayout() {
             </AppNavFabLayer>
           }
         >
-          <Stack
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.backgroundAlt },
-        headerTintColor: colors.text,
-        headerTitleStyle: { fontWeight: '700' },
-        headerTitleAlign: 'center',
-        animation: 'slide_from_right',
-        animationDuration: MOTION.normal,
-        headerTitle: (props) => (
-          <HeaderHomeTitle>{String(props.children ?? '')}</HeaderHomeTitle>
-        ),
-        headerRight: () => <NotificationHeaderButton />,
-        headerShadowVisible: false,
-      }}
-    >
+          <Stack screenOptions={stackScreenOptions}>
       <Stack.Screen name="mesas/index" options={{ title: 'Mesas' }} />
       <Stack.Screen
         name="mostrador"
@@ -126,6 +132,11 @@ export default function AppGroupLayout() {
       />
       <Stack.Screen name="mesas-admin" options={{ title: 'Mesas (admin)' }} />
       <Stack.Screen
+        name="descuentos-promociones"
+        options={{ title: 'Descuentos y promociones' }}
+      />
+      <Stack.Screen name="creditos" options={{ title: 'Créditos / fiados' }} />
+      <Stack.Screen
         name="configuracion"
         options={{ title: 'Configuración' }}
       />
@@ -141,6 +152,10 @@ export default function AppGroupLayout() {
         name="meseros-operativos"
         options={{ title: 'Meseros (turno)' }}
       />
+      <Stack.Screen
+        name="personalizacion-visual"
+        options={{ title: 'Personalización visual' }}
+      />
           </Stack>
         </AppNavShell>
       </View>
@@ -154,10 +169,10 @@ const styles = StyleSheet.create({
   appFrame: { flex: 1, width: '100%' },
   appFrameWide: { alignItems: 'stretch' },
   offlineBanner: {
-    backgroundColor: colors.offline,
+    backgroundColor: staticColors.offline,
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
-  offlineText: { color: colors.onDark, fontSize: 13, fontWeight: '600', textAlign: 'center' },
+  offlineText: { color: staticColors.onDark, fontSize: 13, fontWeight: '600', textAlign: 'center' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 });

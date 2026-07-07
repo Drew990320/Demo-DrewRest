@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import { colors } from '../lib/theme';
 import {
   Pressable,
   ScrollView,
@@ -9,6 +8,8 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
+import { useThemedStyles } from '../hooks/useThemedStyles';
+import type { AppColors } from '../lib/theme';
 
 type PedidoChip = { id_pedido: number };
 
@@ -23,6 +24,39 @@ type Props<T extends PedidoChip> = {
   style?: StyleProp<ViewStyle>;
 };
 
+function createStyles(c: AppColors) {
+  return StyleSheet.create({
+    box: {
+      backgroundColor: c.surface,
+      borderRadius: 16,
+      padding: 16,
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    label: { fontWeight: '600', marginBottom: 8, color: c.text },
+    row: { flexDirection: 'row', gap: 8, paddingVertical: 4 },
+    chip: {
+      minHeight: 44,
+      minWidth: 88,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.surfaceMuted,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    chipOn: {
+      borderColor: c.primary,
+      backgroundColor: c.primaryLight,
+    },
+    chipText: { fontWeight: '800', color: c.text },
+    chipTextOn: { color: c.primaryDark },
+  });
+}
+
 export function PedidosActivosChips<T extends PedidoChip>({
   pedidos,
   selectedId,
@@ -33,6 +67,8 @@ export function PedidosActivosChips<T extends PedidoChip>({
   renderChip,
   style,
 }: Props<T>) {
+  const styles = useThemedStyles(createStyles);
+
   if (pedidos.length < minPedidos) return null;
 
   return (
@@ -65,34 +101,3 @@ export function PedidosActivosChips<T extends PedidoChip>({
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  box: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  label: { fontWeight: '600', marginBottom: 8, color: colors.text },
-  row: { flexDirection: 'row', gap: 8, paddingVertical: 4 },
-  chip: {
-    minHeight: 44,
-    minWidth: 88,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.borderInput,
-    backgroundColor: colors.surfaceMuted,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  chipOn: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primaryLight,
-  },
-  chipText: { fontWeight: '800', color: colors.text },
-  chipTextOn: { color: colors.primaryDark },
-});

@@ -4,7 +4,10 @@ import { IoAdapter } from '@nestjs/platform-socket.io';
 import type { NextFunction, Request, Response } from 'express';
 import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
+import { resolveCorsOrigin } from './common/cors-origins';
+import { structuredRequestLogger } from './common/structured-request-logger';
 import { PrismaClientExceptionFilter } from './filters/prisma-client-exception.filter';
+import { MulterExceptionFilter } from './filters/multer-exception.filter';
 import { assertValidLicense } from './license/assert-license';
 
 process.on('unhandledRejection', (reason) => {
@@ -53,11 +56,15 @@ async function bootstrap() {
   const requestTimeoutMs = parseRequestTimeoutMs();
 
   const app = await NestFactory.create(AppModule, { bodyParser: false });
+  app.use(structuredRequestLogger());
   app.use(securityHeaders);
   app.use(requestTimeout(requestTimeoutMs));
   app.use(json({ limit: bodyLimit }));
   app.use(urlencoded({ extended: true, limit: bodyLimit }));
-  app.useGlobalFilters(new PrismaClientExceptionFilter());
+  app.useGlobalFilters(
+    new PrismaClientExceptionFilter(),
+    new MulterExceptionFilter(),
+  );
   app.useWebSocketAdapter(new IoAdapter(app));
   app.useGlobalPipes(
     new ValidationPipe({
@@ -67,8 +74,8 @@ async function bootstrap() {
       transformOptions: { enableImplicitConversion: true },
     }),
   );
-  // LAN: tablets/celulares en la misma red; el origen varía por IP del dispositivo.
-  app.enableCors({ origin: true, credentials: true });
+  // LAN: por defecto acepta cualquier origen. En producción define CORS_ORIGINS (coma-separados).
+  app.enableCors({ origin: resolveCorsOrigin(), credentials: true });
   app.enableShutdownHooks();
 
   const port = process.env.PORT ?? 3000;

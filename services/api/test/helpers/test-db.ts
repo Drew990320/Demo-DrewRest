@@ -1,6 +1,5 @@
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
-import { NOMBRE_PRODUCTO_MAZORCA } from '../../src/pedidos/mazorca-linea-pedido';
 
 const ALL_DAYS = {
   disponibleLunes: true,
@@ -39,7 +38,7 @@ export async function isDatabaseAvailable(): Promise<boolean> {
 
 export async function ensureMeseroSeed(prisma: PrismaClient): Promise<void> {
   const exists = await prisma.usuario.findUnique({
-    where: { email: 'mesero@lareserva.local' },
+    where: { email: 'mesero@restaurant.local' },
   });
   if (exists) return;
 
@@ -55,7 +54,7 @@ export async function ensureMeseroSeed(prisma: PrismaClient): Promise<void> {
       idRol: rol.idRol,
       nombre: 'Mesero',
       apellido: 'Demo',
-      email: 'mesero@lareserva.local',
+      email: 'mesero@restaurant.local',
       passwordHash: bcrypt.hashSync('mesero123', 10),
     },
   });
@@ -127,7 +126,7 @@ async function ensureProductoMazorca(prisma: PrismaClient): Promise<number> {
   const creado = await prisma.producto.create({
     data: {
       idCategoria: cat.idCategoria,
-      nombre: NOMBRE_PRODUCTO_MAZORCA,
+      nombre: 'Acompañamiento e2e',
       precio: 0,
       activo: true,
       esAcompanamientoMazorca: true,

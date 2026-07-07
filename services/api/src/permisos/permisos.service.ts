@@ -4,7 +4,13 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type { PermisosMeseroConfig as PermisosMeseroRow } from '@prisma/client';
+import type { PermisosMeseroConfig as PermisosMeseroRow, PermisosChefConfig as PermisosChefRow } from '@prisma/client';
+import {
+  PERMISOS_CHEF_DEFAULTS,
+  PERMISOS_CHEF_KEYS,
+  type PermisoChefKey,
+  type PermisosChefConfig,
+} from '@la-reserva/shared-domain/permisos-chef';
 import {
   PERMISOS_MESERO_DEFAULTS,
   PERMISOS_MESERO_KEYS,
@@ -16,7 +22,7 @@ import {
 import { fechaBogotaDb } from '../common/fecha-bogota-db';
 import { PrismaService } from '../prisma/prisma.service';
 import { nombreUsuarioPublico } from '../usuarios/usuario-display';
-import { AsignarDelegacionCierreDto, PatchPermisosMeseroDto } from './dto/permisos.dto';
+import { AsignarDelegacionCierreDto, PatchPermisosChefDto, PatchPermisosMeseroDto } from './dto/permisos.dto';
 
 const CAMPO_PRISMA: Record<
   PermisoMeseroKey,
@@ -35,15 +41,27 @@ const CAMPO_PRISMA: Record<
   ayuda_companeros: 'ayudaCompaneros',
 };
 
+const CAMPO_CHEF_PRISMA: Record<
+  PermisoChefKey,
+  keyof Omit<PermisosChefRow, 'id'>
+> = {
+  ver_cola_cocina: 'verColaCocina',
+  marcar_listo: 'marcarListo',
+  reimprimir_comanda: 'reimprimirComanda',
+  anular_linea_cocina: 'anularLineaCocina',
+};
+
 @Injectable()
 export class PermisosService {
   private cache: { row: PermisosMeseroRow; expiresAt: number } | null = null;
+  private chefCache: { row: PermisosChefRow; expiresAt: number } | null = null;
   private static readonly CACHE_TTL_MS = 30_000;
 
   constructor(private readonly prisma: PrismaService) {}
 
   invalidateCache(): void {
     this.cache = null;
+    this.chefCache = null;
   }
 
   private mapRow(row: PermisosMeseroRow): PermisosMeseroConfig {
@@ -77,6 +95,60 @@ export class PermisosService {
     }
     this.cache = { row, expiresAt: now + PermisosService.CACHE_TTL_MS };
     return row;
+  }
+
+  async obtenerConfigChefRow(): Promise<PermisosChefRow> {
+    const now = Date.now();
+    if (this.chefCache && this.chefCache.expiresAt > now) {
+      return this.chefCache.row;
+    }
+    let row = await this.prisma.permisosChefConfig.findUnique({
+      where: { id: 1 },
+    });
+    if (!row) {
+      row = await this.prisma.permisosChefConfig.create({ data: { id: 1 } });
+    }
+    this.chefCache = { row, expiresAt: now + PermisosService.CACHE_TTL_MS };
+    return row;
+  }
+
+  private mapChefRow(row: PermisosChefRow): PermisosChefConfig {
+    return {
+      ver_cola_cocina: row.verColaCocina,
+      marcar_listo: row.marcarListo,
+      reimprimir_comanda: row.reimprimirComanda,
+      anular_linea_cocina: row.anularLineaCocina,
+    };
+  }
+
+  async obtenerConfigChef(): Promise<PermisosChefConfig> {
+    return this.mapChefRow(await this.obtenerConfigChefRow());
+  }
+
+  async actualizarConfigChef(
+    dto: PatchPermisosChefDto,
+  ): Promise<PermisosChefConfig> {
+    const data: Partial<PermisosChefRow> = {};
+    for (const key of PERMISOS_CHEF_KEYS) {
+      if (dto[key] !== undefined) {
+        data[CAMPO_CHEF_PRISMA[key]] = dto[key] as boolean;
+      }
+    }
+    const row = await this.prisma.permisosChefConfig.upsert({
+      where: { id: 1 },
+      create: {
+        id: 1,
+        ...Object.fromEntries(
+          PERMISOS_CHEF_KEYS.map((k) => [
+            CAMPO_CHEF_PRISMA[k],
+            dto[k] ?? PERMISOS_CHEF_DEFAULTS[k],
+          ]),
+        ),
+      },
+      update: data,
+    });
+    this.chefCache = null;
+    return this.mapChefRow(row);
   }
 
   async obtenerConfig(): Promise<PermisosMeseroConfig> {
@@ -130,11 +202,22 @@ export class PermisosService {
       return permisosMeseroTodos();
     }
     if (rol === 'chef') {
+      const chef = await this.obtenerConfigChef();
       return {
-        ...PERMISOS_MESERO_DEFAULTS,
-        reimprimir_comanda: true,
+        agregar_items: false,
+        editar_cantidades: false,
+        quitar_lineas: false,
+        enviar_cocina: false,
+        reimprimir_comanda: chef.reimprimir_comanda,
+        cobrar: false,
+        precuenta: false,
+        reimprimir_factura: false,
+        cancelar_pedido: false,
+        transferir_mesa: false,
+        ayuda_companeros: false,
         puede_cerrar_anulando: false,
         es_admin: false,
+        permisos_chef: chef,
       };
     }
     if (rol !== 'mesero') {
@@ -173,8 +256,9 @@ export class PermisosService {
 
   async resumenAdmin(fecha?: string) {
     const { iso, date } = fechaBogotaDb(fecha);
-    const [config, meseros, delegacion] = await Promise.all([
+    const [config, chef, meseros, delegacion] = await Promise.all([
       this.obtenerConfig(),
+      this.obtenerConfigChef(),
       this.prisma.usuario.findMany({
         where: { rol: { nombre: 'mesero' }, activo: true },
         include: { rol: true },
@@ -191,6 +275,7 @@ export class PermisosService {
     return {
       fecha: iso,
       permisos_mesero: config,
+      permisos_chef: chef,
       delegacion_cierre_anulacion: delegacion
         ? {
             id_usuario: delegacion.idUsuario,

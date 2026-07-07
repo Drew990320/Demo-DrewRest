@@ -9,6 +9,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
@@ -22,6 +23,7 @@ export class MesasController {
   constructor(private readonly mesas: MesasService) {}
 
   /** Listado para la grilla (mesas habilitadas hoy). */
+  @SkipThrottle()
   @Get()
   listar() {
     return this.mesas.listarVisiblesHoy();

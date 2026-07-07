@@ -13,8 +13,8 @@ describe('leerPuertoWeb', () => {
 
   beforeEach(() => {
     delete process.env.WEB_PORT;
-    tempRoot = join(tmpdir(), `lareserva-web-port-${Date.now()}`);
-    mkdirSync(join(tempRoot, 'LaReserva', 'LaReserva', 'web'), {
+    tempRoot = join(tmpdir(), `drewrest-web-port-${Date.now()}`);
+    mkdirSync(join(tempRoot, 'DrewRest', 'DrewRest', 'web'), {
       recursive: true,
     });
   });
@@ -29,8 +29,8 @@ describe('leerPuertoWeb', () => {
     }
   });
 
-  it('lee web-port.txt en layout LaReserva/LaReserva/web', () => {
-    const portFile = join(tempRoot, 'LaReserva', 'LaReserva', 'web', 'web-port.txt');
+  it('lee web-port.txt en layout DrewRest/DrewRest/web', () => {
+    const portFile = join(tempRoot, 'DrewRest', 'DrewRest', 'web', 'web-port.txt');
     writeFileSync(portFile, '8082', 'utf8');
     expect(leerPuertoWebDesdeArchivo(tempRoot)).toBe(8082);
   });

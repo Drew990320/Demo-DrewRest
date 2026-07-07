@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors } from '../lib/theme';
+import { useThemedStyles } from '../hooks/useThemedStyles';
+import type { AppColors } from '../lib/theme';
 import {
   WEEKDAYS,
   countActiveWeekdays,
@@ -14,8 +15,69 @@ type Props = {
   disabled?: boolean;
 };
 
+function createStyles(c: AppColors) {
+  return StyleSheet.create({
+    wrap: { marginTop: 4 },
+    chips: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      gap: 6,
+      flexWrap: 'wrap',
+    },
+    chip: {
+      minWidth: 36,
+      height: 36,
+      paddingHorizontal: 6,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: c.borderInput,
+      backgroundColor: c.surfaceMuted,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    chipOn: {
+      backgroundColor: c.primary,
+      borderColor: c.primaryDark,
+    },
+    chipPressed: { opacity: 0.82 },
+    chipDisabled: { opacity: 0.5 },
+    chipText: {
+      fontSize: 12,
+      fontWeight: '800',
+      color: c.textMuted,
+    },
+    chipTextOn: { color: c.onPrimary },
+    footer: {
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      marginTop: 8,
+    },
+    quick: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 10,
+    },
+    quickLink: {
+      fontSize: 12,
+      fontWeight: '800',
+      color: c.primary,
+      minWidth: 72,
+      minHeight: 36,
+      textAlign: 'center',
+      lineHeight: 36,
+    },
+    quickLinkMuted: { color: c.textHint },
+    quickSep: { color: c.textHint, fontSize: 12 },
+    count: { fontSize: 11, fontWeight: '700', color: c.textHint },
+  });
+}
+
 /** Selector compacto de días de la semana (sustituye filas de Switch). */
 export function WeekdayChips({ flags, onToggle, onSetAll, disabled }: Props) {
+  const styles = useThemedStyles(createStyles);
   const active = countActiveWeekdays(flags);
 
   return (
@@ -82,61 +144,3 @@ export function WeekdayChips({ flags, onToggle, onSetAll, disabled }: Props) {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  wrap: { marginTop: 4 },
-  chips: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 6,
-    flexWrap: 'wrap',
-  },
-  chip: {
-    minWidth: 36,
-    height: 36,
-    paddingHorizontal: 6,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.borderInput,
-    backgroundColor: colors.surfaceMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  chipOn: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primaryDark,
-  },
-  chipPressed: { opacity: 0.82 },
-  chipDisabled: { opacity: 0.5 },
-  chipText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: colors.textMuted,
-  },
-  chipTextOn: { color: colors.surface },
-  footer: {
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    marginTop: 8,
-  },
-  quick: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-  },
-  quickLink: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: colors.primary,
-    minWidth: 72,
-    minHeight: 36,
-    textAlign: 'center',
-    lineHeight: 36,
-  },
-  quickLinkMuted: { color: colors.textHint },
-  quickSep: { color: colors.textHint, fontSize: 12 },
-  count: { fontSize: 11, fontWeight: '700', color: colors.textHint },
-});

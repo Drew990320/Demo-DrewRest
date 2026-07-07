@@ -7,9 +7,9 @@ export type LineaMazorcaSync = {
 
 export const MSG_MAZORCA_MIN_COMENSALES = 'Debe haber al menos 1 comensal';
 export const MSG_MAZORCA_BLOQUEADA =
-  'No puedes bajar comensales por debajo de las mazorcas ya listas o entregadas';
+  'No puedes bajar comensales por debajo del acompañamiento ya listo o entregado';
 export const MSG_MAZORCA_NO_AJUSTE =
-  'No se pudo ajustar comensales: hay mazorcas ya listas o en mesa';
+  'No se pudo ajustar comensales: hay acompañamiento ya listo o en mesa';
 
 export function cantidadBloqueadaMazorca(lineas: LineaMazorcaSync[]): number {
   return lineas.reduce(

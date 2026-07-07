@@ -7,6 +7,8 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
+import { useOperacionToolsRail } from '../../src/context/ResumenDiarioToolsRailContext';
+import { useVisualTheme } from '../../src/context/VisualThemeContext';
 import { AnimatedEnter } from '../../src/components/AnimatedEnter';
 import { ActionIconBar, type ActionIconItem } from '../../src/components/ActionIconBar';
 import { EmptyState } from '../../src/components/EmptyState';
@@ -23,12 +25,14 @@ import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { ScreenLoading } from '../../src/components/ScreenLoading';
 import { useConfigOperativa } from '../../src/hooks/useConfigOperativa';
 import { StatusAlertBanner } from '../../src/components/StatusAlertBanner';
-import { AdminIcon, PedidoIcon } from '../../src/lib/app-icons';
+import { AdminIcon, NavIcon, PedidoIcon } from '../../src/lib/app-icons';
 import { api } from '../../src/lib/api';
 import { alertarSiSinPapel } from '../../src/lib/alarma-impresora';
 import { showNotice } from '../../src/lib/app-dialog';
 import { manejarErrorAccion, manejarErrorOperacion } from '../../src/lib/recurso-disponible';
-import { colors, status } from '../../src/lib/theme';
+import { useThemedStyles } from '../../src/hooks/useThemedStyles';
+import { statusFromAppColors } from '../../src/lib/visual-theme';
+import type { AppColors } from '../../src/lib/theme';
 import {
   detalleMapById,
   mesasActivasDePedidos,
@@ -50,6 +54,7 @@ import {
   tituloLugarMesa,
 } from '../../src/lib/mesa-label';
 import { puedeVerMisPedidos } from '../../src/hooks/usePuedeTomarPedidos';
+import { useResponsive } from '../../src/hooks/useResponsive';
 import { useSeleccionPedido } from '../../src/hooks/useSeleccionPedido';
 import { pedidoCocinaAPanel } from '../../src/lib/pedido-panel-adapt';
 import { batchAfectaMisPedidos, joinPedidoRooms } from '../../src/lib/pedido-sync';
@@ -60,10 +65,144 @@ type MisActivosResponse = {
   mesas_activas: number;
 };
 
+function createMisPedidosStyles(
+  c: AppColors,
+  status: ReturnType<typeof statusFromAppColors>,
+) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: c.background, padding: 16 },
+    cardEnter: { marginBottom: 0 },
+    center: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 24,
+      backgroundColor: c.background,
+    },
+    denied: { textAlign: 'center', color: c.textMuted, marginBottom: 16, fontSize: 16 },
+    resumenCard: {
+      backgroundColor: c.primary,
+      borderRadius: 12,
+      padding: 16,
+      marginBottom: 12,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.primaryDark,
+    },
+    resumenKicker: {
+      color: c.onPrimaryMuted,
+      fontWeight: '700',
+      fontSize: 12,
+      letterSpacing: 0.4,
+      textTransform: 'uppercase',
+    },
+    resumenHero: {
+      fontSize: 40,
+      fontWeight: '700',
+      color: c.onPrimary,
+      marginTop: 4,
+      lineHeight: 44,
+    },
+    resumenHeroLabel: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: c.onPrimary,
+      marginTop: 2,
+    },
+    resumenSub: { marginTop: 8, color: c.onPrimaryMuted, fontSize: 13, lineHeight: 18 },
+    chipsCard: { marginBottom: 12 },
+    chipContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    chipPedidoId: {
+      fontWeight: '800',
+      color: c.text,
+      fontVariant: ['tabular-nums'],
+    },
+    chipPedidoIdOn: { color: c.primaryDark },
+    cardTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginTop: 6,
+    },
+    card: {
+      backgroundColor: c.surface,
+      borderRadius: 12,
+      padding: 14,
+      marginBottom: 12,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.border,
+    },
+    cardBordeAlta: { borderLeftWidth: 4, borderLeftColor: c.danger },
+    cardBordeBaja: { borderLeftWidth: 4, borderLeftColor: c.warning },
+    cardTop: { marginBottom: 8 },
+    rowPills: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
+    pill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 999,
+      backgroundColor: c.primaryLight,
+    },
+    pillText: { color: c.primary, fontWeight: '800' },
+    pillSinCocina: {
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 999,
+      backgroundColor: status.warn.bg,
+      borderWidth: 1,
+      borderColor: status.warn.border,
+    },
+    pillSinCocinaText: { color: status.warn.fg, fontWeight: '800', fontSize: 12 },
+    pillPrioridad: {
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 999,
+      borderWidth: 1,
+    },
+    pillPrioridadAlta: { backgroundColor: c.dangerLight, borderColor: c.danger },
+    pillPrioridadBaja: { backgroundColor: c.warningLight, borderColor: c.warning },
+    pillPrioridadText: { fontWeight: '900', fontSize: 12 },
+    pillPrioridadTextAlta: { color: c.dangerText },
+    pillPrioridadTextBaja: { color: c.warningText },
+    cardTitle: { fontWeight: '800', color: c.text, fontSize: 16, marginTop: 0 },
+    cardMeta: { color: c.textMuted, marginTop: 2, textTransform: 'capitalize' },
+    loadingDetalle: {
+      marginTop: 12,
+      fontSize: 14,
+      color: c.textMuted,
+      textAlign: 'center',
+      paddingVertical: 8,
+    },
+    recogidaTitle: {
+      fontWeight: '800',
+      fontSize: 15,
+      color: c.text,
+      marginBottom: 4,
+    },
+    recogidaHint: {
+      fontSize: 12,
+      color: c.textMuted,
+      lineHeight: 17,
+      marginBottom: 8,
+    },
+  });
+}
+
 export default function MisPedidosScreen() {
+  const { colors } = useVisualTheme();
+  const status = useMemo(() => statusFromAppColors(colors), [colors]);
+  const styles = useThemedStyles(
+    useMemo(() => (c: AppColors) => createMisPedidosStyles(c, status), [status]),
+  );
   const { token, user } = useAuth();
   const { config: opConfig } = useConfigOperativa();
   const router = useRouter();
+  const r = useResponsive();
   const puedeVer = puedeVerMisPedidos(user?.rol);
   const [items, setItems] = useState<PedidoCocinaView[]>([]);
   const [mesasActivas, setMesasActivas] = useState(0);
@@ -298,7 +437,7 @@ export default function MisPedidosScreen() {
         </View>
       );
     },
-    [opConfig],
+    [colors, opConfig, styles.chipContent, styles.chipPedidoId, styles.chipPedidoIdOn],
   );
 
   const accionesExtraPedido = useMemo((): ActionIconItem[] => {
@@ -408,6 +547,76 @@ export default function MisPedidosScreen() {
       setBusyGrupoKey(null);
     }
   }
+
+  const pedidoRail = pedidoSeleccionado ?? itemsOrdenados[0] ?? null;
+
+  const meseroRailActions = useMemo((): ActionIconItem[] => {
+    const actions: ActionIconItem[] = [
+      {
+        key: 'actualizar',
+        icon: refreshing ? 'hourglass-outline' : 'refresh-outline',
+        label: refreshing ? 'Actualizando…' : 'Actualizar',
+        variant: 'secondary',
+        disabled: refreshing,
+        onPress: () => void onRefresh(),
+      },
+    ];
+    if (pedidoRail) {
+      const lugar = etiquetaLugarMesa(pedidoRail.mesa_numero);
+      actions.push({
+        key: 'ir-mesa',
+        icon: PedidoIcon.abrirMesa,
+        label: `Ir a ${lugar}`,
+        variant: 'primary',
+        disabled: reimprimiendoId != null,
+        onPress: () => router.push(`/(app)/mesa/${pedidoRail.id_mesa}`),
+      });
+      actions.push({
+        key: 'reimprimir',
+        icon:
+          reimprimiendoId === pedidoRail.id_pedido
+            ? 'hourglass-outline'
+            : PedidoIcon.reimprimirComanda,
+        label:
+          reimprimiendoId === pedidoRail.id_pedido
+            ? 'Imprimiendo…'
+            : `Reimprimir · ${lugar}`,
+        variant: 'secondary',
+        disabled: reimprimiendoId != null,
+        onPress: () => void reimprimirComanda(pedidoRail.id_pedido),
+      });
+    }
+    if (platosAyudaCompaneros > 0) {
+      actions.push({
+        key: 'ayuda',
+        icon: NavIcon.ayudaCompaneros,
+        label: 'Ayudar a compañeros',
+        variant: 'secondary',
+        badge: platosAyudaCompaneros,
+        onPress: () => router.push('/(app)/ayuda-companeros'),
+      });
+    }
+    return actions;
+  }, [
+    pedidoRail,
+    refreshing,
+    reimprimiendoId,
+    platosAyudaCompaneros,
+    etiquetaLugarMesa,
+    router,
+  ]);
+
+  useOperacionToolsRail(
+    r.navSidebar && puedeVer,
+    {
+      sectionTitle: 'Mis pedidos',
+      actions: meseroRailActions,
+      hint: pedidoRail
+        ? `Pedido #${pedidoRail.id_pedido} · ${etiquetaLugarMesa(pedidoRail.mesa_numero)}.`
+        : 'Actualiza cuando cambien tus mesas o pedidos.',
+    },
+    [meseroRailActions, pedidoRail?.id_pedido],
+  );
 
   if (!user || loading) {
     return <ScreenLoading />;
@@ -625,126 +834,3 @@ export default function MisPedidosScreen() {
     </ScreenScroll>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, padding: 16 },
-  cardEnter: { marginBottom: 0 },
-  center: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-    backgroundColor: colors.background,
-  },
-  denied: { textAlign: 'center', color: colors.textMuted, marginBottom: 16, fontSize: 16 },
-  resumenCard: {
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.primaryDark,
-  },
-  resumenKicker: {
-    color: colors.primaryMuted,
-    fontWeight: '700',
-    fontSize: 12,
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-  },
-  resumenHero: {
-    fontSize: 40,
-    fontWeight: '700',
-    color: colors.surface,
-    marginTop: 4,
-    lineHeight: 44,
-  },
-  resumenHeroLabel: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.primaryLight,
-    marginTop: 2,
-  },
-  resumenSub: { marginTop: 8, color: colors.primaryMuted, fontSize: 13, lineHeight: 18 },
-  chipsCard: { marginBottom: 12 },
-  chipContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  chipPedidoId: {
-    fontWeight: '800',
-    color: colors.text,
-    fontVariant: ['tabular-nums'],
-  },
-  chipPedidoIdOn: { color: colors.primaryDark },
-  cardTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 6,
-  },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-  },
-  cardBordeAlta: { borderLeftWidth: 4, borderLeftColor: colors.danger },
-  cardBordeBaja: { borderLeftWidth: 4, borderLeftColor: colors.warning },
-  cardTop: { marginBottom: 8 },
-  rowPills: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
-  pill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: colors.primaryLight,
-  },
-  pillText: { color: colors.primary, fontWeight: '800' },
-  pillSinCocina: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: status.warn.bg,
-    borderWidth: 1,
-    borderColor: status.warn.border,
-  },
-  pillSinCocinaText: { color: status.warn.fg, fontWeight: '800', fontSize: 12 },
-  pillPrioridad: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  pillPrioridadAlta: { backgroundColor: colors.dangerLight, borderColor: colors.danger },
-  pillPrioridadBaja: { backgroundColor: colors.warningLight, borderColor: colors.warning },
-  pillPrioridadText: { fontWeight: '900', fontSize: 12 },
-  pillPrioridadTextAlta: { color: colors.dangerText },
-  pillPrioridadTextBaja: { color: colors.warningText },
-  cardTitle: { fontWeight: '800', color: colors.text, fontSize: 16, marginTop: 0 },
-  cardMeta: { color: colors.textMuted, marginTop: 2, textTransform: 'capitalize' },
-  loadingDetalle: {
-    marginTop: 12,
-    fontSize: 14,
-    color: colors.textMuted,
-    textAlign: 'center',
-    paddingVertical: 8,
-  },
-  recogidaTitle: {
-    fontWeight: '800',
-    fontSize: 15,
-    color: colors.text,
-    marginBottom: 4,
-  },
-  recogidaHint: {
-    fontSize: 12,
-    color: colors.textMuted,
-    lineHeight: 17,
-    marginBottom: 8,
-  },
-});

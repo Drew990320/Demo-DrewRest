@@ -4,7 +4,6 @@
     "moduleResolution": "node",
     "esModuleInterop": true,
     "isolatedModules": true,
-    "declaration": true,
     "removeComments": true,
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
@@ -18,6 +17,7 @@
       "@la-reserva/shared-domain/*": ["../../packages/shared-domain/dist/*"]
     },
     "incremental": true,
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
     "skipLibCheck": true,
     "strictNullChecks": true,
     "forceConsistentCasingInFileNames": true,

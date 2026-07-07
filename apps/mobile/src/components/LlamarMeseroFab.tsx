@@ -3,6 +3,7 @@ import { Pressable, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { usePathname } from 'expo-router';
 import { useFabBottomOffset } from '../hooks/useFabBottomOffset';
+import { useResponsive } from '../hooks/useResponsive';
 import { useAuth } from '../context/AuthContext';
 import { useRefetchOnSync } from '../hooks/useRefetchOnSync';
 import { puedeVerCocina } from '../hooks/usePuedeTomarPedidos';
@@ -20,7 +21,7 @@ import {
   subscribeCocinaQueue,
 } from '../lib/cocina-queue-store';
 import { appShadow } from '../lib/shadow';
-import { colors } from '../lib/theme';
+import { useVisualTheme } from '../context/VisualThemeContext';
 import { manejarErrorAccion } from '../lib/recurso-disponible';
 
 type CocinaResponse = {
@@ -40,6 +41,8 @@ function nombreMeseroCorto(p: PedidoCocinaView): string {
 export function LlamarMeseroFab() {
   const pathname = usePathname();
   const fabBottom = useFabBottomOffset();
+  const { navSidebar } = useResponsive();
+  const { colors } = useVisualTheme();
   const { token, user } = useAuth();
   const puedeVer = puedeVerCocina(user?.rol);
   const enCocina = pathname.includes('/cocina');
@@ -108,6 +111,11 @@ export function LlamarMeseroFab() {
     return null;
   }
 
+  // En tablet/escritorio la acción vive en la barra derecha de cocina.
+  if (navSidebar) {
+    return null;
+  }
+
   const busy = llamandoId === pedidoPrimeroEnCola.id_pedido;
   const lugar = tituloLugarMesa(pedidoPrimeroEnCola.mesa_numero);
   const mesero = nombreMeseroCorto(pedidoPrimeroEnCola);
@@ -118,7 +126,7 @@ export function LlamarMeseroFab() {
       disabled={busy}
       style={({ pressed }) => [
         styles.fab,
-        { bottom: fabBottom },
+        { bottom: fabBottom, backgroundColor: colors.cocina },
         pressed && styles.fabPressed,
         busy && styles.fabBusy,
         appShadow('dialog'),
@@ -144,7 +152,6 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: colors.cocina,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 900,

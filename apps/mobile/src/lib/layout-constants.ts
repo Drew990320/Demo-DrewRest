@@ -13,6 +13,9 @@ export const SIDEBAR_NAV_WIDTH = 132;
 /** Barra de herramientas (pedido / resumen) en el lado derecho, tablet+ / PC. */
 export const RESUMEN_TOOLS_RAIL_WIDTH = 140;
 
+/** Panel de selección de iconos de navegación (junto a la barra derecha). */
+export const NAV_ICON_PICKER_WIDTH = 300;
+
 type InsetsLike = { bottom: number };
 
 type ScrollPadOpts = {

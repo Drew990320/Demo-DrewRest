@@ -13,123 +13,113 @@ export type LineaDescuento = {
   nombre_producto: string;
   categoria_nombre: string;
   id_categoria?: number;
+  id_producto?: number;
+  precio_unitario?: number;
   es_plato_principal?: boolean;
   participa_descuento_sopas?: boolean;
 };
 
 import {
   calcularDescuentoPromociones,
-  type ReglaPromocionPorCategoria,
+  ETIQUETA_LEGACY_MULERO,
+  migrarLegacyConfigPromociones,
+  type ConfigPromocionesLegacy,
+  type DesglosePromocion,
+  type EtiquetaPromocionPedido,
+  type ReglaPromocion,
 } from './promociones-pedido';
 
-export type ConfigDescuentoCalc = {
-  sopas_activo: boolean;
-  sopas_monto_por_unidad: number;
-  /** Mínimo de unidades de sopa para activar el descuento global. */
-  sopas_min_unidades?: number;
-  muleros_activo: boolean;
-  /** Monto a rebajar por cada plato principal (cliente camionero). */
-  muleros_monto_por_plato_principal: number;
-  /** Mínimo de platos principales para activar el descuento de camioneros. */
-  muleros_min_platos_principales?: number;
-  /** Subtotal mínimo de ítems que no son sopa para activar descuento de sopas. */
-  umbral_subtotal_otros?: number;
-  /** Reglas adicionales configuradas por el admin (p. ej. promo por categoría). */
-  reglas_promocion?: ReglaPromocionPorCategoria[];
+export type { DesglosePromocion, EtiquetaPromocionPedido, ReglaPromocion };
+
+export type ConfigDescuentoCalc = ConfigPromocionesLegacy & {
+  reglas_promocion?: ReglaPromocion[];
+  etiquetas_pedido?: EtiquetaPromocionPedido[];
 };
 
-function textoIncluye(texto: string, palabra: string): boolean {
-  return texto.toLowerCase().includes(palabra.toLowerCase());
+export type ContextoDescuentosPedido = {
+  /** Etiquetas activas en el pedido (convenio, cliente especial, etc.). */
+  etiquetas_promocion?: string[];
+  /** Compatibilidad: equivale a incluir `cliente_especial` en etiquetas. */
+  cliente_mulero?: boolean;
+};
+
+function etiquetasEfectivas(ctx: ContextoDescuentosPedido): string[] {
+  const set = new Set(ctx.etiquetas_promocion ?? []);
+  if (ctx.cliente_mulero) {
+    set.add(ETIQUETA_LEGACY_MULERO);
+  }
+  return [...set];
 }
 
+function reglasEfectivas(config: ConfigDescuentoCalc): ReglaPromocion[] {
+  const migrado = migrarLegacyConfigPromociones(config);
+  const parsed = config.reglas_promocion;
+  if (Array.isArray(parsed) && parsed.length > 0) {
+    const fromConfig = parsed as ReglaPromocion[];
+    const ids = new Set(fromConfig.map((r) => r.id));
+    for (const r of migrado.reglas) {
+      if (!ids.has(r.id)) fromConfig.push(r);
+    }
+    return fromConfig;
+  }
+  return migrado.reglas;
+}
+
+/** @deprecated Usar flag de categoría o `lineaMarcadaPromo` en promociones-pedido. */
 export function esLineaSopa(linea: LineaDescuento): boolean {
   if (linea.participa_descuento_sopas != null) {
     return linea.participa_descuento_sopas;
   }
-  return (
-    textoIncluye(linea.categoria_nombre, 'sopa') ||
-    textoIncluye(linea.nombre_producto, 'sopa')
-  );
+  const cat = (linea.categoria_nombre ?? '').toLowerCase();
+  const nom = (linea.nombre_producto ?? '').toLowerCase();
+  return cat.includes('sopa') || nom.includes('sopa');
 }
 
-function calcDescuentoSopas(
-  lineas: LineaDescuento[],
-  activo: boolean,
-  montoPorUnidad: number,
-  minUnidades: number,
-  umbralOtros: number,
-): number {
-  if (!activo || montoPorUnidad <= 0) return 0;
-
-  const cantSopas = lineas
-    .filter(esLineaSopa)
-    .reduce((s, l) => s + l.cantidad, 0);
-  if (cantSopas < minUnidades) return 0;
-
-  const otras = lineas.filter((l) => !esLineaSopa(l));
-  if (otras.length === 0) return 0;
-
-  const subtotalOtras = otras.reduce((s, l) => s + l.subtotal_linea, 0);
-  if (subtotalOtras <= umbralOtros) return 0;
-
-  return cantSopas * Math.round(montoPorUnidad);
-}
-
-/** Descuento para clientes camioneros: monto × cantidad de platos principales. */
-function calcDescuentoMuleros(
-  lineas: LineaDescuento[],
-  activo: boolean,
-  montoPorPlatoPrincipal: number,
-  minPlatosPrincipales: number,
-  clienteMulero: boolean,
-): number {
-  if (!clienteMulero || !activo || montoPorPlatoPrincipal <= 0) return 0;
-
-  const cantPlatos = lineas
-    .filter((l) => l.es_plato_principal)
-    .reduce((s, l) => s + l.cantidad, 0);
-  if (cantPlatos < minPlatosPrincipales) return 0;
-
-  return cantPlatos * Math.round(montoPorPlatoPrincipal);
+export function resolverConfigPromociones(config: ConfigDescuentoCalc): {
+  reglas_promocion: ReglaPromocion[];
+  etiquetas_pedido: EtiquetaPromocionPedido[];
+} {
+  const migrado = migrarLegacyConfigPromociones(config);
+  const reglas =
+    Array.isArray(config.reglas_promocion) && config.reglas_promocion.length > 0
+      ? (() => {
+          const fromConfig = config.reglas_promocion as ReglaPromocion[];
+          const ids = new Set(fromConfig.map((r) => r.id));
+          for (const r of migrado.reglas) {
+            if (!ids.has(r.id)) fromConfig.push(r);
+          }
+          return fromConfig;
+        })()
+      : migrado.reglas;
+  const etiquetas =
+    Array.isArray(config.etiquetas_pedido) && config.etiquetas_pedido.length > 0
+      ? config.etiquetas_pedido
+      : migrado.etiquetas_pedido;
+  return { reglas_promocion: reglas, etiquetas_pedido: etiquetas };
 }
 
 export function calcularDescuentosPedido(
   lineas: LineaDescuento[],
   config: ConfigDescuentoCalc,
-  clienteMulero: boolean,
+  ctx: ContextoDescuentosPedido | boolean = {},
 ): {
   descuento_sopas: number;
   descuento_muleros: number;
   descuento_promociones: number;
-  promociones_desglose: { id: string; etiqueta: string; monto: number }[];
+  promociones_desglose: DesglosePromocion[];
 } {
-  const umbral =
-    config.umbral_subtotal_otros ?? UMBRAL_SUBTOTAL_OTROS_COP;
-  const sopasMin =
-    config.sopas_min_unidades ?? SOPAS_MIN_UNIDADES_DEFAULT;
-  const mulerosMin =
-    config.muleros_min_platos_principales ??
-    MULEROS_MIN_PLATOS_PRINCIPALES_DEFAULT;
-  const promos = calcularDescuentoPromociones(
+  const contexto: ContextoDescuentosPedido =
+    typeof ctx === 'boolean' ? { cliente_mulero: ctx } : ctx;
+  const reglas = reglasEfectivas(config);
+  const promo = calcularDescuentoPromociones(
     lineas,
-    config.reglas_promocion ?? [],
+    reglas,
+    etiquetasEfectivas(contexto),
   );
   return {
-    descuento_sopas: calcDescuentoSopas(
-      lineas,
-      config.sopas_activo,
-      config.sopas_monto_por_unidad,
-      Math.max(1, Math.round(sopasMin)),
-      umbral,
-    ),
-    descuento_muleros: calcDescuentoMuleros(
-      lineas,
-      config.muleros_activo,
-      config.muleros_monto_por_plato_principal,
-      Math.max(1, Math.round(mulerosMin)),
-      clienteMulero,
-    ),
-    descuento_promociones: promos.total,
-    promociones_desglose: promos.desglose,
+    descuento_sopas: 0,
+    descuento_muleros: 0,
+    descuento_promociones: promo.total,
+    promociones_desglose: promo.desglose,
   };
 }

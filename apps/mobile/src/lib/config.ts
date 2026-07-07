@@ -171,7 +171,14 @@ function resolveApiUrl(): string {
       return `http://${pageHost}:${port}`;
     }
 
-    // Navegador en el mismo PC: .env con IP LAN → usar loopback para evitar "Failed to fetch".
+    // Mismo PC en el navegador: localhost y 127.0.0.1 no son intercambiables
+    // (Cross-Origin-Resource-Policy bloquea imágenes si el host no coincide).
+    if (pageHost === 'localhost' || pageHost === '127.0.0.1') {
+      const port = apiPortFromBaseUrl(trimmed);
+      return `http://${pageHost}:${port}`;
+    }
+
+    // .env con IP LAN en un contexto sin hostname de página (SSR / build).
     if (looksLikePrivateLanUrl(trimmed)) {
       const port = apiPortFromBaseUrl(trimmed);
       return `http://127.0.0.1:${port}`;
@@ -180,7 +187,7 @@ function resolveApiUrl(): string {
   }
 
   // App nativa: localhost en .env/manifest apunta al móvil, no al PC.
-  if (Platform.OS !== 'web' && urlTargetsLocalhost(trimmed)) {
+  if ((Platform.OS as string) !== 'web' && urlTargetsLocalhost(trimmed)) {
     const inferred = inferLanHostFromDevBundle();
     if (inferred) {
       return `http://${inferred}:${apiPortFromBaseUrl(trimmed)}`;

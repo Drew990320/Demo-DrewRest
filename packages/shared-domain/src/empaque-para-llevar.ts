@@ -71,3 +71,88 @@ export function productoCobraEmpaqueParaLlevarPorPlatoFuerte(
     categoriaCobraEmpaqueParaLlevar(reglas)
   );
 }
+
+export type DetalleEmpaqueResumen = {
+  id_detalle: number;
+  id_detalle_padre: number | null;
+  cantidad: number;
+  es_empacable?: boolean;
+  es_plato_principal?: boolean;
+  categoria_nombre?: string;
+  categoria?: CategoriaReglasInput;
+};
+
+export function cantidadEmpaqueVinculadaPadre(
+  idDetallePadre: number,
+  detalles: Pick<
+    DetalleEmpaqueResumen,
+    'id_detalle_padre' | 'cantidad' | 'es_empacable'
+  >[],
+): number {
+  return detalles
+    .filter((d) => d.id_detalle_padre === idDetallePadre && d.es_empacable)
+    .reduce((sum, d) => sum + d.cantidad, 0);
+}
+
+/** Cantidad del hijo empaque tras cambiar la cantidad del plato padre. */
+export function nuevaCantidadEmpaqueTrasCambioPadre(
+  cantidadEmpaque: number,
+  cantidadPadreAnterior: number,
+  cantidadPadreNueva: number,
+): number {
+  if (cantidadPadreNueva > cantidadPadreAnterior) {
+    const delta = cantidadPadreNueva - cantidadPadreAnterior;
+    return Math.min(cantidadEmpaque + delta, cantidadPadreNueva);
+  }
+  return Math.min(cantidadEmpaque, cantidadPadreNueva);
+}
+
+/** Unidades de empaque que faltan en una línea de plato (0 = ok). */
+export function empaqueFaltanteEnDetallePadre(
+  detalle: DetalleEmpaqueResumen,
+  detalles: DetalleEmpaqueResumen[],
+): number {
+  if (detalle.id_detalle_padre != null) return 0;
+  if (!productoCobraEmpaqueParaLlevarPorPlatoFuerte(detalle)) return 0;
+  const vinculado = cantidadEmpaqueVinculadaPadre(detalle.id_detalle, detalles);
+  return Math.max(0, detalle.cantidad - vinculado);
+}
+
+/** Totales de empaque esperado vs asignado en un pedido para llevar. */
+export function resumenEmpaqueParaLlevar(
+  modoServicio: string | undefined,
+  detalles: DetalleEmpaqueResumen[],
+): {
+  unidades_plato: number;
+  unidades_empaque: number;
+  unidades_faltantes: number;
+} | null {
+  if (modoServicio !== 'para_llevar') return null;
+  let unidadesPlato = 0;
+  let unidadesEmpaque = 0;
+  for (const d of detalles) {
+    if (d.id_detalle_padre != null) {
+      if (d.es_empacable) unidadesEmpaque += d.cantidad;
+      continue;
+    }
+    if (!productoCobraEmpaqueParaLlevarPorPlatoFuerte(d)) continue;
+    unidadesPlato += d.cantidad;
+  }
+  return {
+    unidades_plato: unidadesPlato,
+    unidades_empaque: unidadesEmpaque,
+    unidades_faltantes: Math.max(0, unidadesPlato - unidadesEmpaque),
+  };
+}
+
+/** true cuando hay menos empaques que platos pero al menos uno (empaque compartido). */
+export function empaqueCompartidoEnPedido(
+  resumen: ReturnType<typeof resumenEmpaqueParaLlevar>,
+): boolean {
+  if (!resumen) return false;
+  return (
+    resumen.unidades_faltantes > 0 &&
+    resumen.unidades_empaque > 0 &&
+    resumen.unidades_plato > 0
+  );
+}

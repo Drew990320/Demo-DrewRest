@@ -1,4 +1,5 @@
 import type { ComponentProps } from 'react';
+import { useMemo } from 'react';
 import {
   ActivityIndicator,
   StyleSheet,
@@ -10,7 +11,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { AnimatedPressable } from './AnimatedPressable';
 import { useResponsive } from '../hooks/useResponsive';
-import { colors } from '../lib/theme';
+import { useVisualTheme } from '../context/VisualThemeContext';
+import { ctaChromeStyle } from '../lib/visual-chrome';
 
 type IonName = ComponentProps<typeof Ionicons>['name'];
 
@@ -27,10 +29,10 @@ type Props = {
   style?: StyleProp<ViewStyle>;
 };
 
-const VARIANT_BG: Record<CtaVariant, string> = {
-  primary: colors.primary,
-  success: colors.success,
-  secondary: colors.secondary,
+const VARIANT_BG: Record<CtaVariant, (c: ReturnType<typeof useVisualTheme>['colors']) => string> = {
+  primary: (c) => c.primary,
+  success: (c) => c.success,
+  secondary: (c) => c.secondary,
 };
 
 export function CtaButton({
@@ -45,8 +47,14 @@ export function CtaButton({
 }: Props) {
   const inactive = disabled || busy;
   const { isCompact } = useResponsive();
+  const { colors, chrome, layout } = useVisualTheme();
   const iconBox = isCompact ? 36 : 44;
   const iconSize = isCompact ? 20 : 22;
+  const bg = useMemo(() => VARIANT_BG[variant](colors), [variant, colors]);
+  const chromeStyles = useMemo(
+    () => ctaChromeStyle(chrome, layout, bg, isCompact),
+    [chrome, layout, bg, isCompact],
+  );
 
   return (
     <AnimatedPressable
@@ -55,7 +63,7 @@ export function CtaButton({
       style={[
         styles.cta,
         isCompact && styles.ctaCompact,
-        { backgroundColor: VARIANT_BG[variant] },
+        chromeStyles.container,
         inactive && styles.ctaBusy,
         style,
       ]}
@@ -64,6 +72,7 @@ export function CtaButton({
         style={[
           styles.iconWrap,
           { width: iconBox, height: iconBox },
+          chromeStyles.iconWrap,
           isCompact && styles.iconWrapCompact,
         ]}
       >
@@ -74,7 +83,15 @@ export function CtaButton({
         )}
       </View>
       <View style={styles.textCol}>
-        <Text style={[styles.title, isCompact && styles.titleCompact]} numberOfLines={2}>
+        <Text
+          style={[
+            styles.title,
+            { color: colors.onPrimary },
+            chromeStyles.title,
+            isCompact && styles.titleCompact,
+          ]}
+          numberOfLines={2}
+        >
           {title}
         </Text>
         {subtitle ? (
@@ -83,12 +100,14 @@ export function CtaButton({
           </Text>
         ) : null}
       </View>
-      <Ionicons
-        name="chevron-forward"
-        size={isCompact ? 18 : 20}
-        color={colors.onPrimary}
-        style={styles.chevron}
-      />
+      {chromeStyles.showChevron ? (
+        <Ionicons
+          name="chevron-forward"
+          size={isCompact ? 18 : 20}
+          color={colors.onPrimary}
+          style={styles.chevron}
+        />
+      ) : null}
     </AnimatedPressable>
   );
 }
@@ -98,38 +117,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
     overflow: 'hidden',
   },
   ctaCompact: {
     gap: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
   },
   ctaBusy: {
     opacity: 0.85,
   },
   iconWrap: {
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.18)',
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
   },
-  iconWrapCompact: {
-    borderRadius: 10,
-  },
+  iconWrapCompact: {},
   textCol: {
     flex: 1,
     minWidth: 0,
     gap: 2,
   },
   title: {
-    color: colors.onPrimary,
     fontSize: 16,
-    fontWeight: '700',
   },
   titleCompact: {
     fontSize: 15,

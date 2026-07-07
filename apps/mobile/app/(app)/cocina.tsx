@@ -1,25 +1,30 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  FlatList,
+  Platform,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
-import { ActionIconBar } from '../../src/components/ActionIconBar';
+import { useCocinaToolsRail } from '../../src/context/ResumenDiarioToolsRailContext';
+import { ActionIconBar, type ActionIconItem } from '../../src/components/ActionIconBar';
+import { AnimatedEnter } from '../../src/components/AnimatedEnter';
 import { EmptyState } from '../../src/components/EmptyState';
 import { IconTooltipButton } from '../../src/components/IconTooltipButton';
-import { ScreenScroll } from '../../src/components/ScreenScroll';
 import { ScreenLoading } from '../../src/components/ScreenLoading';
 import { api } from '../../src/lib/api';
-import { PedidoIcon, NavIcon, AdminIcon } from '../../src/lib/app-icons';
+import { PedidoIcon, AdminIcon } from '../../src/lib/app-icons';
 import { alertarSiSinPapel } from '../../src/lib/alarma-impresora';
 import { showBriefNotice, showNotice } from '../../src/lib/app-dialog';
 import { manejarErrorAccion, manejarErrorOperacion } from '../../src/lib/recurso-disponible';
 import { tituloLugarMesa } from '../../src/lib/mesa-label';
-import { colors, status } from '../../src/lib/theme';
+import { useVisualTheme } from '../../src/context/VisualThemeContext';
+import { useThemedStyles } from '../../src/hooks/useThemedStyles';
+import type { AppColors } from '../../src/lib/theme';
 import {
   agruparLineasCocinaVisibles,
   agruparPlatosPendientes,
@@ -36,6 +41,7 @@ import {
 import { notaCocinaVisibleUsuario } from '../../src/lib/nota-cocina-ui';
 import { puedeVerCocina } from '../../src/hooks/usePuedeTomarPedidos';
 import { useResponsive } from '../../src/hooks/useResponsive';
+import { useScreenScrollPadding } from '../../src/hooks/useScreenScrollPadding';
 import { joinPedidoRooms, subscribeCocinaFaltaPlato } from '../../src/lib/pedido-sync';
 import { useRefetchOnSync } from '../../src/hooks/useRefetchOnSync';
 import {
@@ -57,7 +63,7 @@ function nombreMeseroCorto(p: PedidoCocinaView): string {
   return `${nombre} ${apellido.charAt(0)}.`;
 }
 
-const TIPO_LINEA_UI: Record<
+function tipoLineaUi(c: AppColors): Record<
   TipoLineaCocina,
   {
     qtyBg: string;
@@ -66,54 +72,61 @@ const TIPO_LINEA_UI: Record<
     badgeBg: string;
     badgeText: string;
   }
-> = {
-  plato: {
-    qtyBg: colors.primary,
-    chipBg: colors.backgroundAlt,
-    chipBorder: colors.borderLight,
-    badgeBg: colors.primaryLight,
-    badgeText: colors.primaryDark,
-  },
-  entrada: {
-    qtyBg: colors.cocina,
-    chipBg: colors.secondaryLight,
-    chipBorder: colors.secondary,
-    badgeBg: colors.secondaryLight,
-    badgeText: colors.secondaryDark,
-  },
-  adicional: {
-    qtyBg: colors.info,
-    chipBg: colors.infoLight,
-    chipBorder: colors.infoBorder,
-    badgeBg: colors.infoLight,
-    badgeText: colors.infoText,
-  },
-  mazorca: {
-    qtyBg: colors.warningDark,
-    chipBg: colors.warningLight,
-    chipBorder: colors.warningBorder,
-    badgeBg: colors.warningLight,
-    badgeText: colors.warningText,
-  },
-  sopa: {
-    qtyBg: colors.cocina,
-    chipBg: colors.secondaryLight,
-    chipBorder: colors.secondary,
-    badgeBg: colors.secondaryLight,
-    badgeText: colors.secondaryDark,
-  },
-};
+> {
+  return {
+    plato: {
+      qtyBg: c.primary,
+      chipBg: c.backgroundAlt,
+      chipBorder: c.borderLight,
+      badgeBg: c.primaryLight,
+      badgeText: c.primaryDark,
+    },
+    entrada: {
+      qtyBg: c.cocina,
+      chipBg: c.secondaryLight,
+      chipBorder: c.secondary,
+      badgeBg: c.secondaryLight,
+      badgeText: c.secondaryDark,
+    },
+    adicional: {
+      qtyBg: c.info,
+      chipBg: c.infoLight,
+      chipBorder: c.infoBorder,
+      badgeBg: c.infoLight,
+      badgeText: c.infoText,
+    },
+    mazorca: {
+      qtyBg: c.warningDark,
+      chipBg: c.warningLight,
+      chipBorder: c.warningBorder,
+      badgeBg: c.warningLight,
+      badgeText: c.warningText,
+    },
+    sopa: {
+      qtyBg: c.cocina,
+      chipBg: c.secondaryLight,
+      chipBorder: c.secondary,
+      badgeBg: c.secondaryLight,
+      badgeText: c.secondaryDark,
+    },
+  };
+}
 
 export default function CocinaScreen() {
-  const { token, user, logout } = useAuth();
+  const { colors } = useVisualTheme();
+  const styles = useThemedStyles(createCocinaStyles);
+  const tipoUi = useMemo(() => tipoLineaUi(colors), [colors]);
+  const { token, user } = useAuth();
   const router = useRouter();
   const r = useResponsive();
+  const listBottomPad = useScreenScrollPadding();
   const puedeVer = puedeVerCocina(user?.rol);
   const [items, setItems] = useState<PedidoCocinaView[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [reimprimiendoId, setReimprimiendoId] = useState<number | null>(null);
   const [listoBusyKey, setListoBusyKey] = useState<string | null>(null);
+  const [llamandoMeseroId, setLlamandoMeseroId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     if (!puedeVer) {
@@ -249,6 +262,21 @@ export default function CocinaScreen() {
     }
   }
 
+  async function llamarMesero(idPedido: number) {
+    setLlamandoMeseroId(idPedido);
+    try {
+      await api(`/pedidos/${idPedido}/llamar-mesero`, {
+        method: 'POST',
+        token,
+      });
+      await load();
+    } catch (e) {
+      await manejarErrorAccion(e, 'llamar al mesero');
+    } finally {
+      setLlamandoMeseroId(null);
+    }
+  }
+
   const cola = useMemo(
     () => ordenarPedidosCocinaPorLlegada(items.filter(pedidoActivoEnCocina)),
     [items],
@@ -275,92 +303,117 @@ export default function CocinaScreen() {
     [conteoTipos],
   );
 
-  if (!user || loading) {
-    return <ScreenLoading />;
-  }
+  const pedidoPrimeroCola = cola[0] ?? null;
 
-  if (!puedeVer) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.denied}>
-          Solo chef y administrador pueden ver cocina.
-        </Text>
-        <ActionIconBar
-          actions={[
-            {
-              key: 'mesas',
-              icon: AdminIcon.volverMesas,
-              label: 'Volver a mesas',
-              variant: 'primary',
-              onPress: () => router.replace('/(app)/mesas'),
-            },
-          ]}
-        />
-      </View>
-    );
-  }
+  const cocinaRailActions = useMemo((): ActionIconItem[] => {
+    const actions: ActionIconItem[] = [
+      {
+        key: 'actualizar',
+        icon: refreshing ? 'hourglass-outline' : 'refresh-outline',
+        label: refreshing ? 'Actualizando…' : 'Actualizar cola',
+        variant: 'secondary',
+        disabled: refreshing,
+        onPress: () => void onRefresh(),
+      },
+    ];
+    if (pedidoPrimeroCola) {
+      const lugar = tituloLugarMesa(pedidoPrimeroCola.mesa_numero);
+      actions.push({
+        key: 'llamar-mesero',
+        icon:
+          llamandoMeseroId === pedidoPrimeroCola.id_pedido
+            ? 'hourglass-outline'
+            : 'megaphone',
+        label:
+          llamandoMeseroId === pedidoPrimeroCola.id_pedido
+            ? 'Avisando al mesero…'
+            : `Llamar mesero · ${lugar}`,
+        variant: 'cocina',
+        disabled:
+          llamandoMeseroId != null ||
+          reimprimiendoId != null,
+        onPress: () => void llamarMesero(pedidoPrimeroCola.id_pedido),
+      });
+      actions.push({
+        key: 'reimprimir-primero',
+        icon:
+          reimprimiendoId === pedidoPrimeroCola.id_pedido
+            ? 'hourglass-outline'
+            : PedidoIcon.reimprimirComanda,
+        label:
+          reimprimiendoId === pedidoPrimeroCola.id_pedido
+            ? 'Imprimiendo…'
+            : `Reimprimir ${lugar}`,
+        variant: 'secondary',
+        disabled: reimprimiendoId != null || llamandoMeseroId != null,
+        badge: cola.length > 0 ? cola.length : undefined,
+        onPress: () => void reimprimirComanda(pedidoPrimeroCola.id_pedido),
+      });
+    }
+    return actions;
+  }, [cola.length, pedidoPrimeroCola, refreshing, reimprimiendoId, llamandoMeseroId]);
 
-  return (
-    <ScreenScroll
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-      }
-    >
-        <View style={styles.topBar}>
-          <Text style={[styles.greeting, { fontSize: r.fontSize.body }]}>
-            {user.nombre} · Cocina
-          </Text>
-          <ActionIconBar
-            actions={[
-              {
-                key: 'logout',
-                icon: NavIcon.cerrarSesion,
-                label: 'Cerrar sesión',
-                variant: 'danger',
-                onPress: async () => {
-                  await logout();
-                  router.replace('/(auth)/login');
-                },
-              },
-            ]}
-          />
-        </View>
+  useCocinaToolsRail(
+    r.navSidebar && puedeVer,
+    {
+      cocinaActions: cocinaRailActions,
+      cocinaHint:
+        cola.length > 0
+          ? `Acciones sobre el primer pedido (${nombreMeseroCorto(pedidoPrimeroCola!)}). Pulsa actualizar si no ves cambios.`
+          : 'Actualiza cuando lleguen comandas nuevas.',
+    },
+    [cocinaRailActions, cola.length],
+  );
 
-        <View style={styles.resumenBar}>
-          <View style={styles.resumenMain}>
-            <Text style={styles.resumenNum}>{totalPlatos}</Text>
-            <View style={styles.resumenHeadText}>
-            <Text style={styles.resumenLabel}>
-              {totalPlatos === 1 ? 'ítem en cocina' : 'ítems en cocina'}
+  const listHeader = useMemo(
+    () => (
+      <>
+        <AnimatedEnter index={0}>
+          <View style={styles.topBar}>
+            <Text style={[styles.greeting, { fontSize: r.fontSize.body }]}>
+              {user?.nombre} · Cocina
             </Text>
-            <Text style={styles.resumenMeta}>
-              {textoTipos || `${totalPlatos} pendientes`}
-              {' · '}
-              {cola.length} {cola.length === 1 ? 'pedido' : 'pedidos'} · orden
-              de llegada
-            </Text>
+          </View>
+        </AnimatedEnter>
+
+        <AnimatedEnter index={1}>
+          <View style={styles.resumenCard}>
+            <Text style={styles.resumenKicker}>En cocina ahora</Text>
+            <View style={styles.resumenMain}>
+              <Text style={styles.resumenNum}>{totalPlatos}</Text>
+              <View style={styles.resumenHeadText}>
+                <Text style={styles.resumenLabel}>
+                  {totalPlatos === 1 ? 'ítem en cocina' : 'ítems en cocina'}
+                </Text>
+                <Text style={styles.resumenMeta}>
+                  {textoTipos || `${totalPlatos} pendientes`}
+                  {' · '}
+                  {cola.length} {cola.length === 1 ? 'pedido' : 'pedidos'} · orden
+                  de llegada
+                </Text>
+              </View>
             </View>
           </View>
-        </View>
+        </AnimatedEnter>
 
         {cola.length > 0 || resumenPlatos.length > 0 ? (
           <View style={styles.resumenPanel}>
             {cola.length > 0 ? (
               <View style={styles.colaMesasBlock}>
                 <Text style={styles.colaMesasTitle}>Cola de mesas</Text>
-                <ScrollView
+                <FlatList
                   horizontal
+                  data={cola}
+                  keyExtractor={(p) => String(p.id_pedido)}
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.colaMesasRow}
-                >
-                  {cola.map((p, idx) => {
+                  renderItem={({ item: p, index: idx }) => {
                     const porciones = porcionesVisiblesEnCocina(p);
                     const tiposPedido = textoResumenTiposCocina(
                       conteoPorTipoEnCocina([p]),
                     );
                     return (
                       <View
-                        key={p.id_pedido}
                         style={[
                           styles.mesaColaChip,
                           idx === 0 && styles.mesaColaChipFirst,
@@ -387,15 +440,15 @@ export default function CocinaScreen() {
                         ) : null}
                       </View>
                     );
-                  })}
-                </ScrollView>
+                  }}
+                />
               </View>
             ) : null}
 
             {resumenPlatos.length > 0 ? (
               <View style={styles.platosGrid}>
                 {resumenPlatos.map((p) => {
-                  const ui = TIPO_LINEA_UI[p.tipo];
+                  const ui = tipoUi[p.tipo];
                   return (
                     <View
                       key={p.nombre}
@@ -442,237 +495,311 @@ export default function CocinaScreen() {
             ) : null}
           </View>
         ) : null}
+      </>
+    ),
+    [
+      cola,
+      resumenPlatos,
+      r.fontSize.body,
+      styles,
+      textoTipos,
+      tipoUi,
+      totalPlatos,
+      user?.nombre,
+    ],
+  );
 
-        {cola.length === 0 ? (
-          <EmptyState
-            title={
-              items.length === 0
-                ? 'Sin pedidos en cocina'
-                : 'Cola vacía por ahora'
-            }
-            message={
-              items.length === 0
-                ? 'Cuando lleguen comandas aparecerán aquí en orden de llegada.'
-                : 'Todo fue recogido o aún no hay comandas nuevas.'
-            }
-          />
-        ) : (
-          cola.map((p, idx) => {
-            const lineas = agruparLineasCocinaVisibles(p.detalles);
-            return (
-              <View key={p.id_pedido} style={styles.card}>
-                <View style={styles.cardHead}>
-                  <View style={styles.colaPosBadge}>
-                    <Text style={styles.colaPosBadgeText}>#{idx + 1}</Text>
-                  </View>
-                  <View style={styles.cardHeadLeft}>
-                    <Text style={styles.mesaTitle}>
-                      {tituloLugarMesa(p.mesa_numero)}
-                    </Text>
-                    <Text style={styles.cardSub}>
-                      #{p.id_pedido} · {nombreMeseroCorto(p)} ·{' '}
-                      {p.num_comensales}{' '}
-                      {p.num_comensales === 1 ? 'comensal' : 'comensales'}
-                    </Text>
-                  </View>
-                  <IconTooltipButton
-                    icon={
-                      reimprimiendoId === p.id_pedido
-                        ? 'hourglass-outline'
-                        : PedidoIcon.reimprimirComanda
-                    }
-                    label={
-                      reimprimiendoId === p.id_pedido
-                        ? 'Imprimiendo…'
-                        : 'Reimprimir comanda'
-                    }
-                    variant="secondary"
-                    size={20}
-                    fixedSize
-                    disabled={reimprimiendoId === p.id_pedido}
-                    onPress={() => reimprimirComanda(p.id_pedido)}
-                  />
-                </View>
+  const listEmpty = useMemo(
+    () => (
+      <EmptyState
+        title={
+          items.length === 0 ? 'Sin pedidos en cocina' : 'Cola vacía por ahora'
+        }
+        message={
+          items.length === 0
+            ? 'Cuando lleguen comandas aparecerán aquí en orden de llegada.'
+            : 'Todo fue recogido o aún no hay comandas nuevas.'
+        }
+      />
+    ),
+    [items.length],
+  );
 
-                <View style={styles.comanda}>
-                  {lineas.map((d) => {
-                    const grupoKey = d.ids_detalle.join('-');
-                    const listo = d.listo_para_recoger;
-                    const listoParcial = d.listo_para_recoger_parcial;
-                    const tipo = tipoLineaCocina(d);
-                    const ui = TIPO_LINEA_UI[tipo];
-                    const notaVisible = notaCocinaVisibleUsuario(d.nota_cocina);
-                    return (
-                      <View
-                        key={grupoKey}
-                        style={[
-                          styles.linea,
-                          tipo === 'mazorca' && styles.lineaMazorca,
-                          listo && styles.lineaListo,
-                          listoParcial && styles.lineaListoParcial,
-                          !listo &&
-                            !listoParcial &&
-                            tipo !== 'mazorca' && {
-                              backgroundColor: ui.chipBg,
-                              borderRadius: 8,
-                              padding: 8,
-                              borderWidth: 1,
-                              borderColor: ui.chipBorder,
-                            },
-                        ]}
-                      >
-                        <View style={styles.lineaMain}>
-                          <View
+  const renderPedidoItem = useCallback(
+    ({ item: p, index: idx }: { item: PedidoCocinaView; index: number }) => {
+      const lineas = agruparLineasCocinaVisibles(p.detalles);
+      return (
+        <View style={styles.card}>
+          <View style={styles.cardHead}>
+            <View style={styles.colaPosBadge}>
+              <Text style={styles.colaPosBadgeText}>#{idx + 1}</Text>
+            </View>
+            <View style={styles.cardHeadLeft}>
+              <Text style={styles.mesaTitle}>
+                {tituloLugarMesa(p.mesa_numero)}
+              </Text>
+              <Text style={styles.cardSub}>
+                #{p.id_pedido} · {nombreMeseroCorto(p)} · {p.num_comensales}{' '}
+                {p.num_comensales === 1 ? 'comensal' : 'comensales'}
+              </Text>
+            </View>
+            <IconTooltipButton
+              icon={
+                reimprimiendoId === p.id_pedido
+                  ? 'hourglass-outline'
+                  : PedidoIcon.reimprimirComanda
+              }
+              label={
+                reimprimiendoId === p.id_pedido
+                  ? 'Imprimiendo…'
+                  : 'Reimprimir comanda'
+              }
+              variant="secondary"
+              size={20}
+              fixedSize
+              disabled={reimprimiendoId === p.id_pedido}
+              onPress={() => reimprimirComanda(p.id_pedido)}
+            />
+          </View>
+
+          <View style={styles.comanda}>
+            {lineas.map((d) => {
+              const grupoKey = d.ids_detalle.join('-');
+              const listo = d.listo_para_recoger;
+              const listoParcial = d.listo_para_recoger_parcial;
+              const tipo = tipoLineaCocina(d);
+              const ui = tipoUi[tipo];
+              const notaVisible = notaCocinaVisibleUsuario(d.nota_cocina);
+              return (
+                <View
+                  key={grupoKey}
+                  style={[
+                    styles.linea,
+                    tipo === 'mazorca' && styles.lineaMazorca,
+                    listo && styles.lineaListo,
+                    listoParcial && styles.lineaListoParcial,
+                    !listo &&
+                      !listoParcial &&
+                      tipo !== 'mazorca' && {
+                        backgroundColor: ui.chipBg,
+                        borderRadius: 8,
+                        padding: 8,
+                        borderWidth: 1,
+                        borderColor: ui.chipBorder,
+                      },
+                  ]}
+                >
+                  <View style={styles.lineaMain}>
+                    <View
+                      style={[
+                        styles.lineaQtyBadge,
+                        { backgroundColor: ui.qtyBg },
+                      ]}
+                    >
+                      <Text style={styles.lineaQtyText}>{d.cantidad}</Text>
+                    </View>
+                    <View style={styles.lineaBody}>
+                      <View style={styles.lineaTitleRow}>
+                        <Text style={styles.lineaNombre}>
+                          {d.nombre_producto}
+                        </Text>
+                        <View
+                          style={[
+                            styles.tipoBadge,
+                            { backgroundColor: ui.badgeBg },
+                          ]}
+                        >
+                          <Text
                             style={[
-                              styles.lineaQtyBadge,
-                              { backgroundColor: ui.qtyBg },
+                              styles.tipoBadgeText,
+                              { color: ui.badgeText },
                             ]}
                           >
-                            <Text style={styles.lineaQtyText}>{d.cantidad}</Text>
-                          </View>
-                          <View style={styles.lineaBody}>
-                            <View style={styles.lineaTitleRow}>
-                              <Text style={styles.lineaNombre}>
-                                {d.nombre_producto}
-                              </Text>
-                              <View
-                                style={[
-                                  styles.tipoBadge,
-                                  { backgroundColor: ui.badgeBg },
-                                ]}
-                              >
-                                <Text
-                                  style={[
-                                    styles.tipoBadgeText,
-                                    { color: ui.badgeText },
-                                  ]}
-                                >
-                                  {etiquetaTipoLineaCocina(tipo)}
-                                </Text>
-                              </View>
-                            </View>
-                            {notaVisible ? (
-                              <Text style={styles.lineaNota}>↳ {notaVisible}</Text>
-                            ) : null}
-                            {d.personalizaciones &&
-                            d.personalizaciones.length > 0 ? (
-                              <Text style={styles.lineaPers}>
-                                {d.personalizaciones
-                                  .map((x) => x.descripcion)
-                                  .join(' · ')}
-                              </Text>
-                            ) : null}
-                          </View>
-                          <IconTooltipButton
-                            icon={
-                              listo
-                                ? 'close-circle-outline'
-                                : 'checkmark-circle-outline'
-                            }
-                            label={
-                              listo
-                                ? 'Quitar aviso de listo'
-                                : listoParcial
-                                  ? 'Marcar todo el grupo listo'
-                                  : 'Marcar listo para recoger'
-                            }
-                            variant={listo ? 'secondary' : 'primary'}
-                            size={22}
-                            fixedSize
-                            disabled={listoBusyKey === grupoKey}
-                            onPress={() =>
-                              marcarListoGrupo(d.ids_detalle, !listo)
-                            }
-                            style={styles.lineaListoBtn}
-                          />
+                            {etiquetaTipoLineaCocina(tipo)}
+                          </Text>
                         </View>
-                        {listo ? (
-                          <Text style={styles.lineaListoText}>Lista en el pase</Text>
-                        ) : listoParcial ? (
-                          <Text style={styles.lineaListoText}>Parte lista</Text>
-                        ) : null}
                       </View>
-                    );
-                  })}
+                      {notaVisible ? (
+                        <Text style={styles.lineaNota}>↳ {notaVisible}</Text>
+                      ) : null}
+                      {d.personalizaciones && d.personalizaciones.length > 0 ? (
+                        <Text style={styles.lineaPers}>
+                          {d.personalizaciones
+                            .map((x) => x.descripcion)
+                            .join(' · ')}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <IconTooltipButton
+                      icon={
+                        listo
+                          ? 'close-circle-outline'
+                          : 'checkmark-circle-outline'
+                      }
+                      label={
+                        listo
+                          ? 'Quitar aviso de listo'
+                          : listoParcial
+                            ? 'Marcar todo el grupo listo'
+                            : 'Marcar listo para recoger'
+                      }
+                      variant={listo ? 'secondary' : 'primary'}
+                      size={22}
+                      fixedSize
+                      disabled={listoBusyKey === grupoKey}
+                      onPress={() => marcarListoGrupo(d.ids_detalle, !listo)}
+                      style={styles.lineaListoBtn}
+                    />
+                  </View>
+                  {listo ? (
+                    <Text style={styles.lineaListoText}>Lista en el pase</Text>
+                  ) : listoParcial ? (
+                    <Text style={styles.lineaListoText}>Parte lista</Text>
+                  ) : null}
                 </View>
-              </View>
-            );
-          })
-        )}
-    </ScreenScroll>
+              );
+            })}
+          </View>
+        </View>
+      );
+    },
+    [
+      listoBusyKey,
+      reimprimiendoId,
+      styles,
+      tipoUi,
+    ],
+  );
+
+  if (!user || loading) {
+    return <ScreenLoading />;
+  }
+
+  if (!puedeVer) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.denied}>
+          Solo chef y administrador pueden ver cocina.
+        </Text>
+        <ActionIconBar
+          actions={[
+            {
+              key: 'mesas',
+              icon: AdminIcon.volverMesas,
+              label: 'Volver a mesas',
+              variant: 'primary',
+              onPress: () => router.replace('/(app)/mesas'),
+            },
+          ]}
+        />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.screen}>
+      <FlashList
+        style={styles.list}
+        data={cola}
+        keyExtractor={(p) => String(p.id_pedido)}
+        ListHeaderComponent={listHeader}
+        ListEmptyComponent={listEmpty}
+        renderItem={renderPedidoItem}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        contentContainerStyle={{
+          paddingHorizontal: r.contentPadding,
+          paddingTop: r.contentPadding,
+          paddingBottom: listBottomPad,
+          flexGrow: cola.length === 0 ? 1 : undefined,
+        }}
+        keyboardShouldPersistTaps="handled"
+      />
+    </View>
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
+function createCocinaStyles(c: AppColors) {
+  return StyleSheet.create({
+  screen: { flex: 1, backgroundColor: c.background },
+  list: { flex: 1 },
   container: { flex: 1, padding: 16 },
   center: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
-    backgroundColor: colors.background,
+    backgroundColor: c.background,
   },
   denied: {
     textAlign: 'center',
-    color: colors.textMuted,
+    color: c.textMuted,
     marginBottom: 16,
     fontSize: 16,
   },
   topBar: {
-    alignItems: 'center',
     marginBottom: 12,
-    paddingHorizontal: 4,
-    gap: 8,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderRadius: 12,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    padding: 12,
+    borderColor: c.border,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
   },
-  greeting: { color: colors.textMuted, fontWeight: '600', textAlign: 'center' },
-  resumenBar: {
-    backgroundColor: colors.primaryDark,
+  greeting: { color: c.textMuted, fontWeight: '600', textAlign: 'center' },
+  resumenCard: {
+    backgroundColor: c.primary,
     borderRadius: 12,
-    padding: 14,
-    marginBottom: 10,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: c.primaryDark,
+  },
+  resumenKicker: {
+    color: c.onPrimaryMuted,
+    fontWeight: '700',
+    fontSize: 12,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
   },
   resumenPanel: {
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderRadius: 12,
     padding: 12,
     marginBottom: 16,
     gap: 12,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
+    borderColor: c.border,
   },
   resumenMain: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
+    marginTop: 4,
   },
   resumenHeadText: { flex: 1 },
   resumenNum: {
     fontSize: 44,
     fontWeight: '900',
-    color: colors.surface,
+    color: c.onPrimary,
     lineHeight: 48,
     minWidth: 52,
     textAlign: 'center',
   },
   resumenLabel: {
-    color: colors.surface,
+    color: c.onPrimary,
     fontWeight: '800',
     fontSize: 17,
   },
   resumenMeta: {
-    color: colors.primaryMuted,
+    color: c.onPrimaryMuted,
     fontSize: 13,
     marginTop: 2,
   },
   colaMesasBlock: { gap: 6 },
   colaMesasTitle: {
-    color: colors.textMuted,
+    color: c.textMuted,
     fontSize: 11,
     fontWeight: '800',
     textTransform: 'uppercase',
@@ -680,41 +807,41 @@ const styles = StyleSheet.create({
   },
   colaMesasRow: { gap: 8, paddingVertical: 2 },
   mesaColaChip: {
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: c.surfaceMuted,
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 8,
     minWidth: 88,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: c.border,
   },
   mesaColaChipFirst: {
-    backgroundColor: colors.secondaryLight,
-    borderColor: colors.secondary,
+    backgroundColor: c.secondaryLight,
+    borderColor: c.secondary,
     borderWidth: 2,
   },
   mesaColaPos: {
-    color: colors.textMuted,
+    color: c.textMuted,
     fontSize: 12,
     fontWeight: '900',
   },
   mesaColaPosFirst: {
-    color: colors.secondaryDark,
+    color: c.secondaryDark,
   },
   mesaColaNombre: {
-    color: colors.text,
+    color: c.text,
     fontSize: 15,
     fontWeight: '800',
     marginTop: 2,
   },
   mesaColaPorciones: {
-    color: colors.textMuted,
+    color: c.textMuted,
     fontSize: 12,
     fontWeight: '600',
     marginTop: 2,
   },
   mesaColaTipos: {
-    color: colors.textHint,
+    color: c.textHint,
     fontSize: 10,
     fontWeight: '600',
     marginTop: 3,
@@ -750,31 +877,31 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   platoChipQty: {
-    color: colors.surface,
+    color: c.onPrimary,
     fontSize: 22,
     fontWeight: '900',
     lineHeight: 24,
   },
   platoChipNombre: {
-    color: colors.text,
+    color: c.text,
     fontWeight: '700',
     fontSize: 13,
     lineHeight: 17,
   },
   platoChipMesas: {
-    color: colors.textMuted,
+    color: c.textMuted,
     fontSize: 11,
     fontWeight: '600',
     marginTop: 4,
     lineHeight: 14,
   },
   card: {
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderRadius: 12,
     padding: 14,
     marginBottom: 12,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
+    borderColor: c.border,
   },
   cardHead: {
     flexDirection: 'row',
@@ -782,7 +909,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   colaPosBadge: {
-    backgroundColor: colors.primary,
+    backgroundColor: c.primary,
     borderRadius: 10,
     minWidth: 36,
     paddingHorizontal: 8,
@@ -790,7 +917,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   colaPosBadgeText: {
-    color: colors.surface,
+    color: c.onPrimary,
     fontWeight: '900',
     fontSize: 14,
   },
@@ -798,10 +925,10 @@ const styles = StyleSheet.create({
   mesaTitle: {
     fontSize: 22,
     fontWeight: '900',
-    color: colors.text,
+    color: c.text,
   },
   cardSub: {
-    color: colors.textMuted,
+    color: c.textMuted,
     fontSize: 13,
     marginTop: 2,
     lineHeight: 18,
@@ -810,7 +937,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingTop: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.borderLight,
+    borderTopColor: c.borderLight,
     gap: 8,
   },
   linea: { gap: 4 },
@@ -823,13 +950,13 @@ const styles = StyleSheet.create({
     minWidth: 36,
     height: 36,
     borderRadius: 10,
-    backgroundColor: colors.primary,
+    backgroundColor: c.primary,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
   },
   lineaQtyText: {
-    color: colors.surface,
+    color: c.onPrimary,
     fontSize: 18,
     fontWeight: '900',
   },
@@ -854,43 +981,44 @@ const styles = StyleSheet.create({
   },
   lineaListoBtn: { flexShrink: 0, marginTop: 2 },
   lineaMazorca: {
-    backgroundColor: colors.warningLight,
+    backgroundColor: c.warningLight,
     borderRadius: 8,
     padding: 8,
     borderWidth: 1,
-    borderColor: colors.warningBorder,
+    borderColor: c.warningBorder,
   },
   lineaListo: {
-    borderColor: colors.successBorder,
-    backgroundColor: colors.successLight,
+    borderColor: c.successBorder,
+    backgroundColor: c.successLight,
   },
   lineaListoParcial: {
     borderWidth: 1,
-    borderColor: colors.secondary,
+    borderColor: c.secondary,
     borderRadius: 8,
     padding: 8,
-    backgroundColor: colors.secondaryLight,
+    backgroundColor: c.secondaryLight,
   },
   lineaListoText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.successText,
+    color: c.successText,
     paddingLeft: 46,
   },
   lineaNombre: {
     fontSize: 17,
     fontWeight: '800',
-    color: colors.text,
+    color: c.text,
     lineHeight: 21,
   },
   lineaNota: {
     fontSize: 14,
-    color: colors.secondary,
+    color: c.secondary,
     fontWeight: '600',
     paddingLeft: 4,
   },
   lineaPers: {
     fontSize: 13,
-    color: colors.textMuted,
+    color: c.textMuted,
   },
 });
+}

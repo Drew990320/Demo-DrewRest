@@ -401,6 +401,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     backgroundColor: colors.surface,
     fontSize: 16,
+    color: colors.text,
   },
   multiline: { minHeight: 72, textAlignVertical: 'top' },
   section: { marginBottom: 10, fontWeight: '800', color: colors.text },

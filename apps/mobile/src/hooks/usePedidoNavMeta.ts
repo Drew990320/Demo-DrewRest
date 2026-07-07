@@ -2,42 +2,51 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
 
-const mesaPorPedido = new Map<string, number>();
+type PedidoNavMeta = {
+  idMesa: number;
+  mesaNumero: number;
+};
 
-/** id_mesa del pedido activo (cache en memoria para la barra de pedido). */
+const metaPorPedido = new Map<string, PedidoNavMeta>();
+
+/** Metadatos del pedido activo (cache en memoria para la barra de navegación). */
 export function usePedidoNavMeta(pedidoId: string | null) {
   const { token } = useAuth();
-  const [idMesa, setIdMesa] = useState<number | null>(() =>
-    pedidoId != null ? (mesaPorPedido.get(pedidoId) ?? null) : null,
+  const [meta, setMeta] = useState<PedidoNavMeta | null>(() =>
+    pedidoId != null ? (metaPorPedido.get(pedidoId) ?? null) : null,
   );
 
   useEffect(() => {
     if (pedidoId == null || !token) {
-      setIdMesa(null);
+      setMeta(null);
       return;
     }
-    const cached = mesaPorPedido.get(pedidoId);
+    const cached = metaPorPedido.get(pedidoId);
     if (cached != null) {
-      setIdMesa(cached);
+      setMeta(cached);
       return;
     }
     let cancelled = false;
-    api<{ id_mesa: number }>(`/pedidos/${pedidoId}`, {
+    api<{ id_mesa: number; mesa_numero: number }>(`/pedidos/${pedidoId}`, {
       token,
       cacheKey: `pedido_${pedidoId}`,
     })
       .then((p) => {
         if (cancelled) return;
-        mesaPorPedido.set(pedidoId, p.id_mesa);
-        setIdMesa(p.id_mesa);
+        const row = { idMesa: p.id_mesa, mesaNumero: p.mesa_numero };
+        metaPorPedido.set(pedidoId, row);
+        setMeta(row);
       })
       .catch(() => {
-        if (!cancelled) setIdMesa(null);
+        if (!cancelled) setMeta(null);
       });
     return () => {
       cancelled = true;
     };
   }, [pedidoId, token]);
 
-  return { idMesa };
+  return {
+    idMesa: meta?.idMesa ?? null,
+    mesaNumero: meta?.mesaNumero ?? null,
+  };
 }

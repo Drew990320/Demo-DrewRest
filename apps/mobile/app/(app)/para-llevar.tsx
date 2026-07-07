@@ -23,7 +23,8 @@ import { useSeleccionPedido } from '../../src/hooks/useSeleccionPedido';
 import { useRefetchOnSync } from '../../src/hooks/useRefetchOnSync';
 import { ordenarPedidosCocinaPorLlegada } from '../../src/lib/cocina-pedido-view';
 import { batchAfectaMesa, joinPedidoRooms } from '../../src/lib/pedido-sync';
-import { colors } from '../../src/lib/theme';
+import { useThemedStyles } from '../../src/hooks/useThemedStyles';
+import type { AppColors } from '../../src/lib/theme';
 import { manejarErrorAccion, manejarErrorOperacion } from '../../src/lib/recurso-disponible';
 import { useMesasVirtuales } from '../../src/hooks/useMesasVirtuales';
 
@@ -33,7 +34,29 @@ type ParaLlevarMesa = {
   estado: string;
 };
 
+function createParaLlevarStyles(c: AppColors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: c.background, padding: 16 },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
+    err: { color: c.textMuted, textAlign: 'center' },
+    card: {
+      backgroundColor: c.surface,
+      borderRadius: 16,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: c.border,
+      gap: 12,
+    },
+    chipsBox: {
+      marginTop: 8,
+      backgroundColor: c.surfaceMuted,
+      borderColor: c.border,
+    },
+  });
+}
+
 export default function ParaLlevarScreen() {
+  const styles = useThemedStyles(createParaLlevarStyles);
   const { token } = useAuth();
   const { ok: puedeTomar, loading: authLoading } = useRequiereTomarPedidos();
   const [mesa, setMesa] = useState<ParaLlevarMesa | null>(null);
@@ -190,7 +213,9 @@ export default function ParaLlevarScreen() {
               pedido={pedidoSeleccionado}
               modo="para_llevar"
               token={token}
-              onRefresh={load}
+              onRefresh={async () => {
+                await load();
+              }}
             />
           </>
         ) : null}
@@ -198,22 +223,3 @@ export default function ParaLlevarScreen() {
     </ScreenScroll>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, padding: 16 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
-  err: { color: colors.textMuted, textAlign: 'center' },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: 12,
-  },
-  chipsBox: {
-    marginTop: 8,
-    backgroundColor: colors.surfaceMuted,
-    borderColor: colors.borderLight,
-  },
-});

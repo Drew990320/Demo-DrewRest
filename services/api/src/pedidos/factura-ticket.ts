@@ -39,6 +39,23 @@ export type FacturaTicket = {
   cobros_resumen?: { metodo_pago: 'efectivo' | 'transferencia' | 'tarjeta'; total: number }[];
   /** Vista previa impresa antes del cobro; no registra pago. */
   es_precuenta?: boolean;
+  /** Instrucciones de vuelto/exceso persistidas al cobrar. */
+  detalle_exceso_cobro?: {
+    monto_recibido_efectivo?: number;
+    monto_transferencia_recibido?: number;
+    vuelto_cliente_efectivo: number;
+    vuelto_cliente_transferencia: number;
+    pago_domiciliario: number;
+    pago_mesero: number;
+  };
+  /** @deprecated Usar detalle_exceso_cobro */
+  vuelto_cliente?: {
+    monto_recibido_efectivo?: number;
+    monto_transferencia_recibido?: number;
+    vuelto_total: number;
+    vuelto_efectivo: number;
+    vuelto_transferencia: number;
+  };
   /** Etiqueta de copia al imprimir dos tickets (negocio + cliente). */
   copia_destinatario?: 'negocio' | 'cliente';
 };

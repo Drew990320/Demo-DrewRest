@@ -77,7 +77,7 @@ export function resolverSolicitudesCobro(
   });
 }
 
-/** Incluye empaques hijos con la misma cantidad que el plato padre. */
+/** Incluye empaques hijos pendientes; cobra hasta la cantidad disponible (empaque compartido). */
 export function expandirSolicitudesConEmpaques(
   detalles: DetalleSerialCobro[],
   solicitudes: DetalleCobroCantidad[],
@@ -95,10 +95,10 @@ export function expandirSolicitudesConEmpaques(
     if (d.id_detalle_padre == null) {
       for (const h of detalles) {
         if (h.id_detalle_padre === s.id_detalle && !h.cobrado) {
-          if (s.cantidad > h.cantidad) {
-            throw new Error('Cantidad de empaque insuficiente para este cobro');
+          const cantidadEmpaque = Math.min(s.cantidad, h.cantidad);
+          if (cantidadEmpaque > 0) {
+            map.set(h.id_detalle, cantidadEmpaque);
           }
-          map.set(h.id_detalle, s.cantidad);
         }
       }
     }
@@ -150,6 +150,7 @@ export function lineasDescuentoDesdeSolicitudes<
     nombre_producto: string;
     categoria_nombre?: string;
     id_categoria?: number;
+    id_producto?: number;
     es_plato_principal?: boolean;
     participa_descuento_sopas?: boolean;
   },
@@ -167,6 +168,8 @@ export function lineasDescuentoDesdeSolicitudes<
         nombre_producto: d.nombre_producto,
         categoria_nombre: d.categoria_nombre ?? '',
         id_categoria: d.id_categoria,
+        id_producto: d.id_producto,
+        precio_unitario: pu,
         es_plato_principal: d.es_plato_principal,
         participa_descuento_sopas: d.participa_descuento_sopas,
       };

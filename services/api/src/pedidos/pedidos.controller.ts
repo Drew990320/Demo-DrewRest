@@ -29,11 +29,13 @@ import { OmitirCuotaPlanDto } from './dto/omitir-cuota-plan.dto';
 import { ImprimirPrecuentaDto } from './dto/imprimir-precuenta.dto';
 import { ImprimirResumenSeleccionDto } from './dto/imprimir-resumen-seleccion.dto';
 import { UpsertCajaDiariaDto } from './dto/caja-diaria.dto';
+import { UpsertCajaDiariaCierreDto } from './dto/caja-diaria-cierre.dto';
 import { CrearMovimientoCajaDto } from './dto/crear-movimiento-caja.dto';
 import { VaciarResumenDiarioDto } from './dto/vaciar-resumen-diario.dto';
 import { UpsertConfigDescuentosDto } from './dto/upsert-config-descuentos.dto';
 import { UpsertConfigOperativaDto } from './dto/upsert-config-operativa.dto';
 import { PatchClienteMuleroDto } from './dto/patch-cliente-mulero.dto';
+import { PatchEtiquetasPromocionDto } from './dto/patch-etiquetas-promocion.dto';
 import { PatchMazorcasPedidoDto } from './dto/patch-mazorcas-pedido.dto';
 import { PatchEstadoDto } from './dto/patch-estado.dto';
 import { TransferirPedidoDto } from './dto/transferir.dto';
@@ -264,6 +266,13 @@ export class PedidosController {
     return this.pedidos.upsertCajaDiaria(dto);
   }
 
+  @Put('caja-diaria/cierre')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  upsertCajaDiariaCierre(@Body() dto: UpsertCajaDiariaCierreDto) {
+    return this.pedidos.upsertCajaDiariaCierre(dto);
+  }
+
   @Post('movimientos-caja')
   @UseGuards(RolesGuard)
   @Roles('admin')
@@ -272,6 +281,16 @@ export class PedidosController {
     @Req() req: { user: { idUsuario: number; rol: { nombre: string } } },
   ) {
     return this.pedidos.registrarMovimientoCajaManual(req.user, dto);
+  }
+
+  @Post('movimientos-caja/:id/imprimir')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  imprimirMovimientoCaja(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: { user: { idUsuario: number; rol: { nombre: string } } },
+  ) {
+    return this.pedidos.imprimirMovimientoCajaManual(req.user, id);
   }
 
   @Delete('movimientos-caja/:id')
@@ -320,7 +339,17 @@ export class PedidosController {
     return this.pedidos.setClienteMulero(id, dto.cliente_mulero);
   }
 
-  /** Comensales del pedido (sincroniza la línea de mazorca en cocina). */
+  @Patch(':id/etiquetas-promocion')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'mesero')
+  setEtiquetasPromocion(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: PatchEtiquetasPromocionDto,
+  ) {
+    return this.pedidos.setEtiquetasPromocion(id, dto);
+  }
+
+  /** Comensales del pedido (sincroniza la línea de acompañamiento por comensal). */
   @Patch(':id/mazorcas')
   @UseGuards(RolesGuard)
   @Roles('admin', 'mesero')
@@ -403,6 +432,26 @@ export class PedidosController {
     return this.pedidos.eliminarDetalle(idDetalle, req.user);
   }
 
+  @Post('detalles/:idDetalle/empaque-auto')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'mesero')
+  agregarEmpaqueAutoDetalle(
+    @Param('idDetalle', ParseIntPipe) idDetalle: number,
+    @Req() req: Request & { user: Usuario & { rol: { nombre: string } } },
+  ) {
+    return this.pedidos.agregarEmpaqueAutoDetalle(idDetalle, req.user);
+  }
+
+  @Post(':id/sincronizar-empaques')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'mesero')
+  sincronizarEmpaquesParaLlevar(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: Request & { user: Usuario & { rol: { nombre: string } } },
+  ) {
+    return this.pedidos.sincronizarEmpaquesParaLlevar(id, req.user);
+  }
+
   @SkipThrottle()
   @Get(':id/historial')
   historialPedido(@Param('id', ParseIntPipe) id: number) {
@@ -411,7 +460,13 @@ export class PedidosController {
 
   @SkipThrottle()
   @Get(':id')
-  uno(@Param('id', ParseIntPipe) id: number) {
+  uno(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('vista') vista?: string,
+  ) {
+    if (vista === 'operativa') {
+      return this.pedidos.obtenerPorIdVistaOperativa(id);
+    }
     return this.pedidos.obtenerPorId(id);
   }
 

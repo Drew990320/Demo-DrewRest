@@ -3,6 +3,7 @@ import {
   nombreProductoCuotaPendienteDisplay,
   parseCuotaPendienteNota,
   personasOmitidasDesdeDetalles,
+  personasOmitidasDesdeCuotas,
   cuotasPlanOmitidasDesdeHistorial,
 } from './cuota-pendiente-reparto';
 
@@ -25,7 +26,23 @@ describe('cuota-pendiente-reparto', () => {
     ).toBe('Saldo pendiente reparto (Persona 3)');
   });
 
-  it('deriva personas omitidas de detalles pendientes', () => {
+  it('deriva personas omitidas con sesión de plan activa', () => {
+    const omitidas = personasOmitidasDesdeCuotas(
+      [
+        {
+          persona_plan_indice: 2,
+          monto: 12000,
+          facturas_base_plan: 4,
+          plan_sesion_id: 513,
+        },
+      ],
+      4,
+      513,
+    );
+    expect(omitidas).toEqual([1]);
+  });
+
+  it('sin sesión activa no hereda omisiones de detalles', () => {
     const omitidas = personasOmitidasDesdeDetalles(
       [
         {
@@ -33,20 +50,10 @@ describe('cuota-pendiente-reparto', () => {
           es_cuota_pendiente_reparto: true,
           nota_cocina: 'cuota_pendiente:2@4',
         },
-        {
-          cobrado: true,
-          es_cuota_pendiente_reparto: true,
-          nota_cocina: 'cuota_pendiente:1@4',
-        },
-        {
-          cobrado: false,
-          es_cuota_pendiente_reparto: true,
-          nota_cocina: 'cuota_pendiente:3@5',
-        },
       ],
       4,
     );
-    expect(omitidas).toEqual([1]);
+    expect(omitidas).toEqual([]);
   });
 
   it('deriva personas omitidas desde historial sin línea extra', () => {

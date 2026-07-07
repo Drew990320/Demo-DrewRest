@@ -18,8 +18,11 @@ import {
 } from 'react-native';
 import Animated, { FadeIn, ZoomIn } from 'react-native-reanimated';
 import { AnimatedPressable } from '../components/AnimatedPressable';
+import { useVisualTheme } from './VisualThemeContext';
 import { MOTION } from '../lib/motion';
 import { appShadow } from '../lib/shadow';
+import type { AppColors } from '../lib/theme';
+import { statusFromAppColors } from '../lib/visual-theme';
 import {
   type AppDialogOptions,
   type DialogButton,
@@ -27,7 +30,7 @@ import {
   registerAppDialogHandlers,
   unregisterAppDialogHandlers,
 } from '../lib/app-dialog';
-import { colors } from '../lib/theme';
+import type { VisualLayoutTokens } from '@la-reserva/shared-domain/visual-style';
 
 type DialogState = AppDialogOptions & {
   finish: () => void;
@@ -40,28 +43,29 @@ type DialogContextValue = {
 
 const DialogContext = createContext<DialogContextValue | null>(null);
 
-function variantMeta(variant: DialogVariant) {
+function variantMeta(variant: DialogVariant, colors: AppColors) {
+  const st = statusFromAppColors(colors);
   switch (variant) {
     case 'success':
       return {
         icon: 'checkmark-circle' as const,
-        color: colors.success,
-        bg: colors.successLight,
-        border: colors.successBorder,
+        color: st.ok.accent,
+        bg: st.ok.bg,
+        border: st.ok.border,
       };
     case 'error':
       return {
         icon: 'close-circle' as const,
-        color: colors.danger,
-        bg: colors.dangerLight,
-        border: colors.dangerBorder,
+        color: st.busy.accent,
+        bg: st.busy.bg,
+        border: st.busy.border,
       };
     case 'warning':
       return {
         icon: 'warning' as const,
-        color: colors.warning,
-        bg: colors.warningLight,
-        border: colors.warningBorder,
+        color: st.warn.accent,
+        bg: st.warn.bg,
+        border: st.warn.border,
       };
     default:
       return {
@@ -73,6 +77,118 @@ function variantMeta(variant: DialogVariant) {
   }
 }
 
+function createDialogStyles(colors: AppColors, layout: VisualLayoutTokens) {
+  const cardBorder =
+    layout.cardBorderWidth > 0 ? layout.cardBorderWidth : StyleSheet.hairlineWidth;
+
+  return StyleSheet.create({
+    backdrop: {
+      flex: 1,
+      backgroundColor: `${colors.text}52`,
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 24,
+      ...Platform.select({
+        web: { backdropFilter: 'blur(4px)' } as object,
+        default: {},
+      }),
+    },
+    backdropTap: {
+      ...StyleSheet.absoluteFillObject,
+    },
+    cardWrap: {
+      width: '100%',
+      maxWidth: 400,
+      zIndex: 1,
+    },
+    card: {
+      backgroundColor: colors.surface,
+      borderRadius: layout.radiusLg,
+      borderWidth: cardBorder,
+      paddingHorizontal: 22,
+      paddingTop: 24,
+      paddingBottom: 18,
+      alignItems: 'center',
+      width: '100%',
+      ...appShadow('dialog'),
+    },
+    cardBrief: {
+      paddingBottom: 24,
+    },
+    iconCircle: {
+      width: 52,
+      height: 52,
+      borderRadius: 26,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 14,
+    },
+    title: {
+      fontSize: 18,
+      fontWeight: layout.titleWeight,
+      color: colors.text,
+      textAlign: 'center',
+      lineHeight: 24,
+    },
+    message: {
+      marginTop: 8,
+      fontSize: 15,
+      lineHeight: 22,
+      color: colors.textMuted,
+      textAlign: 'center',
+    },
+    buttons: {
+      flexDirection: 'row',
+      gap: 10,
+      marginTop: 20,
+      width: '100%',
+      justifyContent: 'center',
+    },
+    buttonsStack: {
+      flexDirection: 'column',
+    },
+    btn: {
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      borderRadius: layout.radiusMd,
+      alignItems: 'center',
+      justifyContent: 'center',
+      minWidth: 100,
+    },
+    btnFlex: {
+      flex: 1,
+    },
+    btnPrimary: {
+      backgroundColor: colors.primary,
+    },
+    btnDanger: {
+      backgroundColor: colors.danger,
+    },
+    btnCancel: {
+      backgroundColor: colors.backgroundAlt,
+      borderWidth: cardBorder,
+      borderColor: colors.border,
+    },
+    btnDefault: {
+      backgroundColor: colors.surfaceMuted,
+    },
+    btnText: {
+      fontWeight: '700',
+      fontSize: 15,
+      color: colors.text,
+    },
+    btnTextPrimary: {
+      color: colors.onPrimary,
+    },
+    btnTextDanger: {
+      color: colors.onPrimary,
+    },
+    btnTextCancel: {
+      color: colors.textMuted,
+    },
+  });
+}
+
 function AppDialogOverlay({
   state,
   onClose,
@@ -80,8 +196,13 @@ function AppDialogOverlay({
   state: DialogState;
   onClose: (button?: DialogButton) => void;
 }) {
+  const { colors, layout } = useVisualTheme();
+  const styles = useMemo(
+    () => createDialogStyles(colors, layout),
+    [colors, layout],
+  );
   const variant = state.variant ?? 'info';
-  const meta = variantMeta(variant);
+  const meta = useMemo(() => variantMeta(variant, colors), [variant, colors]);
   const buttons =
     state.autoDismissMs != null
       ? []
@@ -120,43 +241,45 @@ function AppDialogOverlay({
               <Text style={styles.message}>{state.message}</Text>
             )}
             {buttons.length > 0 ? (
-            <View
-              style={[
-                styles.buttons,
-                buttons.length > 2 && styles.buttonsStack,
-              ]}
-            >
-              {buttons.map((btn, i) => {
-                const isPrimary = btn.style === 'primary' || (!btn.style && i === buttons.length - 1);
-                const isDanger = btn.style === 'danger';
-                const isCancel = btn.style === 'cancel';
-                return (
-                  <AnimatedPressable
-                    key={`${btn.text}-${i}`}
-                    onPress={() => onClose(btn)}
-                    style={[
-                      styles.btn,
-                      buttons.length <= 2 && styles.btnFlex,
-                      isPrimary && styles.btnPrimary,
-                      isDanger && styles.btnDanger,
-                      isCancel && styles.btnCancel,
-                      !isPrimary && !isDanger && !isCancel && styles.btnDefault,
-                    ]}
-                  >
-                    <Text
+              <View
+                style={[
+                  styles.buttons,
+                  buttons.length > 2 && styles.buttonsStack,
+                ]}
+              >
+                {buttons.map((btn, i) => {
+                  const isPrimary =
+                    btn.style === 'primary' ||
+                    (!btn.style && i === buttons.length - 1);
+                  const isDanger = btn.style === 'danger';
+                  const isCancel = btn.style === 'cancel';
+                  return (
+                    <AnimatedPressable
+                      key={`${btn.text}-${i}`}
+                      onPress={() => onClose(btn)}
                       style={[
-                        styles.btnText,
-                        isPrimary && styles.btnTextPrimary,
-                        isDanger && styles.btnTextDanger,
-                        isCancel && styles.btnTextCancel,
+                        styles.btn,
+                        buttons.length <= 2 && styles.btnFlex,
+                        isPrimary && styles.btnPrimary,
+                        isDanger && styles.btnDanger,
+                        isCancel && styles.btnCancel,
+                        !isPrimary && !isDanger && !isCancel && styles.btnDefault,
                       ]}
                     >
-                      {btn.text}
-                    </Text>
-                  </AnimatedPressable>
-                );
-              })}
-            </View>
+                      <Text
+                        style={[
+                          styles.btnText,
+                          isPrimary && styles.btnTextPrimary,
+                          isDanger && styles.btnTextDanger,
+                          isCancel && styles.btnTextCancel,
+                        ]}
+                      >
+                        {btn.text}
+                      </Text>
+                    </AnimatedPressable>
+                  );
+                })}
+              </View>
             ) : null}
           </Animated.View>
         </Pressable>
@@ -241,110 +364,3 @@ export function useAppDialog() {
   }
   return ctx;
 }
-
-const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(61, 54, 48, 0.32)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-    ...Platform.select({
-      web: { backdropFilter: 'blur(4px)' } as object,
-      default: {},
-    }),
-  },
-  backdropTap: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  cardWrap: {
-    width: '100%',
-    maxWidth: 400,
-    zIndex: 1,
-  },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 22,
-    paddingTop: 24,
-    paddingBottom: 18,
-    alignItems: 'center',
-    width: '100%',
-    ...appShadow('dialog'),
-  },
-  cardBrief: {
-    paddingBottom: 24,
-  },
-  iconCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 14,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.text,
-    textAlign: 'center',
-    lineHeight: 24,
-  },
-  message: {
-    marginTop: 8,
-    fontSize: 15,
-    lineHeight: 22,
-    color: colors.textMuted,
-    textAlign: 'center',
-  },
-  buttons: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 20,
-    width: '100%',
-    justifyContent: 'center',
-  },
-  buttonsStack: {
-    flexDirection: 'column',
-  },
-  btn: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 100,
-  },
-  btnFlex: {
-    flex: 1,
-  },
-  btnPrimary: {
-    backgroundColor: colors.primary,
-  },
-  btnDanger: {
-    backgroundColor: colors.danger,
-  },
-  btnCancel: {
-    backgroundColor: colors.backgroundAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  btnDefault: {
-    backgroundColor: colors.surfaceMuted,
-  },
-  btnText: {
-    fontWeight: '700',
-    fontSize: 15,
-    color: colors.text,
-  },
-  btnTextPrimary: {
-    color: colors.onPrimary,
-  },
-  btnTextDanger: {
-    color: colors.onPrimary,
-  },
-  btnTextCancel: {
-    color: colors.textMuted,
-  },
-});

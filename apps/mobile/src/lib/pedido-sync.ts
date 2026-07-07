@@ -35,8 +35,8 @@ export function tituloCocinaLlamaMesero(
   platos: number,
   entradas: number,
 ): string {
-  if (platos > 0 && entradas > 0) return 'Platos y mazorcas listos';
-  if (entradas > 0) return 'Mazorcas listas';
+  if (platos > 0 && entradas > 0) return 'Platos y acompañamientos listos';
+  if (entradas > 0) return 'Acompañamientos listos';
   return 'Cocina te llama';
 }
 
@@ -99,7 +99,7 @@ let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let mesasDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingPedido: PedidoUpdatedPayload[] = [];
 let pendingMesas: PedidoUpdatedPayload[] = [];
-let socketBound = false;
+let boundSocketId: string | null = null;
 let lastJoin: {
   mesaId?: number;
   cocina?: boolean;
@@ -175,62 +175,75 @@ function scheduleMesasFlush() {
   mesasDebounceTimer = setTimeout(flushMesas, DEBOUNCE_MS);
 }
 
+function attachPedidoSocketHandlers(s: NonNullable<ReturnType<typeof getSocket>>): void {
+  s.off('pedido:updated');
+  s.off('mesas:updated');
+  s.off('cocina:llama-mesero');
+  s.off('cocina:falta-plato');
+  s.off('mesero:companero-agrego');
+  s.off('connect');
+  s.off('config:actualizada');
+  s.off('auth:sesion-invalidada');
+
+  s.on('pedido:updated', (payload: PedidoUpdatedPayload) => {
+    pendingPedido.push(payload);
+    schedulePedidoFlush();
+  });
+  s.on('mesas:updated', (payload: PedidoUpdatedPayload) => {
+    pendingMesas.push(payload);
+    scheduleMesasFlush();
+  });
+  s.on('cocina:llama-mesero', (payload: CocinaLlamaMeseroPayload) => {
+    const clave = `${payload.pedidoId}:${payload.idMesero}:${payload.platosListos}:${payload.tipo_listo ?? 'plato'}:${payload.at}`;
+    if (dedupeEvento(clave, ultimoLlamaMesero)) return;
+    for (const fn of cocinaLlamaListeners) {
+      try {
+        fn(payload);
+      } catch {
+        // ignore
+      }
+    }
+  });
+  s.on('cocina:falta-plato', (payload: CocinaFaltaPlatoPayload) => {
+    const clave = `${payload.pedidoId}:${payload.idDetalle}:${payload.cantidad}:${payload.at}`;
+    if (dedupeEvento(clave, ultimaFaltaPlato)) return;
+    for (const fn of cocinaFaltaPlatoListeners) {
+      try {
+        fn(payload);
+      } catch {
+        // ignore
+      }
+    }
+  });
+  s.on('mesero:companero-agrego', (payload: CompaneroAgregoItemsPayload) => {
+    dispatchCompaneroModificoPedido(payload);
+  });
+  s.on('connect', () => {
+    rejoinRooms();
+  });
+  s.on('config:actualizada', (payload: ConfigUpdatedPayload) => {
+    if (payload?.scope) {
+      notifyConfigUpdated(payload.scope);
+    }
+  });
+  s.on('auth:sesion-invalidada', (payload: { motivo?: string; mensaje?: string }) => {
+    const reason =
+      payload.motivo === 'desactivado' ||
+      payload.motivo === 'credenciales' ||
+      payload.motivo === 'expirado'
+        ? payload.motivo
+        : parseUnauthorizedMessage(payload.mensaje ?? '');
+    void notifyUnauthorized(reason, payload.mensaje);
+  });
+}
+
 /** Un solo listener de socket con debounce para toda la app. */
 export function ensurePedidoSocketSync(): void {
   const s = connectSocket();
   if (!s) return;
-  if (!socketBound) {
-    socketBound = true;
-    s.on('pedido:updated', (payload: PedidoUpdatedPayload) => {
-      pendingPedido.push(payload);
-      schedulePedidoFlush();
-    });
-    s.on('mesas:updated', (payload: PedidoUpdatedPayload) => {
-      pendingMesas.push(payload);
-      scheduleMesasFlush();
-    });
-    s.on('cocina:llama-mesero', (payload: CocinaLlamaMeseroPayload) => {
-      const clave = `${payload.pedidoId}:${payload.idMesero}:${payload.platosListos}:${payload.tipo_listo ?? 'plato'}:${payload.at}`;
-      if (dedupeEvento(clave, ultimoLlamaMesero)) return;
-      for (const fn of cocinaLlamaListeners) {
-        try {
-          fn(payload);
-        } catch {
-          // ignore
-        }
-      }
-    });
-    s.on('cocina:falta-plato', (payload: CocinaFaltaPlatoPayload) => {
-      const clave = `${payload.pedidoId}:${payload.idDetalle}:${payload.cantidad}:${payload.at}`;
-      if (dedupeEvento(clave, ultimaFaltaPlato)) return;
-      for (const fn of cocinaFaltaPlatoListeners) {
-        try {
-          fn(payload);
-        } catch {
-          // ignore
-        }
-      }
-    });
-    s.on('mesero:companero-agrego', (payload: CompaneroAgregoItemsPayload) => {
-      dispatchCompaneroModificoPedido(payload);
-    });
-    s.on('connect', () => {
-      rejoinRooms();
-    });
-    s.on('config:actualizada', (payload: ConfigUpdatedPayload) => {
-      if (payload?.scope) {
-        notifyConfigUpdated(payload.scope);
-      }
-    });
-    s.on('auth:sesion-invalidada', (payload: { motivo?: string; mensaje?: string }) => {
-      const reason =
-        payload.motivo === 'desactivado' ||
-        payload.motivo === 'credenciales' ||
-        payload.motivo === 'expirado'
-          ? payload.motivo
-          : parseUnauthorizedMessage(payload.mensaje ?? '');
-      void notifyUnauthorized(reason, payload.mensaje);
-    });
+  if (boundSocketId !== s.id) {
+    boundSocketId = s.id ?? null;
+    attachPedidoSocketHandlers(s);
   }
   rejoinRooms();
 }

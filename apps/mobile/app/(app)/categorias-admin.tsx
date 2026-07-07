@@ -1,4 +1,3 @@
-import { colors } from '../../src/lib/theme';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
@@ -10,35 +9,39 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ActionIconBar } from '../../src/components/ActionIconBar';
+import { ActionIconBar, type ActionIconItem } from '../../src/components/ActionIconBar';
 import { FormModal } from '../../src/components/FormModal';
-import { IconTooltipButton } from '../../src/components/IconTooltipButton';
 import { ScreenLoading } from '../../src/components/ScreenLoading';
 import { WeekdayChips } from '../../src/components/WeekdayChips';
 import { useAuth } from '../../src/context/AuthContext';
+import { useVisualTheme } from '../../src/context/VisualThemeContext';
+import { useThemedStyles } from '../../src/hooks/useThemedStyles';
 import { useResponsive, gridItemWidth } from '../../src/hooks/useResponsive';
 import { adminGridColumns } from '../../src/lib/admin-grid';
 import { AdminIcon } from '../../src/lib/app-icons';
-import { categoriaMenuIcon } from '../../src/lib/categoria-menu-icon';
-import { formStyles } from '../../src/lib/form-layout';
+import { useFormStyles } from '../../src/lib/form-layout';
 import {
   allWeekdayFlags,
   pickWeekdayFlags,
   type WeekdayFieldKey,
 } from '../../src/lib/weekday-visibility';
 import { api } from '../../src/lib/api';
-import { showNotice } from '../../src/lib/app-dialog';
+import { confirmAppDialog, showNotice } from '../../src/lib/app-dialog';
 import { avisarSiFaltanObligatorios } from '../../src/lib/form-validation';
-import { manejarErrorAccion } from '../../src/lib/recurso-disponible';
+import { manejarErrorAccion, manejarErrorOperacion } from '../../src/lib/recurso-disponible';
 import { useScreenScrollPadding } from '../../src/hooks/useScreenScrollPadding';
+import { inferirIconoCategoriaDesdeNombre } from '../../src/lib/categoria-menu-icon';
 import {
   inferirReglasCategoriaDesdeNombre,
   type TipoLineaCocinaCategoria,
 } from '@la-reserva/shared-domain/categoria-reglas';
+import type { AppColors } from '../../src/lib/theme';
 
 type CategoriaAdmin = {
   id_categoria: number;
   nombre: string;
+  icono_menu: string | null;
+  activo?: boolean;
   disponible_lunes: boolean;
   disponible_martes: boolean;
   disponible_miercoles: boolean;
@@ -53,7 +56,43 @@ type CategoriaAdmin = {
   visible_en_mostrador: boolean;
   tipo_linea_cocina_default: TipoLineaCocinaCategoria;
   es_plato_principal_default: boolean;
+  total_productos?: number;
+  total_usos_pedido?: number;
 };
+
+function categoriaVisible(c: CategoriaAdmin) {
+  return c.activo !== false;
+}
+
+function subtituloCategoriaAdmin(c: CategoriaAdmin): string {
+  if (c.es_linea_empaque) {
+    return 'Categoría del sistema — no eliminar';
+  }
+  const productos = c.total_productos ?? 0;
+  const usos = c.total_usos_pedido ?? 0;
+  const partes: string[] = [];
+  if (!categoriaVisible(c)) partes.push('oculta del menú');
+  if (productos > 0) {
+    partes.push(
+      productos === 1 ? '1 producto' : `${productos} productos`,
+    );
+  }
+  if (usos > 0) {
+    partes.push('historial de pedidos — no eliminar');
+  }
+  return partes.length > 0 ? partes.join(' · ') : 'Sin productos';
+}
+
+function puedeEliminarCategoria(c: CategoriaAdmin): boolean {
+  return (
+    !c.es_linea_empaque &&
+    (c.total_usos_pedido ?? 0) === 0
+  );
+}
+
+function puedeRenombrarCategoria(c: CategoriaAdmin): boolean {
+  return !c.es_linea_empaque;
+}
 
 const TIPOS_COCINA: { id: TipoLineaCocinaCategoria; label: string }[] = [
   { id: 'plato', label: 'Plato' },
@@ -61,19 +100,102 @@ const TIPOS_COCINA: { id: TipoLineaCocinaCategoria; label: string }[] = [
   { id: 'adicional', label: 'Adicional' },
 ];
 
-function CategoriaIconHead({ nombre }: { nombre: string }) {
-  return (
-    <IconTooltipButton
-      iconSet="material-community"
-      icon={categoriaMenuIcon(nombre)}
-      label={nombre}
-      variant="secondary"
-      fixedSize
-      size={22}
-      onPress={() => {}}
-      style={styles.catIconHead}
-    />
-  );
+function createStyles(c: AppColors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: c.background },
+    pad: { paddingTop: 16 },
+    intro: { color: c.textMuted, fontSize: 13, marginBottom: 12, lineHeight: 18 },
+    card: {
+      backgroundColor: c.surface,
+      borderRadius: 14,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: c.border,
+      flex: 1,
+    },
+    cardInactive: {
+      opacity: 0.72,
+      borderColor: c.textMuted,
+    },
+    cardSistema: {
+      borderColor: c.secondary,
+      backgroundColor: c.secondaryLight,
+    },
+    cardHead: { marginBottom: 8, alignItems: 'center' },
+    cardTitle: {
+      fontSize: 16,
+      fontWeight: '900',
+      color: c.text,
+      textAlign: 'center',
+    },
+    cardMeta: {
+      color: c.textMuted,
+      fontSize: 12,
+      marginTop: 4,
+      textAlign: 'center',
+      lineHeight: 17,
+    },
+    cardActions: { marginTop: 10 },
+    catNombre: {
+      textAlign: 'center',
+      fontSize: 13,
+      fontWeight: '600',
+      color: c.text,
+      marginBottom: 8,
+    },
+    seccionReglas: {
+      marginTop: 12,
+      marginBottom: 6,
+      fontSize: 12,
+      fontWeight: '600',
+      color: c.textMuted,
+      textTransform: 'uppercase',
+      letterSpacing: 0.4,
+    },
+    rowSwitch: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 4,
+      gap: 8,
+    },
+    switchLabel: {
+      flex: 1,
+      fontSize: 13,
+      color: c.text,
+    },
+    tipoLabel: {
+      marginTop: 8,
+      marginBottom: 6,
+      fontSize: 12,
+      color: c.textMuted,
+    },
+    tipoRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 6,
+    },
+    tipoChip: {
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.background,
+    },
+    tipoChipActive: {
+      borderColor: c.primary,
+      backgroundColor: c.primaryMuted,
+    },
+    tipoChipText: {
+      fontSize: 12,
+      color: c.textMuted,
+    },
+    tipoChipTextActive: {
+      color: c.primary,
+      fontWeight: '600',
+    },
+  });
 }
 
 function ReglaSwitch({
@@ -85,6 +207,8 @@ function ReglaSwitch({
   value: boolean;
   onChange: (v: boolean) => void;
 }) {
+  const { colors } = useVisualTheme();
+  const styles = useThemedStyles(createStyles);
   return (
     <View style={styles.rowSwitch}>
       <Text style={styles.switchLabel}>{label}</Text>
@@ -103,22 +227,80 @@ function CategoriaAdminCard({
   onToggleDia,
   onSetAllDias,
   onPatch,
+  onRenombrar,
+  onOcultar,
+  onMostrar,
+  onEliminar,
 }: {
   categoria: CategoriaAdmin;
   onToggleDia: (key: WeekdayFieldKey, enabled: boolean) => void;
   onSetAllDias: (enabled: boolean) => void;
   onPatch: (partial: Partial<CategoriaAdmin>) => void;
+  onRenombrar?: () => void;
+  onOcultar?: () => void;
+  onMostrar?: () => void;
+  onEliminar?: () => void;
 }) {
+  const styles = useThemedStyles(createStyles);
+  const esSistema = categoria.es_linea_empaque;
+  const acciones = [
+    onRenombrar
+      ? {
+          key: 'renombrar',
+          icon: AdminIcon.editar,
+          label: 'Renombrar',
+          variant: 'secondary',
+          onPress: onRenombrar,
+        }
+      : null,
+    onOcultar
+      ? {
+          key: 'ocultar',
+          icon: 'eye-off-outline',
+          label: 'Ocultar del menú',
+          variant: 'danger',
+          onPress: onOcultar,
+        }
+      : null,
+    onMostrar
+      ? {
+          key: 'mostrar',
+          icon: 'eye-outline',
+          label: 'Volver a mostrar',
+          variant: 'secondary',
+          onPress: onMostrar,
+        }
+      : null,
+    onEliminar
+      ? {
+          key: 'eliminar',
+          icon: AdminIcon.eliminar,
+          label: 'Eliminar',
+          variant: 'danger',
+          onPress: onEliminar,
+        }
+      : null,
+  ].filter((x) => x != null) as ActionIconItem[];
+
   return (
-    <View style={styles.card}>
-      <CategoriaIconHead nombre={categoria.nombre} />
-      <Text style={styles.catNombre} numberOfLines={2}>
-        {categoria.nombre}
-      </Text>
+    <View
+      style={[
+        styles.card,
+        esSistema && styles.cardSistema,
+        !categoriaVisible(categoria) && styles.cardInactive,
+      ]}
+    >
+      <View style={styles.cardHead}>
+        <Text style={styles.cardTitle} numberOfLines={2}>
+          {categoria.nombre}
+        </Text>
+        <Text style={styles.cardMeta}>{subtituloCategoriaAdmin(categoria)}</Text>
+      </View>
       <WeekdayChips
         flags={pickWeekdayFlags(categoria)}
         onToggle={onToggleDia}
         onSetAll={onSetAllDias}
+        disabled={esSistema}
       />
       <Text style={styles.seccionReglas}>Reglas operativas</Text>
       <ReglaSwitch
@@ -137,7 +319,7 @@ function CategoriaAdminCard({
         onChange={(v) => onPatch({ cobra_empaque_para_llevar: v })}
       />
       <ReglaSwitch
-        label="Participa descuento sopas"
+        label="Elegible para promos por categoría marcada"
         value={categoria.participa_descuento_sopas}
         onChange={(v) => onPatch({ participa_descuento_sopas: v })}
       />
@@ -168,6 +350,9 @@ function CategoriaAdminCard({
           );
         })}
       </View>
+      {acciones.length > 0 ? (
+        <ActionIconBar style={styles.cardActions} actions={acciones} />
+      ) : null}
     </View>
   );
 }
@@ -176,10 +361,15 @@ export default function CategoriasAdminScreen() {
   const { token } = useAuth();
   const router = useRouter();
   const r = useResponsive();
+  const styles = useThemedStyles(createStyles);
+  const formStyles = useFormStyles();
   const listBottomPad = useScreenScrollPadding();
   const [rows, setRows] = useState<CategoriaAdmin[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalNueva, setModalNueva] = useState(false);
+  const [modalRenombrar, setModalRenombrar] = useState(false);
+  const [editCategoria, setEditCategoria] = useState<CategoriaAdmin | null>(null);
+  const [nombreRenombrar, setNombreRenombrar] = useState('');
   const [saving, setSaving] = useState(false);
   const [nombreNueva, setNombreNueva] = useState('');
   const [tipoCocinaNueva, setTipoCocinaNueva] =
@@ -233,6 +423,78 @@ export default function CategoriasAdminScreen() {
     setPlatoPrincipalNueva(reglas.es_plato_principal_default);
   }
 
+  function closeRenombrar() {
+    if (saving) return;
+    setModalRenombrar(false);
+    setEditCategoria(null);
+    setNombreRenombrar('');
+  }
+
+  function openRenombrar(c: CategoriaAdmin) {
+    setEditCategoria(c);
+    setNombreRenombrar(c.nombre);
+    setModalRenombrar(true);
+  }
+
+  async function guardarRenombrar() {
+    if (!editCategoria) return;
+    const nombre = nombreRenombrar.trim();
+    if (
+      await avisarSiFaltanObligatorios(
+        [{ etiqueta: 'Nombre', valor: nombre }],
+        showNotice,
+      )
+    ) {
+      return;
+    }
+    setSaving(true);
+    try {
+      await patchCategoria(editCategoria.id_categoria, { nombre });
+      closeRenombrar();
+    } catch (e) {
+      await manejarErrorAccion(e, 'renombrar la categoría');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function ocultarCategoria(c: CategoriaAdmin) {
+    try {
+      await patchCategoria(c.id_categoria, { activo: false });
+    } catch (e) {
+      await manejarErrorAccion(e, 'ocultar la categoría');
+    }
+  }
+
+  async function mostrarCategoria(c: CategoriaAdmin) {
+    try {
+      await patchCategoria(c.id_categoria, { activo: true });
+    } catch (e) {
+      await manejarErrorAccion(e, 'mostrar la categoría');
+    }
+  }
+
+  async function eliminarCategoria(c: CategoriaAdmin) {
+    const ok = await confirmAppDialog(
+      'Eliminar categoría',
+      `¿Eliminar «${c.nombre}» y sus productos sin historial? Esta acción no se puede deshacer.`,
+    );
+    if (!ok) return;
+    try {
+      await api(`/categorias/admin/${c.id_categoria}`, {
+        method: 'DELETE',
+        token,
+      });
+      await load();
+    } catch (e) {
+      await manejarErrorOperacion(e, {
+        title: 'No se pudo eliminar',
+        message:
+          'Solo se eliminan categorías sin historial de pedidos en sus productos.',
+      });
+    }
+  }
+
   function openNuevaCategoria() {
     setNombreNueva('');
     setTipoCocinaNueva('plato');
@@ -251,7 +513,10 @@ export default function CategoriasAdminScreen() {
   async function guardarNuevaCategoria() {
     const nombre = nombreNueva.trim();
     if (
-      await avisarSiFaltanObligatorios([{ etiqueta: 'Nombre', valor: nombre }])
+      await avisarSiFaltanObligatorios(
+        [{ etiqueta: 'Nombre', valor: nombre }],
+        showNotice,
+      )
     ) {
       return;
     }
@@ -267,6 +532,7 @@ export default function CategoriasAdminScreen() {
           es_bebida: esBebidaNueva,
           visible_en_mostrador: visibleMostradorNueva,
           es_plato_principal_default: platoPrincipalNueva,
+          icono_menu: inferirIconoCategoriaDesdeNombre(nombre),
         }),
       });
       await load();
@@ -305,9 +571,9 @@ export default function CategoriasAdminScreen() {
       ListHeaderComponent={
         <>
           <Text style={[styles.intro, formStyles.adminIntro]}>
-            Crea categorías para el menú del local, define días de visibilidad y
-            reglas (cocina, mostrador, empaque, descuentos). Los productos nuevos
-            heredan flags sugeridos de aquí.
+            Crea categorías, define días de visibilidad y reglas operativas. Ocultar
+            quita la categoría del menú sin borrar historial; eliminar solo aplica
+            si ningún producto tuvo pedidos (como en Mesas).
           </Text>
           <ActionIconBar
             style={formStyles.screenActions}
@@ -349,6 +615,22 @@ export default function CategoriasAdminScreen() {
               )
             }
             onPatch={(partial) => void patchCategoria(c.id_categoria, partial)}
+            onRenombrar={
+              puedeRenombrarCategoria(c) ? () => openRenombrar(c) : undefined
+            }
+            onOcultar={
+              !c.es_linea_empaque && categoriaVisible(c)
+                ? () => void ocultarCategoria(c)
+                : undefined
+            }
+            onMostrar={
+              !c.es_linea_empaque && !categoriaVisible(c)
+                ? () => void mostrarCategoria(c)
+                : undefined
+            }
+            onEliminar={
+              puedeEliminarCategoria(c) ? () => void eliminarCategoria(c) : undefined
+            }
           />
         </View>
       )}
@@ -375,6 +657,10 @@ export default function CategoriasAdminScreen() {
         maxLength={100}
         autoCapitalize="sentences"
       />
+      <Text style={formStyles.help}>
+        El icono del menú se asigna automáticamente y puedes cambiarlo en
+        Personalización visual.
+      </Text>
       <Text style={formStyles.label}>Días visibles en el menú</Text>
       <WeekdayChips
         flags={diasNueva}
@@ -437,83 +723,43 @@ export default function CategoriasAdminScreen() {
         ]}
       />
     </FormModal>
+
+    <FormModal
+      visible={modalRenombrar}
+      title="Renombrar categoría"
+      onClose={closeRenombrar}
+    >
+      <Text style={formStyles.label}>Nombre</Text>
+      <TextInput
+        style={formStyles.input}
+        value={nombreRenombrar}
+        onChangeText={setNombreRenombrar}
+        placeholder="Nombre de la categoría"
+        maxLength={100}
+        autoCapitalize="sentences"
+      />
+      <ActionIconBar
+        style={formStyles.modalActionBar}
+        actions={[
+          {
+            key: 'cancel',
+            icon: AdminIcon.cancelar,
+            label: 'Cancelar',
+            variant: 'secondary',
+            disabled: saving,
+            onPress: closeRenombrar,
+          },
+          {
+            key: 'guardar',
+            icon: saving ? 'hourglass-outline' : AdminIcon.guardar,
+            label: saving ? 'Guardando…' : 'Guardar',
+            variant: 'primary',
+            disabled: saving,
+            onPress: () => void guardarRenombrar(),
+          },
+        ]}
+      />
+    </FormModal>
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  pad: { paddingTop: 16 },
-  intro: { color: colors.textMuted, fontSize: 13, marginBottom: 12, lineHeight: 18 },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    flex: 1,
-  },
-  catIconHead: {
-    alignSelf: 'center',
-    marginBottom: 6,
-  },
-  catNombre: {
-    textAlign: 'center',
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 10,
-  },
-  seccionReglas: {
-    marginTop: 12,
-    marginBottom: 6,
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  rowSwitch: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-    gap: 8,
-  },
-  switchLabel: {
-    flex: 1,
-    fontSize: 13,
-    color: colors.text,
-  },
-  tipoLabel: {
-    marginTop: 8,
-    marginBottom: 6,
-    fontSize: 12,
-    color: colors.textMuted,
-  },
-  tipoRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  tipoChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.background,
-  },
-  tipoChipActive: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primaryMuted,
-  },
-  tipoChipText: {
-    fontSize: 12,
-    color: colors.textMuted,
-  },
-  tipoChipTextActive: {
-    color: colors.primary,
-    fontWeight: '600',
-  },
-});

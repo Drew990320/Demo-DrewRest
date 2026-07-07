@@ -1,3 +1,4 @@
+import type { ComponentProps } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { CtaButton } from './CtaButton';
@@ -283,7 +284,7 @@ export function PlanCobroPersonas({
                             (factura.metodo_pago === 'mixto'
                               ? 'mixto'
                               : factura.metodo_pago ?? met ?? 'efectivo') as MetodoPago
-                          ]
+                          ] as ComponentProps<typeof MaterialCommunityIcons>['name']
                         }
                         size={14}
                         color={colors.successText}

@@ -16,7 +16,7 @@ describe('orden-lineas-pedido', () => {
         nombre_producto: 'Mazorca para dos',
         categoria_nombre: 'Entradas y adicionales',
       }),
-    ).toBe('mazorca');
+    ).toBe('entrada');
     expect(
       seccionLineaPedido({
         categoria_nombre: 'Platos fuertes - Pollo',

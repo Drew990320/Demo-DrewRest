@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
+import { restaurantEmailSuffix, restaurantModuloEnvioCorreoActivo, restaurantName, restaurantPrefijoAsuntoCorreo } from '../common/restaurant-branding';
 import {
   buildFacturaEmailHtml,
   buildFacturaEmailText,
@@ -69,6 +70,14 @@ export class FacturaEmailService {
       };
     }
 
+    if (!restaurantModuloEnvioCorreoActivo()) {
+      return {
+        enviado: false,
+        email,
+        error: 'El envío de factura por correo está desactivado en configuración.',
+      };
+    }
+
     const transporter = this.crearTransporter();
     if (!transporter) {
       return {
@@ -80,9 +89,10 @@ export class FacturaEmailService {
 
     const from =
       this.config.get<string>('SMTP_FROM')?.trim() ||
-      'La Reserva <noreply@lareserva.local>';
+      `${restaurantName()} <noreply${restaurantEmailSuffix()}>`;
+    const prefijo = restaurantPrefijoAsuntoCorreo() || restaurantName();
     const idRef = ticket.id_factura ?? ticket.id_pedido;
-    const subject = `La Reserva · Factura #${idRef} · ${ticket.mesa_etiqueta}`;
+    const subject = `${prefijo} · Factura #${idRef} · ${ticket.mesa_etiqueta}`;
 
     try {
       await transporter.sendMail({

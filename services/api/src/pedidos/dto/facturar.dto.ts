@@ -82,6 +82,12 @@ export class FacturarDto {
   @Min(1)
   monto_transferencia?: number;
 
+  /** Efectivo recibido del cliente (solo efectivo o validación mixta). */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  monto_recibido_efectivo?: number;
+
   /** Uso del exceso si transfirió más del total (solo transferencia). */
   @IsOptional()
   @IsIn(['efectivo', 'transferencia', 'domicilio', 'mesero'])

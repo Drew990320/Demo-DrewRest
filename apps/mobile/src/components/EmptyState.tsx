@@ -1,6 +1,7 @@
+import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { ActionIconBar, type ActionIconItem } from './ActionIconBar';
-import { colors } from '../lib/theme';
+import { useVisualTheme } from '../context/VisualThemeContext';
 
 type Props = {
   title: string;
@@ -9,10 +10,19 @@ type Props = {
 };
 
 export function EmptyState({ title, message, actions }: Props) {
+  const { colors } = useVisualTheme();
+  const textStyles = useMemo(
+    () => ({
+      title: { ...styles.title, color: colors.text },
+      message: { ...styles.message, color: colors.textMuted },
+    }),
+    [colors],
+  );
+
   return (
     <View style={styles.wrap}>
-      <Text style={styles.title}>{title}</Text>
-      {message ? <Text style={styles.message}>{message}</Text> : null}
+      <Text style={textStyles.title}>{title}</Text>
+      {message ? <Text style={textStyles.message}>{message}</Text> : null}
       {actions && actions.length > 0 ? (
         <ActionIconBar style={styles.actions} actions={actions} />
       ) : null}
@@ -30,13 +40,11 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 16,
     fontWeight: '700',
-    color: colors.text,
     textAlign: 'center',
   },
   message: {
     fontSize: 14,
     lineHeight: 20,
-    color: colors.textMuted,
     textAlign: 'center',
     maxWidth: 300,
   },

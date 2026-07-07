@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useMemo } from 'react';
 import {
   StyleSheet,
   Text,
@@ -7,8 +8,8 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
-import { screenStyles } from '../lib/screen-styles';
-import { colors } from '../lib/theme';
+import { useVisualTheme } from '../context/VisualThemeContext';
+import { useScreenStyles } from '../lib/screen-styles';
 
 type Props = {
   title: string;
@@ -34,6 +35,17 @@ export function ScreenHeader({
   titleStyle,
   children,
 }: Props) {
+  const screenStyles = useScreenStyles();
+  const { colors } = useVisualTheme();
+  const textStyles = useMemo(
+    () => ({
+      eyebrow: { ...styles.eyebrow, color: colors.textMuted },
+      title: { ...styles.title, color: colors.text },
+      subtitle: { ...styles.subtitle, color: colors.textMuted },
+    }),
+    [colors],
+  );
+
   return (
     <View
       style={[
@@ -42,11 +54,11 @@ export function ScreenHeader({
       ]}
     >
       {eyebrow ? (
-        <Text style={[styles.eyebrow, { textAlign: align }]}>{eyebrow}</Text>
+        <Text style={[textStyles.eyebrow, { textAlign: align }]}>{eyebrow}</Text>
       ) : null}
-      <Text style={[styles.title, { textAlign: align }, titleStyle]}>{title}</Text>
+      <Text style={[textStyles.title, { textAlign: align }, titleStyle]}>{title}</Text>
       {subtitle ? (
-        <Text style={[styles.subtitle, { textAlign: align }]}>{subtitle}</Text>
+        <Text style={[textStyles.subtitle, { textAlign: align }]}>{subtitle}</Text>
       ) : null}
       {children}
     </View>
@@ -58,7 +70,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   eyebrow: {
-    color: colors.textMuted,
     fontWeight: '600',
     fontSize: 12,
     letterSpacing: 0.4,
@@ -68,14 +79,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 20,
     fontWeight: '700',
-    color: colors.text,
     letterSpacing: -0.2,
   },
   subtitle: {
     marginTop: 6,
     fontSize: 14,
     lineHeight: 20,
-    color: colors.textMuted,
     fontWeight: '500',
   },
 });

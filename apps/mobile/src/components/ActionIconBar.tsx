@@ -1,7 +1,9 @@
 import type { ComponentProps } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Platform, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { useVisualTheme } from '../context/VisualThemeContext';
 import { useResponsive } from '../hooks/useResponsive';
+import { actionBarChromeStyle } from '../lib/visual-chrome';
 import { IconTooltipButton, type IconTooltipVariant } from './IconTooltipButton';
 
 type IonName = ComponentProps<typeof Ionicons>['name'];
@@ -19,17 +21,25 @@ export type ActionIconItem = {
 type Props = {
   actions: ActionIconItem[];
   style?: StyleProp<ViewStyle>;
+  /** Fondo de la franja (p. ej. vista previa en personalización). */
+  backgroundColor?: string;
 };
 
 /** Fila horizontal de botones solo icono con tooltip al pasar el cursor (web). */
-export function ActionIconBar({ actions, style }: Props) {
+export function ActionIconBar({ actions, style, backgroundColor }: Props) {
   const { isCompact, gridGap } = useResponsive();
+  const { colors, chrome, layout } = useVisualTheme();
+  const barBg = backgroundColor ?? colors.backgroundAlt;
+  const barChrome = actionBarChromeStyle(chrome, layout, colors, barBg);
 
   return (
     <View
       style={[
         styles.row,
-        { gap: isCompact ? 8 : gridGap },
+        {
+          gap: isCompact ? 8 : gridGap,
+          ...barChrome,
+        },
         style,
       ]}
     >

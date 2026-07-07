@@ -23,6 +23,8 @@ export type DiasCategoria = {
 export type CategoriaLocal = {
   id_categoria: number;
   nombre: string;
+  icono_menu?: string | null;
+  activo?: boolean;
 } & DiasCategoria & {
   es_bebida: boolean;
   cobra_empaque_para_llevar: boolean;

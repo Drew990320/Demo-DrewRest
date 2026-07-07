@@ -1,25 +1,33 @@
 import type { FacturaTicket } from './factura-ticket';
 import { labelMetodoPago } from './factura-ticket';
+import { lineasTicketExcesoCobro } from '@la-reserva/shared-domain/factura-vuelto';
 import {
   bufferFromPrinter,
   createEscPosPrinter,
   DEFAULT_ESC_POS_WIDTH,
   formatCopEscPos,
   lineaConPrecio,
-  printEncabezadoLaReserva,
+  printEncabezadoRestaurante,
   printPieDrewTechFactura,
   wrapEscPos,
 } from './escpos-utils';
+import {
+  restaurantTextoGraciasTicket,
+  restaurantTextoPropinaTicket,
+} from '../common/restaurant-branding';
 
 function esTicketParaCliente(ticket: FacturaTicket): boolean {
   return ticket.copia_destinatario !== 'negocio';
 }
 
 /** Propina opcional (pre-cuenta, factura y copia cliente; no copia negocio). */
-const TICKET_PROPINA_LINEA = '*** PROPINA VOLUNTARIA ***';
-
 function lineasMensajePropina(charWidth: number): string[] {
-  return wrapEscPos(TICKET_PROPINA_LINEA, charWidth);
+  return wrapEscPos(restaurantTextoPropinaTicket(), charWidth);
+}
+
+function ticketLlevaLogoCliente(ticket: FacturaTicket): boolean {
+  if (ticket.es_total_pedido) return false;
+  return ticket.es_precuenta === true || esTicketParaCliente(ticket);
 }
 
 /** Ticket de cobro 58 mm: todos los ítems con precios y total. */
@@ -31,7 +39,11 @@ export async function buildFacturaEscPos(
   const w = charWidth;
   const sep = '-'.repeat(w);
 
-  await printEncabezadoLaReserva(printer);
+  if (ticketLlevaLogoCliente(ticket)) {
+    await printEncabezadoRestaurante(printer, w);
+  } else {
+    await printer.alignCenter();
+  }
   await printer.println('CUENTA / FACTURA');
   if (ticket.copia_destinatario === 'negocio') {
     await printer.bold(true);
@@ -205,6 +217,70 @@ export async function buildFacturaEscPos(
     await printer.println(`Pago: ${labelMetodoPago(ticket.metodo_pago)}`);
   }
 
+  if (
+    !ticket.es_precuenta &&
+    !ticket.es_total_pedido &&
+    ticket.detalle_exceso_cobro
+  ) {
+    const lineas = lineasTicketExcesoCobro(ticket.detalle_exceso_cobro);
+    if (lineas.length > 0) {
+      await printer.println(sep);
+      for (const l of lineas) {
+        if (l.destacado) await printer.bold(true);
+        await printer.println(
+          lineaConPrecio(l.etiqueta, formatCopEscPos(l.monto), w),
+        );
+        if (l.destacado) await printer.bold(false);
+      }
+    }
+  } else if (
+    !ticket.es_precuenta &&
+    !ticket.es_total_pedido &&
+    ticket.vuelto_cliente &&
+    ticket.vuelto_cliente.vuelto_total > 0
+  ) {
+    const v = ticket.vuelto_cliente;
+    await printer.println(sep);
+    if (v.monto_recibido_efectivo != null && v.monto_recibido_efectivo > 0) {
+      await printer.println(
+        lineaConPrecio(
+          'Recibido efectivo',
+          formatCopEscPos(v.monto_recibido_efectivo),
+          w,
+        ),
+      );
+    }
+    if (
+      v.monto_transferencia_recibido != null &&
+      v.monto_transferencia_recibido > 0
+    ) {
+      await printer.println(
+        lineaConPrecio(
+          'Recibido transfer.',
+          formatCopEscPos(v.monto_transferencia_recibido),
+          w,
+        ),
+      );
+    }
+    await printer.bold(true);
+    if (v.vuelto_efectivo > 0 && v.vuelto_transferencia > 0) {
+      await printer.println(
+        lineaConPrecio('Vuelto efectivo', formatCopEscPos(v.vuelto_efectivo), w),
+      );
+      await printer.println(
+        lineaConPrecio(
+          'Vuelto transfer.',
+          formatCopEscPos(v.vuelto_transferencia),
+          w,
+        ),
+      );
+    }
+    await printer.println(
+      lineaConPrecio('VUELTO', formatCopEscPos(v.vuelto_total), w),
+    );
+    await printer.bold(false);
+  }
+
   if (esTicketParaCliente(ticket)) {
     await printer.println(sep);
     await printer.alignCenter();
@@ -217,9 +293,8 @@ export async function buildFacturaEscPos(
 
   await printer.println(sep);
   await printer.alignCenter();
-  await printer.println('Gracias por su visita');
-  // Contacto del creador del sistema: solo en la factura que se lleva el cliente.
-  if (ticket.copia_destinatario === 'cliente' && !ticket.es_precuenta) {
+  await printer.println(restaurantTextoGraciasTicket());
+  if (ticketLlevaLogoCliente(ticket)) {
     await printPieDrewTechFactura(printer, w);
   }
   await printer.cut();

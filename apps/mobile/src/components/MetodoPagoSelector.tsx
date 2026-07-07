@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import {
   METODO_PAGO_ICON,
   METODO_PAGO_LABEL,
@@ -73,7 +73,7 @@ export function MetodoPagoSelector({
               accessibilityState={{ selected: on }}
               accessibilityLabel={METODO_PAGO_LABEL[m]}
             >
-              <MaterialCommunityIcons
+              <Ionicons
                 name={METODO_PAGO_ICON[m]}
                 size={soloIcono ? 22 : r.isCompact ? 18 : 20}
                 color={on ? colors.onPrimary : colors.textMuted}

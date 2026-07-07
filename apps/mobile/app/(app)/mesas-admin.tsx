@@ -1,4 +1,3 @@
-import { colors } from '../../src/lib/theme';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
@@ -13,10 +12,12 @@ import { FormModal } from '../../src/components/FormModal';
 import { ScreenLoading } from '../../src/components/ScreenLoading';
 import { WeekdayChips } from '../../src/components/WeekdayChips';
 import { useAuth } from '../../src/context/AuthContext';
+import { useVisualTheme } from '../../src/context/VisualThemeContext';
+import { useThemedStyles } from '../../src/hooks/useThemedStyles';
 import { useResponsive, gridItemWidth } from '../../src/hooks/useResponsive';
 import { adminGridColumns } from '../../src/lib/admin-grid';
 import { AdminIcon } from '../../src/lib/app-icons';
-import { formStyles } from '../../src/lib/form-layout';
+import { useFormStyles } from '../../src/lib/form-layout';
 import {
   allWeekdayFlags,
   pickWeekdayFlags,
@@ -32,6 +33,7 @@ import {
   avisarSiFaltanObligatorios,
 } from '../../src/lib/form-validation';
 import { esMesaVirtualNumero, tituloMesaAdmin } from '../../src/lib/mesa-label';
+import type { AppColors } from '../../src/lib/theme';
 
 type MesaAdmin = {
   id_mesa: number;
@@ -48,6 +50,31 @@ type MesaAdmin = {
   disponible_sabado: boolean;
   disponible_domingo: boolean;
 };
+
+function createStyles(c: AppColors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: c.background },
+    pad: { paddingTop: 16 },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    intro: { color: c.textMuted, fontSize: 13, marginBottom: 12, lineHeight: 18 },
+    card: {
+      backgroundColor: c.surface,
+      borderRadius: 14,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: c.border,
+      flex: 1,
+    },
+    cardVirtual: {
+      borderColor: c.secondary,
+      backgroundColor: c.secondaryLight,
+    },
+    cardHead: { marginBottom: 8, alignItems: 'center' },
+    cardTitle: { fontSize: 18, fontWeight: '900', color: c.text, textAlign: 'center' },
+    cardMeta: { color: c.textMuted, fontSize: 13, marginTop: 2, textAlign: 'center' },
+    cardActions: { marginTop: 10 },
+  });
+}
 
 function subtituloMesaAdmin(mesa: MesaAdmin): string {
   if (esMesaVirtualNumero(mesa.numero)) {
@@ -93,8 +120,9 @@ function MesaAdminCard({
   onEditNumero?: () => void;
   onEliminar?: () => void;
 }) {
+  const styles = useThemedStyles(createStyles);
   const esVirtual = esMesaVirtualNumero(mesa.numero);
-  const acciones: ActionIconItem[] = [
+  const acciones = [
     onEditNumero
       ? {
           key: 'editar',
@@ -113,7 +141,7 @@ function MesaAdminCard({
           onPress: onEliminar,
         }
       : null,
-  ].filter((x): x is ActionIconItem => x != null);
+  ].filter((x) => x != null) as ActionIconItem[];
 
   return (
     <View style={[styles.card, esVirtual && styles.cardVirtual]}>
@@ -136,6 +164,9 @@ function MesaAdminCard({
 
 export default function MesasAdminScreen() {
   const { token } = useAuth();
+  const { colors } = useVisualTheme();
+  const styles = useThemedStyles(createStyles);
+  const formStyles = useFormStyles();
   const mv = useMesasVirtuales();
   const r = useResponsive();
   const listBottomPad = useScreenScrollPadding();
@@ -382,26 +413,3 @@ export default function MesasAdminScreen() {
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  pad: { paddingTop: 16 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  intro: { color: colors.textMuted, fontSize: 13, marginBottom: 12, lineHeight: 18 },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    flex: 1,
-  },
-  cardVirtual: {
-    borderColor: colors.secondary,
-    backgroundColor: colors.secondaryLight,
-  },
-  cardHead: { marginBottom: 8, alignItems: 'center' },
-  cardTitle: { fontSize: 18, fontWeight: '900', color: colors.text, textAlign: 'center' },
-  cardMeta: { color: colors.textMuted, fontSize: 13, marginTop: 2, textAlign: 'center' },
-  cardActions: { marginTop: 10 },
-});

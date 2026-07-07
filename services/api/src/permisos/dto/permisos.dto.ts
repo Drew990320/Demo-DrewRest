@@ -51,6 +51,24 @@ export class PatchPermisosMeseroDto implements Partial<PermisosMeseroConfig> {
   ayuda_companeros?: boolean;
 }
 
+export class PatchPermisosChefDto {
+  @IsOptional()
+  @IsBoolean()
+  ver_cola_cocina?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  marcar_listo?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  reimprimir_comanda?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  anular_linea_cocina?: boolean;
+}
+
 export class AsignarDelegacionCierreDto {
   @IsOptional()
   fecha?: string;

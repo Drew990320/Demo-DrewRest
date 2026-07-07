@@ -6,12 +6,12 @@ import {
   esDetalleMazorcaAcompanamiento,
   idProductoMazorcaAcompanamiento,
   invalidateMazorcaProductIdCache,
-  NOMBRE_PRODUCTO_MAZORCA,
   pedidoUsaLineaMazorca,
   sincronizarLineaMazorcaAcompanamiento,
 } from './mazorca-linea-pedido';
 
 const MAZORCA_ID = 42;
+const ACOMP_ACTIVO = { usaLineaMazorca: true as const };
 
 type LineaMock = {
   idDetalle: number;
@@ -55,7 +55,7 @@ describe('mazorca-linea-pedido', () => {
 
   describe('pedidoUsaLineaMazorca', () => {
     it('usa línea de mazorca en mesas normales', () => {
-      expect(pedidoUsaLineaMazorca(5)).toBe(true);
+      expect(pedidoUsaLineaMazorca(5, true)).toBe(true);
     });
 
     it('no usa línea si mazorca está desactivada en configuración', () => {
@@ -101,7 +101,7 @@ describe('mazorca-linea-pedido', () => {
         (tx.producto.findFirst as jest.Mock).mockResolvedValue(null);
         await expect(
           mod.idProductoMazorcaAcompanamiento(tx),
-        ).rejects.toThrow('Producto de mazorca');
+        ).rejects.toThrow('acompañamiento por comensal');
       });
     });
   });
@@ -116,7 +116,10 @@ describe('mazorca-linea-pedido', () => {
         estadoPedido: 'abierto',
       });
       expect(detallePedido.deleteMany).toHaveBeenCalledWith({
-        where: { idPedido: 10, idProducto: MAZORCA_ID },
+        where: {
+          idPedido: 10,
+          producto: { esAcompanamientoMazorca: true },
+        },
       });
       expect(detallePedido.create).not.toHaveBeenCalled();
     });
@@ -129,6 +132,7 @@ describe('mazorca-linea-pedido', () => {
           numComensales: 0,
           mesaNumero: 5,
           estadoPedido: 'abierto',
+          ...ACOMP_ACTIVO,
         }),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
@@ -149,9 +153,10 @@ describe('mazorca-linea-pedido', () => {
           numComensales: 1,
           mesaNumero: 5,
           estadoPedido: 'en_cocina',
+          ...ACOMP_ACTIVO,
         }),
       ).rejects.toThrow(
-        'No puedes bajar comensales por debajo de las mazorcas ya listas o entregadas',
+        'No puedes bajar comensales por debajo del acompañamiento ya listo o entregado',
       );
     });
 
@@ -170,6 +175,7 @@ describe('mazorca-linea-pedido', () => {
         numComensales: 3,
         mesaNumero: 5,
         estadoPedido: 'abierto',
+        ...ACOMP_ACTIVO,
       });
       expect(detallePedido.update).not.toHaveBeenCalled();
       expect(detallePedido.create).not.toHaveBeenCalled();
@@ -191,6 +197,7 @@ describe('mazorca-linea-pedido', () => {
         numComensales: 5,
         mesaNumero: 5,
         estadoPedido: 'abierto',
+        ...ACOMP_ACTIVO,
       });
       expect(detallePedido.update).toHaveBeenCalledWith({
         where: { idDetalle: 7 },
@@ -214,6 +221,7 @@ describe('mazorca-linea-pedido', () => {
         numComensales: 4,
         mesaNumero: 5,
         estadoPedido: 'en_cocina',
+        ...ACOMP_ACTIVO,
       });
       expect(detallePedido.create).toHaveBeenCalledWith({
         data: {
@@ -241,6 +249,7 @@ describe('mazorca-linea-pedido', () => {
         numComensales: 4,
         mesaNumero: 5,
         estadoPedido: 'en_cocina',
+        ...ACOMP_ACTIVO,
       });
       expect(detallePedido.update).not.toHaveBeenCalled();
       expect(detallePedido.create).toHaveBeenCalledWith({
@@ -269,6 +278,7 @@ describe('mazorca-linea-pedido', () => {
         numComensales: 2,
         mesaNumero: 5,
         estadoPedido: 'abierto',
+        ...ACOMP_ACTIVO,
       });
       expect(detallePedido.update).toHaveBeenCalledWith({
         where: { idDetalle: 10 },
@@ -298,6 +308,7 @@ describe('mazorca-linea-pedido', () => {
         numComensales: 1,
         mesaNumero: 5,
         estadoPedido: 'abierto',
+        ...ACOMP_ACTIVO,
       });
       expect(detallePedido.delete).toHaveBeenCalledWith({
         where: { idDetalle: 4 },
@@ -322,6 +333,7 @@ describe('mazorca-linea-pedido', () => {
         idPedido: 5,
         numComensales: 4,
         mesaNumero: 3,
+        mazorcaActiva: true,
       });
       expect(detallePedido.create).toHaveBeenCalledWith({
         data: {
@@ -340,6 +352,7 @@ describe('mazorca-linea-pedido', () => {
         idPedido: 5,
         numComensales: 4,
         mesaNumero: 3,
+        mazorcaActiva: true,
       });
       expect(detallePedido.create).not.toHaveBeenCalled();
     });

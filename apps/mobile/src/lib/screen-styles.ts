@@ -1,8 +1,11 @@
+import { useMemo } from 'react';
 import { StyleSheet } from 'react-native';
-import { appShadow } from './shadow';
-import { colors, status } from './theme';
+import { VISUAL_LAYOUT_DEFAULTS } from '@la-reserva/shared-domain/visual-style';
+import type { VisualLayoutTokens } from '@la-reserva/shared-domain/visual-style';
+import { useVisualTheme } from '../context/VisualThemeContext';
+import { colors, status, type AppColors } from './theme';
 
-/** Espaciado y radios consistentes (estilo minimalista). */
+/** Espaciado consistente entre pantallas. */
 export const spacing = {
   xs: 4,
   sm: 8,
@@ -12,82 +15,99 @@ export const spacing = {
 } as const;
 
 export const radius = {
-  sm: 8,
-  md: 12,
-  lg: 16,
+  sm: VISUAL_LAYOUT_DEFAULTS.radiusSm,
+  md: VISUAL_LAYOUT_DEFAULTS.radiusMd,
+  lg: VISUAL_LAYOUT_DEFAULTS.radiusLg,
 } as const;
 
 /** Estilos de pantalla reutilizables (fondo, tarjetas, tipografía). */
-export const screenStyles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  containerPadded: {
-    flex: 1,
-    backgroundColor: colors.background,
-    padding: spacing.lg,
-  },
-  center: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing.xl,
-    backgroundColor: colors.background,
-  },
-  denied: {
-    textAlign: 'center',
-    color: colors.textMuted,
-    marginBottom: spacing.lg,
-    fontSize: 16,
-    lineHeight: 22,
-  },
-  err: {
-    color: colors.textMuted,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  headerCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    marginBottom: spacing.md,
-  },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    marginBottom: spacing.md,
-  },
-  h1: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.text,
-    letterSpacing: -0.2,
-  },
-  kicker: {
-    color: colors.textMuted,
-    fontWeight: '600',
-    fontSize: 12,
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-  },
-  sub: {
-    color: colors.textMuted,
-    lineHeight: 20,
-    fontSize: 14,
-  },
-  intro: {
-    color: colors.textMuted,
-    fontSize: 14,
-    marginBottom: spacing.md,
-    lineHeight: 20,
-  },
-});
+function createScreenStyles(c: AppColors, layout: VisualLayoutTokens = VISUAL_LAYOUT_DEFAULTS) {
+  const cardBorder =
+    layout.cardBorderWidth > 0 ? layout.cardBorderWidth : StyleSheet.hairlineWidth;
+
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: c.background,
+    },
+    containerPadded: {
+      flex: 1,
+      backgroundColor: c.background,
+      padding: spacing.lg,
+    },
+    center: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: spacing.xl,
+      backgroundColor: c.background,
+    },
+    denied: {
+      textAlign: 'center',
+      color: c.textMuted,
+      marginBottom: spacing.lg,
+      fontSize: 16,
+      lineHeight: 22,
+    },
+    err: {
+      color: c.textMuted,
+      textAlign: 'center',
+      lineHeight: 20,
+    },
+    headerCard: {
+      backgroundColor: c.surface,
+      borderRadius: layout.radiusMd,
+      padding: spacing.md,
+      borderWidth: cardBorder,
+      borderColor: c.border,
+      marginBottom: spacing.md,
+    },
+    card: {
+      backgroundColor: c.surface,
+      borderRadius: layout.radiusMd,
+      padding: spacing.md,
+      borderWidth: cardBorder,
+      borderColor: c.border,
+      marginBottom: spacing.md,
+    },
+    h1: {
+      fontSize: 20,
+      fontWeight: layout.titleWeight,
+      color: c.text,
+      letterSpacing: -0.2,
+    },
+    kicker: {
+      color: c.textMuted,
+      fontWeight: '600',
+      fontSize: 12,
+      letterSpacing: 0.4,
+      textTransform: 'uppercase',
+    },
+    sub: {
+      color: c.textMuted,
+      lineHeight: 20,
+      fontSize: 14,
+    },
+    intro: {
+      color: c.textMuted,
+      fontSize: 14,
+      marginBottom: spacing.md,
+      lineHeight: 20,
+    },
+  });
+}
+
+export const screenStyles = createScreenStyles(colors);
+
+export function useScreenStyles() {
+  const { colors: c, layout } = useVisualTheme();
+  return useMemo(() => createScreenStyles(c, layout), [c, layout]);
+}
+
+export function useVisualLayout(): VisualLayoutTokens {
+  const { layout } = useVisualTheme();
+  return layout;
+}
 
 /** Banners de alerta con significado semántico consistente. */
 export const alertStyles = StyleSheet.create({

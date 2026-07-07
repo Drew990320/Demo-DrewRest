@@ -205,6 +205,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     fontSize: 16,
     marginBottom: 8,
+    color: colors.text,
   },
   inputFull: { alignSelf: 'stretch', width: '100%' },
   pagoExactoBtn: { marginTop: 4, marginBottom: 6, alignSelf: 'center' },

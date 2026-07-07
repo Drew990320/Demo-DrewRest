@@ -1,4 +1,4 @@
-import { SerialPort } from 'serialport';
+import { loadSerialPortClass } from './serialport-loader';
 
 export type EstadoPapel = {
   sinPapel: boolean;
@@ -6,10 +6,11 @@ export type EstadoPapel = {
 };
 
 /** Consulta sensores de papel ESC/POS vía puerto serie (DLE EOT 3 y 4). */
-export function consultarPapelSerial(
+export async function consultarPapelSerial(
   comPath: string,
   baudRate: number,
 ): Promise<EstadoPapel | null> {
+  const SerialPort = await loadSerialPortClass();
   return new Promise((resolve) => {
     let settled = false;
     const finish = (value: EstadoPapel | null) => {

@@ -1,6 +1,6 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import type { ComponentProps, RefObject } from 'react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Platform,
   Pressable,
@@ -17,9 +17,13 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useResponsive } from '../hooks/useResponsive';
+import { useVisualTheme } from '../context/VisualThemeContext';
 import { MOTION, useMotionEnabled } from '../lib/motion';
+import {
+  iconButtonChromeStyle,
+  iconButtonRadius,
+} from '../lib/visual-chrome';
 import { blurWebFocus } from '../lib/web-a11y';
-import { colors } from '../lib/theme';
 
 type IonName = ComponentProps<typeof Ionicons>['name'];
 type MciName = ComponentProps<typeof MaterialCommunityIcons>['name'];
@@ -59,6 +63,7 @@ export function WebFloatingTooltip({
   label: string;
   anchorRef: RefObject<View | null>;
 }) {
+  const { colors } = useVisualTheme();
   const [rect, setRect] = useState<AnchorRect | null>(null);
 
   const updatePos = useCallback(() => {
@@ -80,7 +85,7 @@ export function WebFloatingTooltip({
       window.removeEventListener('scroll', updatePos, true);
       window.removeEventListener('resize', updatePos);
     };
-  }, [visible, updatePos]);
+  }, [visible, updatePos, colors.surface, colors.text]);
 
   if (
     !visible ||
@@ -114,7 +119,7 @@ export function WebFloatingTooltip({
         zIndex: 99999,
         maxWidth: 280,
         backgroundColor: colors.text,
-        color: colors.onDark,
+        color: colors.surface,
         padding: '8px 12px',
         borderRadius: 8,
         fontSize: 12,
@@ -152,9 +157,39 @@ export function IconTooltipButton({
   const iconSz = fixedSize ? (size ?? 26) : (size ?? r.iconSize);
   const btnSize = fixedSize ? Math.max(52, iconSz + 28) : r.iconBtnSize;
   const btnPad = fixedSize ? 14 : r.isCompact ? 10 : 12;
-  const btnRadius = fixedSize ? 16 : r.isCompact ? 12 : 14;
   const motion = useMotionEnabled();
+  const { colors, chrome, layout } = useVisualTheme();
   const badgeVisible = badge != null && badge !== '' && badge !== 0;
+
+  const iconColors = useMemo(
+    (): Record<IconTooltipVariant, string> => ({
+      default: colors.text,
+      primary: colors.onPrimary,
+      secondary: colors.text,
+      cocina: colors.onPrimary,
+      money: colors.onPrimary,
+      danger: colors.onPrimary,
+    }),
+    [colors],
+  );
+
+  const variantStyles = useMemo(
+    () => ({
+      default: iconButtonChromeStyle(chrome, layout, colors, 'default'),
+      primary: iconButtonChromeStyle(chrome, layout, colors, 'primary'),
+      secondary: iconButtonChromeStyle(chrome, layout, colors, 'secondary'),
+      cocina: iconButtonChromeStyle(chrome, layout, colors, 'cocina'),
+      money: iconButtonChromeStyle(chrome, layout, colors, 'money'),
+      danger: iconButtonChromeStyle(chrome, layout, colors, 'danger'),
+    }),
+    [chrome, layout, colors],
+  );
+
+  const resolvedBtnRadius = iconButtonRadius(
+    chrome,
+    layout,
+    fixedSize ? Math.max(52, iconSz + 28) : btnSize,
+  );
 
   const visualOpacity = useSharedValue(disabled ? 0.45 : 1);
   const badgeScale = useSharedValue(badgeVisible ? 1 : 0);
@@ -207,7 +242,7 @@ export function IconTooltipButton({
             minHeight: btnSize,
             paddingHorizontal: btnPad,
             paddingVertical: btnPad,
-            borderRadius: btnRadius,
+            borderRadius: resolvedBtnRadius,
           },
           variantStyles[variant],
           pressed && !disabled && styles.pressed,
@@ -236,8 +271,20 @@ export function IconTooltipButton({
           <Ionicons name={icon as IonName} size={iconSz} color={iconColors[variant]} />
         )}
         {badgeVisible ? (
-          <Animated.View style={[styles.badge, badgeAnimStyle]}>
-            <Text style={styles.badgeText}>{badge}</Text>
+          <Animated.View
+            style={[
+              styles.badge,
+              badgeAnimStyle,
+              {
+                backgroundColor: colors.surface,
+                borderWidth: 1,
+                borderColor: colors.cocinaDark,
+              },
+            ]}
+          >
+            <Text style={[styles.badgeText, { color: colors.cocinaDark }]}>
+              {badge}
+            </Text>
           </Animated.View>
         ) : null}
       </Pressable>
@@ -245,48 +292,6 @@ export function IconTooltipButton({
     </View>
   );
 }
-
-const iconColors: Record<IconTooltipVariant, string> = {
-  default: colors.primary,
-  primary: colors.onPrimary,
-  secondary: colors.primary,
-  cocina: colors.onPrimary,
-  money: colors.onPrimary,
-  danger: colors.onPrimary,
-};
-
-const variantStyles = StyleSheet.create({
-  default: {
-    backgroundColor: colors.backgroundAlt,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-  },
-  primary: {
-    backgroundColor: colors.primary,
-    borderWidth: 1,
-    borderColor: colors.primaryDark,
-  },
-  secondary: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.primary,
-  },
-  cocina: {
-    backgroundColor: colors.cocina,
-    borderWidth: 1,
-    borderColor: colors.cocinaDark,
-  },
-  money: {
-    backgroundColor: colors.success,
-    borderWidth: 1,
-    borderColor: colors.successDark,
-  },
-  danger: {
-    backgroundColor: colors.danger,
-    borderWidth: 1,
-    borderColor: colors.dangerDark,
-  },
-});
 
 const styles = StyleSheet.create({
   wrap: {
@@ -306,15 +311,11 @@ const styles = StyleSheet.create({
     height: 18,
     paddingHorizontal: 4,
     borderRadius: 9,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.cocinaDark,
     alignItems: 'center',
     justifyContent: 'center',
   },
   badgeText: {
     fontSize: 10,
     fontWeight: '900',
-    color: colors.cocinaDark,
   },
 });

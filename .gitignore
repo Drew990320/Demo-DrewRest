@@ -1,9 +1,9 @@
 # Dependencies
 node_modules/
-# Expo export en LaReserva (rutas con "node_modules" o "build" en el nombre, no son npm)
-!LaReserva/web/assets/
-!LaReserva/web/assets/**
-!LaReserva/web/assets/**/build/**
+# Expo export en DrewRest (rutas con "node_modules" o "build" en el nombre, no son npm)
+!DrewRest/web/assets/
+!DrewRest/web/assets/**
+!DrewRest/web/assets/**/build/**
 
 # Build / cache
 dist/
@@ -12,14 +12,19 @@ build/
 .cache/
 *.zip
 
-# Env
+# Env — cualquier variante local; solo permitir plantillas de ejemplo
 .env
-.env.*.local
+.env.*
+!.env.example
+!**/.env.example
 
-# Licencias: clave privada y archivos emitidos (nunca empaquetar ni subir)
+# Licencias y claves criptográficas (nunca subir)
 scripts/license-keys/private.pem
+**/private.pem
 license.key
 **/license.key
+*.p12
+*.pfx
 
 # Logs & OS
 *.log
@@ -29,15 +34,15 @@ Thumbs.db
 
 # Test
 coverage/
+backups/
+services/api/logs/
 
 # NestJS
 services/api/coverage/
 
-# Paquete on-prem (generar con la-reserva:empaquetar-api)
-LaReserva/api/dist/
-LaReserva/api/node_modules/
-LaReserva/api/vendor/
-LaReserva/web/web-port.txt
+# Paquete on-prem generado (puede incluir .env, license.key, node_modules)
+DrewRest/
+LaReserva/
 
 # Expo / React Native
 apps/mobile/.expo/

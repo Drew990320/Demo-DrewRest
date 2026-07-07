@@ -1,7 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import type { EstadoPedido, Prisma } from '@prisma/client';
 import {
-  NOMBRE_PRODUCTO_MAZORCA,
   pedidoUsaLineaMazorca,
   esDetalleMazorcaAcompanamiento,
 } from '@la-reserva/shared-domain/mazorca-pedido';
@@ -11,11 +10,7 @@ import {
   type LineaMazorcaSync,
 } from '@la-reserva/shared-domain/mazorca-linea-pedido';
 
-export {
-  NOMBRE_PRODUCTO_MAZORCA,
-  pedidoUsaLineaMazorca,
-  esDetalleMazorcaAcompanamiento,
-};
+export { pedidoUsaLineaMazorca, esDetalleMazorcaAcompanamiento };
 
 let cachedMazorcaProductId: number | null = null;
 
@@ -34,7 +29,7 @@ export async function idProductoMazorcaAcompanamiento(
     });
     if (!p) {
       throw new BadRequestException(
-        'El producto de mazorca configurado ya no existe',
+        'El producto de acompañamiento por comensal configurado ya no existe',
       );
     }
     cachedMazorcaProductId = p.idProducto;
@@ -55,17 +50,9 @@ export async function idProductoMazorcaAcompanamiento(
     return porFlag.idProducto;
   }
 
-  const p = await prisma.producto.findFirst({
-    where: { nombre: NOMBRE_PRODUCTO_MAZORCA, activo: true },
-    select: { idProducto: true },
-  });
-  if (!p) {
-    throw new BadRequestException(
-      'Producto de mazorca (acompañamiento) no configurado. Márcalo en el menú o elige uno en Configuración.',
-    );
-  }
-  cachedMazorcaProductId = p.idProducto;
-  return p.idProducto;
+  throw new BadRequestException(
+    'Producto de acompañamiento por comensal no configurado. Márcalo en el menú o elige uno en Configuración.',
+  );
 }
 
 function toLineasSync(
@@ -92,15 +79,41 @@ export async function sincronizarLineaMazorcaAcompanamiento(
     numComensales: number;
     mesaNumero: number;
     estadoPedido: EstadoPedido;
-    /** Si no se indica, depende del número de mesa (no en 98/99). */
+    /** Si no se indica, depende de mesa y mazorcaActiva en configuración. */
     usaLineaMazorca?: boolean;
+    mazorcaActiva?: boolean;
     idProductoMazorca?: number | null;
   },
 ): Promise<void> {
-  const productoId = await idProductoMazorcaAcompanamiento(
-    tx,
-    params.idProductoMazorca,
-  );
+  const usaLinea =
+    params.usaLineaMazorca ??
+    pedidoUsaLineaMazorca(params.mesaNumero, params.mazorcaActiva ?? false);
+
+  if (!usaLinea) {
+    await tx.detallePedido.deleteMany({
+      where: {
+        idPedido: params.idPedido,
+        producto: { esAcompanamientoMazorca: true },
+      },
+    });
+    return;
+  }
+
+  let productoId: number;
+  try {
+    productoId = await idProductoMazorcaAcompanamiento(
+      tx,
+      params.idProductoMazorca,
+    );
+  } catch (e) {
+    if (
+      e instanceof BadRequestException &&
+      params.idProductoMazorca == null
+    ) {
+      return;
+    }
+    throw e;
+  }
 
   const lineas = await tx.detallePedido.findMany({
     where: { idPedido: params.idPedido, idProducto: productoId },
@@ -113,9 +126,6 @@ export async function sincronizarLineaMazorcaAcompanamiento(
       listoCocina: true,
     },
   });
-
-  const usaLinea =
-    params.usaLineaMazorca ?? pedidoUsaLineaMazorca(params.mesaNumero);
 
   const plan = planificarSyncMazorca({
     usa_linea_mazorca: usaLinea,
@@ -193,19 +203,33 @@ export async function crearLineaMazorcaInicial(
     idProductoMazorca?: number | null;
   },
 ): Promise<void> {
-  const productoId = await idProductoMazorcaAcompanamiento(
-    tx,
-    params.idProductoMazorca,
+  const usaLinea = pedidoUsaLineaMazorca(
+    params.mesaNumero,
+    params.mazorcaActiva ?? false,
   );
+  if (!usaLinea) return;
+
+  let productoId: number;
+  try {
+    productoId = await idProductoMazorcaAcompanamiento(
+      tx,
+      params.idProductoMazorca,
+    );
+  } catch (e) {
+    if (
+      e instanceof BadRequestException &&
+      params.idProductoMazorca == null
+    ) {
+      return;
+    }
+    throw e;
+  }
   const existe = await tx.detallePedido.findFirst({
     where: { idPedido: params.idPedido, idProducto: productoId },
     select: { idDetalle: true },
   });
   const cantidad = cantidadLineaMazorcaInicial({
-    usa_linea_mazorca: pedidoUsaLineaMazorca(
-      params.mesaNumero,
-      params.mazorcaActiva ?? true,
-    ),
+    usa_linea_mazorca: usaLinea,
     ya_tiene_linea: Boolean(existe),
     num_comensales: params.numComensales,
   });

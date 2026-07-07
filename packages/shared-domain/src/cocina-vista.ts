@@ -239,7 +239,7 @@ export function textoResumenTiposCocina(
   }
   if (conteo.mazorca > 0) {
     parts.push(
-      `${conteo.mazorca} ${conteo.mazorca === 1 ? 'mazorca' : 'mazorcas'}`,
+      `${conteo.mazorca} ${conteo.mazorca === 1 ? 'acompañamiento' : 'acompañamientos'}`,
     );
   }
   if (conteo.sopa > 0) {
@@ -362,7 +362,7 @@ export function mensajeListosParaRecoger(
     parts.push(`${platos} ${platos === 1 ? 'plato' : 'platos'}`);
   }
   if (entradas > 0) {
-    parts.push(`${entradas} ${entradas === 1 ? 'mazorca' : 'mazorcas'}`);
+    parts.push(`${entradas} ${entradas === 1 ? 'acompañamiento' : 'acompañamientos'}`);
   }
   if (parts.length === 0) return `Listo para recoger${sufijo}`;
   const cuerpo =

@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { AnimatedPressable } from './AnimatedPressable';
 import { useAppNavLayout } from '../hooks/useAppNavLayout';
-import { colors } from '../lib/theme';
+import { useVisualTheme } from '../context/VisualThemeContext';
 
 type Props = {
   children?: string;
@@ -13,12 +14,22 @@ type Props = {
 export function HeaderHomeTitle({ children }: Props) {
   const router = useRouter();
   const nav = useAppNavLayout();
+  const { colors } = useVisualTheme();
   const title = (children ?? '').trim();
   const showHomeShortcut = !nav.visible;
 
+  const themed = useMemo(
+    () => ({
+      titleOnly: { ...styles.titleOnly, color: colors.text },
+      homePill: { ...styles.homePill, backgroundColor: colors.primary },
+      subTitle: { ...styles.subTitle, color: colors.textMuted },
+    }),
+    [colors],
+  );
+
   if (!showHomeShortcut) {
     return title ? (
-      <Text numberOfLines={1} style={styles.titleOnly}>
+      <Text numberOfLines={1} style={themed.titleOnly}>
         {title}
       </Text>
     ) : null;
@@ -28,14 +39,14 @@ export function HeaderHomeTitle({ children }: Props) {
     <View style={styles.wrap}>
       <AnimatedPressable
         onPress={() => router.replace('/(app)/mesas')}
-        style={styles.homePill}
+        style={themed.homePill}
         accessibilityRole="button"
         accessibilityLabel="Ir al inicio (mesas)"
       >
         <Ionicons name="home" size={20} color={colors.onPrimary} />
       </AnimatedPressable>
       {!!title && title !== 'Mesas' ? (
-        <Text numberOfLines={1} style={styles.subTitle}>
+        <Text numberOfLines={1} style={themed.subTitle}>
           {title}
         </Text>
       ) : null}
@@ -46,7 +57,6 @@ export function HeaderHomeTitle({ children }: Props) {
 const styles = StyleSheet.create({
   wrap: { alignItems: 'center', justifyContent: 'center' },
   titleOnly: {
-    color: colors.text,
     fontWeight: '700',
     fontSize: 17,
     maxWidth: 280,
@@ -55,7 +65,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: colors.primary,
   },
-  subTitle: { marginTop: 4, color: colors.textMuted, fontWeight: '700', fontSize: 12 },
+  subTitle: { marginTop: 4, fontWeight: '700', fontSize: 12 },
 });

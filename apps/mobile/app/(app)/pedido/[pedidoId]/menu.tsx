@@ -2,17 +2,14 @@ import { categoriaVisibleEnMostrador } from '@la-reserva/shared-domain/categoria
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
-  Platform,
   Pressable,
   ScrollView,
-  SectionList,
   StyleSheet,
   Text,
   View,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
-  type SectionListData,
+  type ViewToken,
 } from 'react-native';
+import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ActionIconBar, type ActionIconItem } from '../../../../src/components/ActionIconBar';
@@ -27,10 +24,10 @@ import { usePermisosMesero } from '../../../../src/hooks/usePermisosMesero';
 import { usePedidoRailRefreshSuave } from '../../../../src/hooks/usePedidoRailRefreshSuave';
 import { useMesasVirtuales } from '../../../../src/hooks/useMesasVirtuales';
 import { PedidoIcon } from '../../../../src/lib/app-icons';
+import { mergePedidoRailActions } from '../../../../src/lib/pedido-rail-actions';
 import { alertarSiSinPapel } from '../../../../src/lib/alarma-impresora';
 import { confirmAppDialog, showBriefNotice, showNotice } from '../../../../src/lib/app-dialog';
 import { pasarCocinaPedido } from '../../../../src/lib/pasar-cocina-pedido';
-import { formStyles } from '../../../../src/lib/form-layout';
 import { categoriaMenuIcon } from '../../../../src/lib/categoria-menu-icon';
 import {
   menuProductoQueryParams,
@@ -43,17 +40,20 @@ import {
   parseRecursoNoDisponible,
 } from '../../../../src/lib/recurso-disponible';
 import { useResponsive } from '../../../../src/hooks/useResponsive';
+import { useThemedStyles } from '../../../../src/hooks/useThemedStyles';
 import { useConfigSync } from '../../../../src/hooks/useConfigSync';
+import { useVisualTheme } from '../../../../src/context/VisualThemeContext';
 import { api } from '../../../../src/lib/api';
 import {
   readMenuTodayCache,
 } from '../../../../src/lib/menu-cache';
 import { formatCOP } from '../../../../src/lib/format';
-import { colors } from '../../../../src/lib/theme';
 import {
-  scrollHeaderIntoView,
-  scrollSectionListToY,
-} from '../../../../src/lib/scroll-section-list';
+  buildMenuListRows,
+  sectionStartIndices,
+  type MenuListRow,
+} from '../../../../src/lib/menu-list-rows';
+import type { AppColors } from '../../../../src/lib/theme';
 import {
   productoAgotado,
   stockEtiqueta,
@@ -75,12 +75,17 @@ type Producto = {
 type Categoria = {
   id_categoria: number;
   nombre: string;
+  icono_menu?: string | null;
   es_bebida?: boolean;
   visible_en_mostrador?: boolean;
   productos: Producto[];
 };
 
-type MenuSection = SectionListData<Producto, { title: string }>;
+type MenuSection = {
+  title: string;
+  icono_menu?: string | null;
+  data: Producto[];
+};
 
 type PedidoMenuSnapshot = {
   id_pedido: number;
@@ -93,29 +98,6 @@ type PedidoMenuSnapshot = {
   }[];
   facturas?: { id_factura: number }[];
 };
-
-/** Alturas estimadas para scroll por offset (SectionList + web). */
-const EST_SECTION_HEADER = 42;
-const EST_ROW = 54;
-const EST_SECTION_GAP = 8;
-
-function buildSectionOffsets(sections: MenuSection[]): number[] {
-  let y = 0;
-  return sections.map((s) => {
-    const start = y;
-    y += EST_SECTION_HEADER + s.data.length * EST_ROW + EST_SECTION_GAP;
-    return start;
-  });
-}
-
-function sectionIndexAtScrollY(offsets: number[], scrollY: number): number {
-  let active = 0;
-  for (let i = 0; i < offsets.length; i++) {
-    if (offsets[i] <= scrollY + 16) active = i;
-    else break;
-  }
-  return active;
-}
 
 export default function MenuPedidoScreen() {
   const { pedidoId, bebidas, paraLlevar } = useLocalSearchParams<{
@@ -130,9 +112,10 @@ export default function MenuPedidoScreen() {
   const mv = useMesasVirtuales();
   const router = useRouter();
   const r = useResponsive();
+  const styles = useThemedStyles(createMenuPedidoStyles);
+  const { colors } = useVisualTheme();
   const idPedidoNum = Number(pedidoId);
-  const listRef = useRef<SectionList<Producto, { title: string }>>(null);
-  const scrollRef = useRef<ScrollView>(null);
+  const listRef = useRef<FlashListRef<MenuListRow>>(null);
   const [data, setData] = useState<{ categorias: Categoria[] } | null>(() =>
     readMenuTodayCache<{ categorias: Categoria[] }>() ?? null,
   );
@@ -150,14 +133,13 @@ export default function MenuPedidoScreen() {
   const [seleccionIds, setSeleccionIds] = useState<Set<number>>(() => new Set());
   const [agregandoLote, setAgregandoLote] = useState(false);
   const programmaticScroll = useRef(false);
-  const scrollYRef = useRef(0);
-  const measuredSectionY = useRef<Record<number, number>>({});
-  const headerRefs = useRef<Map<number, View>>(new Map());
   const categoriaPorProductoRef = useRef<Map<number, string>>(new Map());
 
   const cargarPedidoSnap = useCallback(async () => {
     try {
-      const p = await api<PedidoMenuSnapshot>(`/pedidos/${pedidoId}`, {
+      const p = await api<PedidoMenuSnapshot>(
+        `/pedidos/${pedidoId}?vista=operativa`,
+        {
         token,
         cacheKey: `pedido_${pedidoId}`,
       });
@@ -187,7 +169,7 @@ export default function MenuPedidoScreen() {
     usePedidoRailRefreshSuave(
       cargarPedidoSnap,
       categoriaPorProductoRef,
-      pedidoId,
+      idPedidoNum,
       platosPendientesServidor,
     );
 
@@ -279,8 +261,8 @@ export default function MenuPedidoScreen() {
 
   const pedidoActions = useMemo((): ActionIconItem[] => {
     if (!pedidoSnap) return [];
-    return [
-      permMesero.enviar_cocina
+    return mergePedidoRailActions({
+      cocina: permMesero.enviar_cocina
         ? {
             key: 'cocina',
             icon: PedidoIcon.pasarCocina,
@@ -298,7 +280,7 @@ export default function MenuPedidoScreen() {
             onPress: () => void pasarACocinaManual(),
           }
         : null,
-      permMesero.reimprimir_comanda
+      reimprimir: permMesero.reimprimir_comanda
         ? {
             key: 'reimprimir-cocina',
             icon: PedidoIcon.reimprimirComanda,
@@ -313,7 +295,7 @@ export default function MenuPedidoScreen() {
             onPress: () => void reimprimirComandaCocina(),
           }
         : null,
-      permMesero.cobrar
+      cobrar: permMesero.cobrar
         ? {
             key: 'cobrar',
             icon: PedidoIcon.cobrar,
@@ -322,13 +304,13 @@ export default function MenuPedidoScreen() {
             onPress: () => router.push(`/(app)/pedido/${pedidoId}/factura`),
           }
         : null,
-      {
+      navegacion: {
         key: 'volver',
         icon: 'arrow-back-outline',
         label: 'Volver al pedido',
         onPress: () => router.back(),
       },
-      permMesero.cancelar_pedido
+      cancelar: permMesero.cancelar_pedido
         ? {
             key: 'cancelar',
             icon: 'close-circle-outline',
@@ -340,7 +322,7 @@ export default function MenuPedidoScreen() {
             onPress: () => void cancelarPedidoMenu(),
           }
         : null,
-    ].filter((x): x is NonNullable<typeof x> => x != null);
+    });
   }, [
     pedidoSnap,
     permMesero,
@@ -457,14 +439,17 @@ export default function MenuPedidoScreen() {
     () =>
       categorias.map((c) => ({
         title: c.nombre,
+        icono_menu: c.icono_menu,
         data: c.productos,
       })),
     [categorias],
   );
 
-  const sectionOffsets = useMemo(
-    () => buildSectionOffsets(sections),
-    [sections],
+  const listRows = useMemo(() => buildMenuListRows(sections), [sections]);
+
+  const sectionStarts = useMemo(
+    () => sectionStartIndices(listRows),
+    [listRows],
   );
 
   const productoById = useMemo(() => {
@@ -617,75 +602,54 @@ export default function MenuPedidoScreen() {
     }
   }
 
-  useEffect(() => {
-    measuredSectionY.current = {};
-    headerRefs.current.clear();
-  }, [sections]);
-
   const scrollToSection = useCallback(
     (index: number) => {
-      if (index < 0 || index >= sectionOffsets.length) return;
+      const flatIndex = sectionStarts[index];
+      if (flatIndex == null) return;
       setActiveSection(index);
       programmaticScroll.current = true;
-      const offset =
-        measuredSectionY.current[index] ?? sectionOffsets[index] ?? 0;
-
-      if (Platform.OS === 'web') {
-        const header = headerRefs.current.get(index);
-        if (!scrollHeaderIntoView(header, true)) {
-          scrollRef.current?.scrollTo({ y: offset, animated: true });
-        }
-      } else {
-        scrollSectionListToY(listRef.current, offset, true);
-      }
-
+      listRef.current?.scrollToIndex({ index: flatIndex, animated: true });
       setTimeout(() => {
         programmaticScroll.current = false;
       }, 450);
     },
-    [sectionOffsets],
+    [sectionStarts],
   );
 
-  const onListScroll = useCallback(
-    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      scrollYRef.current = e.nativeEvent.contentOffset.y;
+  const onViewableItemsChanged = useCallback(
+    ({ viewableItems }: { viewableItems: ViewToken<MenuListRow>[] }) => {
       if (programmaticScroll.current) return;
-      const idx = sectionIndexAtScrollY(
-        sectionOffsets.map(
-          (est, i) => measuredSectionY.current[i] ?? est,
-        ),
-        scrollYRef.current,
-      );
-      setActiveSection(idx);
+      for (const token of viewableItems) {
+        const row = token.item;
+        if (row?.kind === 'header') {
+          setActiveSection(row.sectionIndex);
+          return;
+        }
+        if (row?.kind === 'product') {
+          setActiveSection(row.sectionIndex);
+          return;
+        }
+      }
     },
-    [sectionOffsets],
+    [],
   );
 
-  const onScrollEnd = useCallback(() => {
-    programmaticScroll.current = false;
-    const idx = sectionIndexAtScrollY(
-      sectionOffsets.map((est, i) => measuredSectionY.current[i] ?? est),
-      scrollYRef.current,
-    );
-    setActiveSection(idx);
-  }, [sectionOffsets]);
+  const onViewableItemsChangedRef = useRef(onViewableItemsChanged);
+  onViewableItemsChangedRef.current = onViewableItemsChanged;
 
-  function renderSectionHeader(title: string, sectionIndex: number) {
+  const viewabilityPairs = useRef([
+    {
+      viewabilityConfig: { itemVisiblePercentThreshold: 8 },
+      onViewableItemsChanged: (info: { viewableItems: ViewToken<MenuListRow>[] }) =>
+        onViewableItemsChangedRef.current(info),
+    },
+  ]).current;
+
+  function renderSectionHeader(title: string) {
     return (
       <View
-        ref={(node) => {
-          if (sectionIndex >= 0) {
-            if (node) headerRefs.current.set(sectionIndex, node);
-            else headerRefs.current.delete(sectionIndex);
-          }
-        }}
         style={[styles.sectionWrap, { paddingHorizontal: r.contentPadding }]}
         collapsable={false}
-        onLayout={(e) => {
-          if (sectionIndex >= 0) {
-            measuredSectionY.current[sectionIndex] = e.nativeEvent.layout.y;
-          }
-        }}
       >
         <Text style={styles.section}>{title}</Text>
       </View>
@@ -843,7 +807,7 @@ export default function MenuPedidoScreen() {
             <Ionicons
               name="add-circle-outline"
               size={20}
-              color={!modoSeleccion ? colors.surface : colors.primary}
+              color={!modoSeleccion ? colors.onPrimary : colors.primary}
             />
             <Text
               style={[
@@ -866,7 +830,7 @@ export default function MenuPedidoScreen() {
             <Ionicons
               name="checkbox-outline"
               size={20}
-              color={modoSeleccion ? colors.surface : colors.primary}
+              color={modoSeleccion ? colors.onPrimary : colors.primary}
             />
             <Text
               style={[
@@ -935,7 +899,7 @@ export default function MenuPedidoScreen() {
                 <IconTooltipButton
                   key={s.title}
                   iconSet="material-community"
-                  icon={categoriaMenuIcon(s.title)}
+                  icon={categoriaMenuIcon(s.title, s.icono_menu)}
                   label={s.title}
                   variant={on ? 'primary' : 'secondary'}
                   fixedSize
@@ -948,49 +912,27 @@ export default function MenuPedidoScreen() {
         </View>
       ) : null}
 
-      {Platform.OS === 'web' ? (
-        <ScrollView
-          ref={scrollRef}
-          style={styles.listFlex}
-          onScroll={onListScroll}
-          scrollEventThrottle={32}
-          onScrollEndDrag={onScrollEnd}
-          onMomentumScrollEnd={onScrollEnd}
-          contentContainerStyle={{ paddingBottom: listBottomPad }}
-        >
-          {sections.map((section, sectionIndex) => (
-            <View key={section.title}>
-              {renderSectionHeader(section.title, sectionIndex)}
-              {section.data.map((item, index) =>
-                renderProductRow(item, index, section.data.length),
-              )}
-            </View>
-          ))}
-        </ScrollView>
-      ) : (
-        <SectionList
-          ref={listRef}
-          style={styles.listFlex}
-          sections={sections}
-          keyExtractor={(p) => String(p.id_producto)}
-          stickySectionHeadersEnabled
-          initialNumToRender={40}
-          windowSize={15}
-          removeClippedSubviews
-          onScroll={onListScroll}
-          scrollEventThrottle={32}
-          onMomentumScrollEnd={onScrollEnd}
-          onScrollEndDrag={onScrollEnd}
-          contentContainerStyle={{ paddingBottom: listBottomPad }}
-          renderSectionHeader={({ section: { title } }) => {
-            const sectionIndex = sections.findIndex((s) => s.title === title);
-            return renderSectionHeader(title, sectionIndex);
-          }}
-          renderItem={({ item, index, section }) =>
-            renderProductRow(item, index, section.data.length)
+      <FlashList
+        ref={listRef}
+        style={styles.listFlex}
+        data={listRows}
+        keyExtractor={(row) => row.key}
+        getItemType={(row) => row.kind}
+        stickyHeaderConfig={{ hideRelatedCell: true }}
+        viewabilityConfigCallbackPairs={viewabilityPairs}
+        contentContainerStyle={{ paddingBottom: listBottomPad }}
+        keyboardShouldPersistTaps="handled"
+        renderItem={({ item }) => {
+          if (item.kind === 'header') {
+            return renderSectionHeader(item.title);
           }
-        />
-      )}
+          return renderProductRow(
+            item.product,
+            item.indexInSection,
+            item.totalInSection,
+          );
+        }}
+      />
 
       {selectionBarVisible ? (
         <View
@@ -1040,8 +982,9 @@ export default function MenuPedidoScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
+function createMenuPedidoStyles(c: AppColors) {
+  return StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
   listFlex: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   modesBlock: {
@@ -1054,7 +997,7 @@ const styles = StyleSheet.create({
   modesLabel: {
     fontSize: 11,
     fontWeight: '800',
-    color: colors.textMuted,
+    color: c.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: 8,
@@ -1075,52 +1018,52 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 12,
     borderWidth: 1.5,
-    borderColor: colors.primary,
-    backgroundColor: colors.surface,
+    borderColor: c.primary,
+    backgroundColor: c.surface,
   },
   modeBtnActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
+    backgroundColor: c.primary,
+    borderColor: c.primary,
   },
   modeBtnText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.primary,
+    color: c.primary,
   },
   modeBtnTextActive: {
-    color: colors.surface,
+    color: c.onPrimary,
   },
   modeHint: {
     marginTop: 8,
     fontSize: 12,
     lineHeight: 16,
-    color: colors.textMuted,
+    color: c.textMuted,
     textAlign: 'center',
   },
   selectionBar: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-    backgroundColor: colors.surface,
+    borderTopColor: c.border,
+    backgroundColor: c.surface,
     paddingTop: 8,
     paddingBottom: 8,
   },
   selectionCount: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: c.textMuted,
     textAlign: 'center',
     marginBottom: 6,
   },
   selectionActions: {
     justifyContent: 'center',
   },
-  empty: { padding: 24, color: colors.textMuted },
+  empty: { padding: 24, color: c.textMuted },
   catNavWrap: {
     paddingTop: 4,
     paddingBottom: 6,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-    backgroundColor: colors.surfaceMuted,
+    borderBottomColor: c.border,
+    backgroundColor: c.surfaceMuted,
   },
   catNavInner: {
     flexDirection: 'row',
@@ -1133,12 +1076,12 @@ const styles = StyleSheet.create({
   sectionWrap: {
     paddingTop: 10,
     paddingBottom: 4,
-    backgroundColor: colors.background,
+    backgroundColor: c.background,
   },
   section: {
     fontSize: 13,
     fontWeight: '800',
-    color: colors.textMuted,
+    color: c.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
@@ -1149,20 +1092,20 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingLeft: 12,
     paddingRight: 8,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderLeftWidth: 1,
     borderRightWidth: 1,
-    borderColor: colors.border,
+    borderColor: c.border,
   },
   rowSelected: {
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: c.surfaceMuted,
   },
   rowAgotado: {
     opacity: 0.55,
   },
   stockHint: {
     fontSize: 12,
-    color: colors.danger,
+    color: c.danger,
     marginTop: 2,
   },
   rowCheck: {
@@ -1170,7 +1113,7 @@ const styles = StyleSheet.create({
     height: 28,
     borderRadius: 6,
     borderWidth: 2,
-    borderColor: colors.primary,
+    borderColor: c.primary,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
@@ -1178,7 +1121,7 @@ const styles = StyleSheet.create({
   checkBox: {
     fontSize: 16,
     fontWeight: '800',
-    color: colors.primary,
+    color: c.primary,
   },
   rowMain: {
     flex: 1,
@@ -1198,7 +1141,7 @@ const styles = StyleSheet.create({
   },
   rowMid: {
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.borderLight,
+    borderBottomColor: c.borderLight,
   },
   rowLast: {
     borderBottomWidth: 1,
@@ -1209,14 +1152,15 @@ const styles = StyleSheet.create({
   name: {
     flex: 1,
     fontSize: 15,
-    color: colors.text,
+    color: c.text,
     fontWeight: '600',
   },
   price: {
     fontSize: 14,
-    color: colors.primary,
+    color: c.primary,
     fontWeight: '800',
     flexShrink: 0,
   },
-  chev: { fontSize: 18, color: colors.textHint, flexShrink: 0 },
-});
+  chev: { fontSize: 18, color: c.textHint, flexShrink: 0 },
+  });
+}

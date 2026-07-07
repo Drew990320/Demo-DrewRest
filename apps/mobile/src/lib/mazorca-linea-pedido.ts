@@ -1,14 +1,10 @@
-import type { EstadoPedido } from './local-api-types';
-import {
-  NOMBRE_MAZORCA_ACOMPANAMIENTO,
-  pedidoUsaLineaMazorca,
-} from '@la-reserva/shared-domain/mazorca-pedido';
+import { pedidoUsaLineaMazorca } from '@la-reserva/shared-domain/mazorca-pedido';
 import {
   cantidadLineaMazorcaInicial,
   planificarSyncMazorca,
 } from '@la-reserva/shared-domain/mazorca-linea-pedido';
 
-export { NOMBRE_MAZORCA_ACOMPANAMIENTO, pedidoUsaLineaMazorca };
+export { pedidoUsaLineaMazorca };
 
 type ProductoRow = {
   id_producto: number;
@@ -31,7 +27,7 @@ type DetalleRow = {
 type PedidoRow = {
   id_pedido: number;
   num_comensales: number;
-  estado: EstadoPedido;
+  estado: string;
   detalles: DetalleRow[];
 };
 
@@ -43,11 +39,7 @@ export function idProductoMazorcaLocal(
     const cfg = productos.find((p) => p.id_producto === idConfigurado);
     if (cfg) return cfg.id_producto;
   }
-  return productos.find(
-    (p) =>
-      p.es_acompanamiento_mazorca ||
-      p.nombre === NOMBRE_MAZORCA_ACOMPANAMIENTO,
-  )?.id_producto;
+  return productos.find((p) => p.es_acompanamiento_mazorca)?.id_producto;
 }
 
 function lineasMazorca(pedido: PedidoRow, productoId: number): DetalleRow[] {
@@ -59,7 +51,7 @@ export function crearLineaMazorcaInicialLocal(
   mesaNumero: number,
   productoId: number,
   nextDetalleId: () => number,
-  mazorcaActiva = true,
+  mazorcaActiva = false,
 ): void {
   const cantidad = cantidadLineaMazorcaInicial({
     usa_linea_mazorca: pedidoUsaLineaMazorca(mesaNumero, mazorcaActiva),

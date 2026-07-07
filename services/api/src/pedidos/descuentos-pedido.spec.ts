@@ -45,7 +45,7 @@ describe('descuentos-pedido', () => {
   });
 
   describe('calcularDescuentosPedido', () => {
-    it('no aplica descuento de sopas con una sola sopa', () => {
+    it('no aplica promoción legacy de sopas con una sola sopa', () => {
       const r = calcularDescuentosPedido(
         [
           {
@@ -64,11 +64,10 @@ describe('descuentos-pedido', () => {
         configBase,
         false,
       );
-      expect(r.descuento_sopas).toBe(0);
       expect(r.descuento_promociones).toBe(0);
     });
 
-    it('aplica descuento de sopas con 2+ sopas y subtotal alto en otros ítems', () => {
+    it('aplica promoción legacy de sopas con 2+ sopas y subtotal alto en otros ítems', () => {
       const r = calcularDescuentosPedido(
         [
           {
@@ -87,10 +86,10 @@ describe('descuentos-pedido', () => {
         configBase,
         false,
       );
-      expect(r.descuento_sopas).toBe(2 * 5000);
+      expect(r.descuento_promociones).toBe(2 * 5000);
     });
 
-    it('aplica descuento de sopas con min_unidades configurable', () => {
+    it('aplica promoción legacy de sopas con min_unidades configurable', () => {
       const r = calcularDescuentosPedido(
         [
           {
@@ -109,10 +108,10 @@ describe('descuentos-pedido', () => {
         { ...configBase, sopas_min_unidades: 3 },
         false,
       );
-      expect(r.descuento_sopas).toBe(3 * 5000);
+      expect(r.descuento_promociones).toBe(3 * 5000);
     });
 
-    it('no aplica muleros si no alcanza min_platos_principales', () => {
+    it('no aplica promoción por plato principal si no alcanza min_unidades', () => {
       const r = calcularDescuentosPedido(
         [
           {
@@ -124,12 +123,12 @@ describe('descuentos-pedido', () => {
           },
         ],
         { ...configBase, muleros_min_platos_principales: 2 },
-        true,
+        { cliente_mulero: true },
       );
-      expect(r.descuento_muleros).toBe(0);
+      expect(r.descuento_promociones).toBe(0);
     });
 
-    it('aplica descuento muleros por platos principales', () => {
+    it('aplica promoción por platos principales con etiqueta de cliente especial', () => {
       const r = calcularDescuentosPedido(
         [
           {
@@ -141,12 +140,12 @@ describe('descuentos-pedido', () => {
           },
         ],
         configBase,
-        true,
+        { cliente_mulero: true },
       );
-      expect(r.descuento_muleros).toBe(2 * 3000);
+      expect(r.descuento_promociones).toBe(2 * 3000);
     });
 
-    it('no aplica muleros si el cliente no es camionero', () => {
+    it('no aplica promoción por plato principal sin etiqueta en el pedido', () => {
       const r = calcularDescuentosPedido(
         [
           {
@@ -158,9 +157,9 @@ describe('descuentos-pedido', () => {
           },
         ],
         configBase,
-        false,
+        { cliente_mulero: false },
       );
-      expect(r.descuento_muleros).toBe(0);
+      expect(r.descuento_promociones).toBe(0);
     });
   });
 });

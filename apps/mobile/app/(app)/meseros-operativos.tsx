@@ -17,17 +17,19 @@ import { MoneyTextInput } from '../../src/components/MoneyTextInput';
 import { ScreenLoading } from '../../src/components/ScreenLoading';
 import { ScreenScroll } from '../../src/components/ScreenScroll';
 import { useAuth } from '../../src/context/AuthContext';
+import { useVisualTheme } from '../../src/context/VisualThemeContext';
+import { useThemedStyles } from '../../src/hooks/useThemedStyles';
+import type { AppColors } from '../../src/lib/theme';
 import { AccionIcon, AdminIcon } from '../../src/lib/app-icons';
 import { api } from '../../src/lib/api';
 import { confirmAppDialog, showNotice } from '../../src/lib/app-dialog';
 import { digitsFromMonto, parseCOPDigits } from '../../src/lib/cop-input';
 import { fechaCalendarioBogota } from '../../src/lib/fecha-bogota';
 import { formatCOP } from '../../src/lib/format';
-import { formStyles } from '../../src/lib/form-layout';
+import { useFormStyles } from '../../src/lib/form-layout';
 import { avisarSiMontoCOPInvalido } from '../../src/lib/form-validation';
 import { manejarErrorAccion, manejarErrorOperacion } from '../../src/lib/recurso-disponible';
 import { useFormFieldStyle } from '../../src/hooks/useFormFieldStyle';
-import { colors } from '../../src/lib/theme';
 
 type MeseroFila = {
   id_usuario: number;
@@ -80,6 +82,9 @@ function parseFechaInput(iso: string): Date {
 }
 
 export default function MeserosOperativosScreen() {
+  const { colors } = useVisualTheme();
+  const styles = useThemedStyles(createStyles);
+  const formStyles = useFormStyles();
   const { token, user } = useAuth();
   const moneyField = useFormFieldStyle('money');
   const [fecha, setFecha] = useState(() => fechaCalendarioBogota());
@@ -501,65 +506,66 @@ export default function MeserosOperativosScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
+function createStyles(c: AppColors) {
+  return StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
   content: {},
-  intro: { marginBottom: 12, color: colors.textMuted, lineHeight: 20 },
+  intro: { marginBottom: 12, color: c.textMuted, lineHeight: 20 },
   deniedWrap: { flex: 1, padding: 24, justifyContent: 'center' },
-  denied: { textAlign: 'center', color: colors.textMuted },
+  denied: { textAlign: 'center', color: c.textMuted },
   card: {
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderRadius: 12,
     padding: 14,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: colors.borderLight,
+    borderColor: c.borderLight,
   },
   sectionTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: colors.text,
+    color: c.text,
     marginBottom: 8,
   },
   dateBtn: {
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 8,
-    backgroundColor: colors.background,
+    backgroundColor: c.background,
     borderWidth: 1,
-    borderColor: colors.borderInput,
+    borderColor: c.borderInput,
   },
-  dateText: { fontSize: 18, fontWeight: '700', color: colors.text },
-  dateHint: { marginTop: 4, fontSize: 12, color: colors.textMuted },
-  statRow: { fontSize: 15, color: colors.text, marginBottom: 4 },
-  hint: { fontSize: 13, color: colors.textMuted, marginTop: 6, lineHeight: 18 },
-  hintSmall: { fontSize: 12, color: colors.textMuted, marginTop: 4 },
+  dateText: { fontSize: 18, fontWeight: '700', color: c.text },
+  dateHint: { marginTop: 4, fontSize: 12, color: c.textMuted },
+  statRow: { fontSize: 15, color: c.text, marginBottom: 4 },
+  hint: { fontSize: 13, color: c.textMuted, marginTop: 6, lineHeight: 18 },
+  hintSmall: { fontSize: 12, color: c.textMuted, marginTop: 4 },
   cta: { marginBottom: 12 },
   meseroNombre: {
     fontSize: 17,
     fontWeight: '700',
-    color: colors.text,
+    color: c.text,
     marginBottom: 10,
   },
   rowBlock: { marginTop: 8, gap: 6 },
-  rowLabel: { fontSize: 13, fontWeight: '600', color: colors.textMuted },
+  rowLabel: { fontSize: 13, fontWeight: '600', color: c.textMuted },
   rowActions: {
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: 10,
   },
-  okBadge: { color: colors.success, fontWeight: '600', flex: 1 },
+  okBadge: { color: c.success, fontWeight: '600', flex: 1 },
   linkBtn: { paddingVertical: 4, paddingHorizontal: 8 },
-  linkBtnText: { color: colors.danger, fontWeight: '600' },
+  linkBtnText: { color: c.danger, fontWeight: '600' },
   smallBtn: {
     alignSelf: 'center',
     paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 8,
-    backgroundColor: colors.secondary,
+    backgroundColor: c.secondary,
   },
-  smallBtnText: { color: colors.onDark, fontWeight: '600' },
+  smallBtnText: { color: c.onDark, fontWeight: '600' },
   pagoInput: { marginTop: 4, marginBottom: 4, alignSelf: 'stretch' },
   pagoBar: { marginTop: 8 },
   delegacionActiva: {
@@ -568,7 +574,7 @@ const styles = StyleSheet.create({
   },
   delegacionNombre: {
     fontWeight: '700',
-    color: colors.success,
+    color: c.success,
     fontSize: 15,
   },
   delegacionLista: {
@@ -582,20 +588,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: colors.borderInput,
-    backgroundColor: colors.background,
+    borderColor: c.borderInput,
+    backgroundColor: c.background,
   },
   delegacionChipActivo: {
-    borderColor: colors.successBorder,
-    backgroundColor: colors.background,
+    borderColor: c.successBorder,
+    backgroundColor: c.background,
   },
   delegacionChipText: {
     fontWeight: '600',
-    color: colors.text,
+    color: c.text,
     fontSize: 13,
   },
   delegacionChipTextActivo: {
-    color: colors.success,
+    color: c.success,
   },
   modalBackdrop: {
     flex: 1,
@@ -604,12 +610,13 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   modalCard: {
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderRadius: 14,
     padding: 16,
     maxWidth: 420,
     width: '100%',
     alignSelf: 'center',
   },
-  modalTitle: { fontWeight: '900', color: colors.text, marginBottom: 10 },
+  modalTitle: { fontWeight: '900', color: c.text, marginBottom: 10 },
 });
+}

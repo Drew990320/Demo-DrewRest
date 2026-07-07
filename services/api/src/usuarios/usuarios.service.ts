@@ -13,6 +13,7 @@ import { PatchUsuarioDto } from './dto/patch-usuario.dto';
 import { emailMeseroDesdeNombre } from './email-mesero';
 import { nombreUsuarioPublico } from './usuario-display';
 import { validarDesactivarUsuario } from '@la-reserva/shared-domain/mesa-admin-validacion';
+import { restaurantEmailSuffix } from '../common/restaurant-branding';
 
 const PEDIDOS_ABIERTOS = ['abierto', 'en_cocina'] as const;
 
@@ -65,6 +66,7 @@ export class UsuariosService {
         apellido: dto.apellido.trim(),
         email,
         passwordHash,
+        passwordCambiadoEn: new Date(),
         activo: true,
       },
       include: { rol: true },
@@ -72,7 +74,7 @@ export class UsuariosService {
     return this.mapOne(u);
   }
 
-  /** Correo automático primernombre@lareserva.local; sufijo numérico si ya existe. */
+  /** Correo automático primernombre@restaurant.local; sufijo numérico si ya existe. */
   private async resolverEmailMesero(
     emailManual: string | undefined,
     nombre: string,
@@ -96,7 +98,7 @@ export class UsuariosService {
       candidato = emailMeseroDesdeNombre(nombre, String(n));
       n += 1;
       if (n > 99) {
-        candidato = `${localBase}.${Date.now()}@lareserva.local`;
+        candidato = `${localBase}.${Date.now()}${restaurantEmailSuffix()}`;
         break;
       }
     }
@@ -134,12 +136,17 @@ export class UsuariosService {
       }
     }
 
-    const data: { activo?: boolean; passwordHash?: string } = {};
+    const data: {
+      activo?: boolean;
+      passwordHash?: string;
+      passwordCambiadoEn?: Date;
+    } = {};
     if (dto.activo !== undefined) {
       data.activo = dto.activo;
     }
     if (dto.password?.trim()) {
       data.passwordHash = await bcrypt.hash(dto.password.trim(), 10);
+      data.passwordCambiadoEn = new Date();
     }
     if (Object.keys(data).length === 0) {
       return this.mapOne(target);

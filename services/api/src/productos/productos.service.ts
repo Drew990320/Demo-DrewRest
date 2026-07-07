@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -62,6 +63,7 @@ function mapProducto(p: {
   stockDisponible: number;
   ocultarSinStock: boolean;
   categoria: { nombre: string; esBebida?: boolean };
+  _count?: { detalles: number };
 }) {
   return {
     id_producto: p.idProducto,
@@ -79,6 +81,7 @@ function mapProducto(p: {
     stock_disponible: p.stockDisponible,
     ocultar_sin_stock: p.ocultarSinStock,
     es_bebida: p.categoria.esBebida ?? false,
+    total_usos_pedido: p._count?.detalles ?? 0,
   };
 }
 
@@ -123,7 +126,12 @@ export class ProductosService {
   async listarProductos(incluirInactivos: boolean) {
     const rows = await this.prisma.producto.findMany({
       where: incluirInactivos ? {} : { activo: true },
-      include: { categoria: { select: { nombre: true, esBebida: true } } },
+      include: {
+        categoria: { select: { nombre: true, esBebida: true } },
+        ...(incluirInactivos
+          ? { _count: { select: { detalles: true } } }
+          : {}),
+      },
       orderBy: [{ categoria: { nombre: 'asc' } }, { nombre: 'asc' }],
     });
     return rows.map(mapProducto);
@@ -236,5 +244,44 @@ export class ProductosService {
   async desactivar(idProducto: number) {
     const result = await this.actualizar(idProducto, { activo: false });
     return result;
+  }
+
+  async eliminarPermanente(idProducto: number) {
+    const existing = await this.prisma.producto.findUnique({
+      where: { idProducto },
+      include: { _count: { select: { detalles: true } } },
+    });
+    if (!existing) {
+      throw new NotFoundException('Producto no encontrado');
+    }
+    if (existing._count.detalles > 0) {
+      throw new ConflictException(
+        'Tiene historial de pedidos — no se puede eliminar; solo ocultar del menú',
+      );
+    }
+    const cfg = await this.prisma.configOperativa.findFirst({
+      where: {
+        OR: [
+          { idProductoMazorca: idProducto },
+          { idProductoSodaAlmuerzo: idProducto },
+          { idProductoCuotaPendiente: idProducto },
+        ],
+      },
+    });
+    if (cfg) {
+      throw new ConflictException(
+        'El producto está referenciado en la configuración del sistema',
+      );
+    }
+    if (existing.esAcompanamientoMazorca) {
+      await this.prisma.configOperativa.updateMany({
+        where: { idProductoMazorca: idProducto },
+        data: { idProductoMazorca: null },
+      });
+      invalidateMazorcaProductIdCache();
+    }
+    await this.prisma.producto.delete({ where: { idProducto } });
+    this.gateway.emitConfigActualizada('menu');
+    return { ok: true, id_producto: idProducto };
   }
 }

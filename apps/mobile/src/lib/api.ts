@@ -6,6 +6,7 @@ import {
   notifyUnauthorized,
   parseUnauthorizedMessage,
 } from './auth-session';
+import { tryRefreshAccessToken } from './auth-token-refresh';
 
 const inflightGet = new Map<string, Promise<unknown>>();
 
@@ -187,6 +188,30 @@ export async function api<T = unknown>(
         : (err.message as string) || res.statusText;
       const message = msg || `HTTP ${res.status}`;
       if (res.status === 401 && token) {
+        const renewed = await tryRefreshAccessToken();
+        if (renewed) {
+          headers.set('Authorization', `Bearer ${renewed}`);
+          const { signal: retrySignal, cleanup: retryCleanup } = mergeAbortSignals(
+            fetchOpts.signal,
+            timeoutMs,
+          );
+          try {
+            const retryRes = await fetch(url, {
+              ...fetchOpts,
+              headers,
+              signal: retrySignal,
+            });
+            const retryBody = (await retryRes.json().catch(() => null)) as unknown;
+            if (retryRes.ok) {
+              if (cacheKey && isGet) {
+                await writeOfflineCache(cacheKey, retryBody as T);
+              }
+              return retryBody as T;
+            }
+          } finally {
+            retryCleanup();
+          }
+        }
         await notifyUnauthorized(parseUnauthorizedMessage(message), message);
       }
       throw new ApiHttpError(message, res.status);

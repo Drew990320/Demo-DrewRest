@@ -1,88 +1,91 @@
 /**
- * Marca La Reserva (terracota, dorado, crema) + colores semánticos intuitivos.
+ * Marca DrewRest (azul pastel, navy suave) + colores semánticos intuitivos.
  * La marca va en botones y chrome; los estados usan verde/ámbar/rojo/azul suaves.
  */
 export const colors = {
-  background: '#FAF6F0',
-  backgroundAlt: '#F3EDE4',
+  background: '#EDF3FA',
+  backgroundAlt: '#E4ECF5',
   surface: '#FFFFFF',
-  surfaceMuted: '#F8F3EB',
+  surfaceMuted: '#F9FBFD',
 
-  primary: '#C47A72',
-  primaryDark: '#A86158',
-  primaryLight: '#F5E8E6',
-  primaryMuted: '#E8CCC8',
+  primary: '#82B5D6',
+  primaryDark: '#5E96B8',
+  primaryLight: '#F0F6FA',
+  primaryMuted: '#DCEAF4',
+  primarySoft: '#DCEAF4',
   onPrimary: '#FFFFFF',
 
-  secondary: '#D4A574',
-  secondaryDark: '#B8895A',
-  secondaryLight: '#FBF0E3',
+  onPrimaryMuted: '#BAD6E8',
+
+  secondary: '#A3C9E3',
+  secondaryDark: '#86A5BA',
+  secondaryLight: '#F1F7FB',
   onSecondary: '#FFFFFF',
 
-  cocina: '#C9925A',
-  cocinaDark: '#A67544',
+  cocina: '#97C2DE',
+  cocinaDark: '#497590',
 
-  text: '#3D3630',
-  textMuted: '#7A7268',
-  textHint: '#A39A8F',
-  onDark: '#FAF6F0',
+  text: '#3D4F63',
+  textMuted: '#6B7D91',
+  textHint: '#A6B2C0',
+  onDark: '#57687A',
 
-  border: '#E8DFD4',
-  borderLight: '#F0E9DF',
-  borderInput: '#DDD4C8',
+  border: '#CDD9E8',
+  borderLight: '#E4EAF2',
+  borderInput: '#B4BFCC',
 
   /** Verde — disponible, listo, confirmado */
-  success: '#3D9B62',
-  successDark: '#2E7D4A',
-  successLight: '#E2F5E8',
-  successBorder: '#5CB87A',
-  successText: '#2E7D4A',
+  success: '#3C9A5F',
+  successDark: '#2C7748',
+  successLight: '#E3F2E9',
+  successBorder: '#51B877',
+  successText: '#2C7748',
 
   /** Ámbar — pendiente, recuerda hacer algo */
-  warning: '#D4922A',
-  warningDark: '#9A6418',
-  warningLight: '#FFF3DC',
-  warningBorder: '#E5A82E',
-  warningText: '#9A6418',
+  warning: '#C69239',
+  warningDark: '#997029',
+  warningLight: '#F4EDE1',
+  warningBorder: '#C79A4D',
+  warningText: '#936E2F',
 
   /** Rojo — ocupado, urgente, error */
-  danger: '#D64545',
-  dangerDark: '#B83232',
-  dangerLight: '#FDE8E8',
-  dangerBorder: '#E86060',
-  dangerText: '#B83232',
+  danger: '#CE3B3B',
+  dangerDark: '#A52727',
+  dangerLight: '#F7E8E8',
+  dangerBorder: '#D04E4E',
+  dangerText: '#9F2D2D',
 
   /** Azul — información, ayuda a otros */
-  info: '#5A8FB0',
-  infoDark: '#3D5F7A',
-  infoLight: '#E8F1F8',
-  infoBorder: '#7BA3C4',
-  infoText: '#3D5F7A',
+  info: '#4E72A6',
+  infoDark: '#375581',
+  infoLight: '#EBEFF4',
+  infoBorder: '#6282B2',
+  infoText: '#39557F',
 
-  mesaLibre: '#2E7D4A',
-  mesaLibreBg: '#E2F5E8',
-  mesaLibreBorder: '#5CB87A',
-  mesaOcupada: '#B83232',
-  mesaOcupadaBg: '#FDE8E8',
-  mesaOcupadaBorder: '#E86060',
-  mesaReservada: '#9A6418',
-  mesaReservadaBg: '#FFF3DC',
-  mesaReservadaBorder: '#E5A82E',
+  mesaLibre: '#2C7748',
+  mesaLibreBg: '#E3F2E9',
+  mesaLibreBorder: '#51B877',
+  mesaOcupada: '#A52727',
+  mesaOcupadaBg: '#F7E8E8',
+  mesaOcupadaBorder: '#D04E4E',
+  mesaReservada: '#997029',
+  mesaReservadaBg: '#F4EDE1',
+  mesaReservadaBorder: '#C79A4D',
 
-  offline: '#8B7368',
+  offline: '#6B7D91',
 
-  onInfoMuted: '#D4E4F7',
-  onInfoSoft: '#E8F0FA',
+  onInfoMuted: '#95AAC9',
+  onInfoSoft: '#F3F5F8',
 
-  prioridadAlta: '#D64545',
-  prioridadAltaLight: '#FDE8E8',
-  prioridadAltaText: '#B83232',
-  prioridadBaja: '#D4922A',
-  prioridadBajaLight: '#FFF3DC',
-  prioridadBajaText: '#9A6418',
+  prioridadAlta: '#CE3B3B',
+  prioridadAltaLight: '#F7E8E8',
+  prioridadAltaText: '#9F2D2D',
+  prioridadBaja: '#C69239',
+  prioridadBajaLight: '#F4EDE1',
+  prioridadBajaText: '#936E2F',
 } as const;
 
-export type AppColors = typeof colors;
+export type AppColors = { [K in keyof typeof colors]: string };
 
 /** Atajos para banners y tarjetas de estado */
 export const status = {

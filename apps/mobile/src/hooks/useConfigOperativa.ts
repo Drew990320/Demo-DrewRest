@@ -21,7 +21,7 @@ export type ConfigOperativa = {
 
 const DEFAULT: ConfigOperativa = {
   precio_empaque_para_llevar: 1000,
-  mazorca_activa: true,
+  mazorca_activa: false,
   id_producto_mazorca: null,
   producto_mazorca_nombre: null,
   numero_mesa_para_llevar: 98,
@@ -39,7 +39,7 @@ const DEFAULT: ConfigOperativa = {
 let memCache: ConfigOperativa | null = null;
 let inflightReload: Promise<ConfigOperativa> | null = null;
 
-/** Config operativa del restaurante (empaque, mazorca). */
+/** Config operativa del restaurante (empaque, acompañamiento opcional). */
 export function useConfigOperativa() {
   const { token } = useAuth();
   const [config, setConfig] = useState<ConfigOperativa>(memCache ?? DEFAULT);

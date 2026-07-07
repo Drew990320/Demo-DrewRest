@@ -1,10 +1,11 @@
 import { TextInput, type TextInputProps } from 'react-native';
+import { useVisualTheme } from '../context/VisualThemeContext';
 import {
   formatCOPInput,
   sanitizeMontoDigitos,
 } from '../lib/cop-input';
 import { formatCOP } from '../lib/format';
-import { colors } from '../lib/theme';
+import { textInputPlaceholderColor } from '../lib/form-layout';
 
 type Props = Omit<
   TextInputProps,
@@ -22,9 +23,11 @@ export function MoneyTextInput({
   onChangeDigits,
   placeholderAmount,
   placeholder,
-  placeholderTextColor = colors.textHint,
+  placeholderTextColor,
+  style,
   ...rest
 }: Props) {
+  const { colors } = useVisualTheme();
   const resolvedPlaceholder =
     placeholder ??
     (placeholderAmount != null ? formatCOP(placeholderAmount) : undefined);
@@ -36,7 +39,8 @@ export function MoneyTextInput({
       value={formatCOPInput(digits)}
       onChangeText={(t) => onChangeDigits(sanitizeMontoDigitos(t))}
       placeholder={resolvedPlaceholder}
-      placeholderTextColor={placeholderTextColor}
+      placeholderTextColor={placeholderTextColor ?? textInputPlaceholderColor(colors)}
+      style={[{ color: colors.text }, style]}
     />
   );
 }

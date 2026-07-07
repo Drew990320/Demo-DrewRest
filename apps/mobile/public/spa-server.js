@@ -1,5 +1,5 @@
 /**
- * Servidor estático mínimo para La Reserva (solo Node.js, sin npm ni internet).
+ * Servidor estático mínimo para la app web (solo Node.js, sin npm ni internet).
  * Sirve la carpeta actual con fallback SPA → index.html
  * Si el puerto preferido está ocupado (p. ej. Postgres EDB en 8080), prueba el siguiente.
  */
@@ -128,7 +128,7 @@ function onListening(port, preferred) {
   const lan = findRestaurantLanIp();
 
   console.log('');
-  console.log('La Reserva web activa:');
+  console.log('App web activa:');
   console.log('');
   console.log(`  En ESTE PC (navegador):  http://localhost:${port}`);
   if (lan) {

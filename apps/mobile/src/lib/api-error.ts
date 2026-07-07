@@ -91,8 +91,9 @@ const REEMPLAZOS_MENSAJE: { match: RegExp; mensaje: string }[] = [
     mensaje: 'Tu cuenta no tiene rol de mesero configurado. Pide ayuda al administrador.',
   },
   {
-    match: /producto de mazorca no encontrado/i,
-    mensaje: 'No se encontró el producto de mazorca en el menú. Avísale al administrador.',
+    match: /producto de mazorca no encontrado|acompañamiento por comensal no configurado|producto de acompañamiento/i,
+    mensaje:
+      'El acompañamiento opcional no está configurado. El pedido puede continuar; revísalo en Configuración si lo necesitas.',
   },
   {
     match: /undefined|null is not|typeerror|referenceerror|syntaxerror/i,

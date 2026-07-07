@@ -6,8 +6,9 @@ import {
   esMesaParaLlevarNumero,
 } from '../lib/mesa-label';
 import { useMesasVirtuales } from '../hooks/useMesasVirtuales';
+import { useThemedStyles } from '../hooks/useThemedStyles';
 import { appShadow } from '../lib/shadow';
-import { colors } from '../lib/theme';
+import type { AppColors } from '../lib/theme';
 import { CtaButton } from './CtaButton';
 
 type Props = {
@@ -61,6 +62,42 @@ function copyPanel(
       };
 }
 
+function createStyles(c: AppColors) {
+  return StyleSheet.create({
+    wrap: {
+      gap: 12,
+    },
+    wrapOtro: {
+      marginTop: 4,
+      padding: 14,
+      borderRadius: 14,
+      backgroundColor: c.backgroundAlt,
+      borderWidth: 1,
+      borderColor: c.border,
+      ...appShadow('soft'),
+    },
+    kickerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+    },
+    kickerDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: c.secondary,
+    },
+    kicker: {
+      fontSize: 11,
+      fontWeight: '800',
+      letterSpacing: 0.6,
+      textTransform: 'uppercase',
+      color: c.textMuted,
+    },
+  });
+}
+
 export function PanelNuevoTicketVirtual({
   mesaNumero,
   modo,
@@ -68,6 +105,7 @@ export function PanelNuevoTicketVirtual({
   onAbrir,
 }: Props) {
   const { config } = useMesasVirtuales();
+  const styles = useThemedStyles(createStyles);
   const { titulo, subtitulo, icon } = copyPanel(mesaNumero, modo, config);
 
   return (
@@ -89,37 +127,3 @@ export function PanelNuevoTicketVirtual({
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  wrap: {
-    gap: 12,
-  },
-  wrapOtro: {
-    marginTop: 4,
-    padding: 14,
-    borderRadius: 14,
-    backgroundColor: colors.backgroundAlt,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    ...appShadow('soft'),
-  },
-  kickerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  kickerDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.secondary,
-  },
-  kicker: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-    color: colors.textMuted,
-  },
-});

@@ -25,10 +25,12 @@ export class AuthService {
     if (!ok) {
       throw new UnauthorizedException('Credenciales inválidas');
     }
+    const pwdAt = (user.passwordCambiadoEn ?? user.creadoEn).getTime();
     const payload = {
       sub: user.idUsuario,
       email: user.email,
       rol: user.rol.nombre,
+      pwdAt,
     };
     const { nombre, apellido } = nombreUsuarioPublico(
       user.nombre,
@@ -37,6 +39,7 @@ export class AuthService {
     );
     return {
       access_token: await this.jwt.signAsync(payload),
+      expires_in: this.jwtExpiresSeconds(),
       user: {
         id: user.idUsuario,
         nombre,
@@ -45,6 +48,39 @@ export class AuthService {
         rol: user.rol.nombre,
       },
     };
+  }
+
+  /** Emite un JWT nuevo si la sesión sigue válida (mismo criterio que JwtStrategy). */
+  async refresh(actor: Usuario & { rol: { nombre: string } }) {
+    const user = await this.prisma.usuario.findUnique({
+      where: { idUsuario: actor.idUsuario },
+      include: { rol: true },
+    });
+    if (!user?.activo) {
+      throw new UnauthorizedException('Sesión inválida');
+    }
+    const pwdAt = (user.passwordCambiadoEn ?? user.creadoEn).getTime();
+    const payload = {
+      sub: user.idUsuario,
+      email: user.email,
+      rol: user.rol.nombre,
+      pwdAt,
+    };
+    return {
+      access_token: await this.jwt.signAsync(payload),
+      expires_in: this.jwtExpiresSeconds(),
+    };
+  }
+
+  private jwtExpiresSeconds(): number {
+    const raw = process.env.JWT_EXPIRES_IN?.trim() ?? '24h';
+    const m = /^(\d+)([smhd])$/i.exec(raw);
+    if (!m) return 86_400;
+    const n = Number(m[1]);
+    const unit = m[2].toLowerCase();
+    const mult =
+      unit === 's' ? 1 : unit === 'm' ? 60 : unit === 'h' ? 3600 : 86_400;
+    return n * mult;
   }
 
   async verifyPassword(user: Usuario, password: string) {

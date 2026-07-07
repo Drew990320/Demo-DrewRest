@@ -65,4 +65,24 @@ export type BaseCajaTicket = {
 
 };
 
+/** Comprobante al registrar el arqueo de cierre del día. */
+export type BaseCajaCierreTicket = {
+  fecha: string;
+  monto_base_cierre_efectivo: number;
+  efectivo_esperado_en_caja?: number;
+  emitida_en: string;
+};
+
+/** Comprobante de entrada o salida manual de caja. */
+export type MovimientoCajaTicket = {
+  id_movimiento: number;
+  tipo: 'entrada_manual' | 'salida_manual';
+  fecha: string;
+  monto: number;
+  motivo: string;
+  registrado_por: string;
+  creado_en: string;
+  emitida_en: string;
+};
+
 

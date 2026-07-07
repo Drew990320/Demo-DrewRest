@@ -181,7 +181,7 @@ describe('factura-lineas-group', () => {
 
     expect(lineas).toEqual([
       {
-        cantidad: 10,
+        cantidad: 8,
         nombre_producto: 'Club Colombia',
         precio_unitario: 6000,
         subtotal_linea: 48000,

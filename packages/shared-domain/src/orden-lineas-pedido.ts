@@ -6,7 +6,7 @@ import { esDetalleMazorcaAcompanamiento } from './mazorca-pedido';
 
 /**
  * Secciones fijas para listar / imprimir pedidos y facturas:
- * mazorcas → platos fuertes → menú infantil → entradas → bebidas → empacables.
+ * mazorca (acompañamiento opcional) → platos fuertes → menú infantil → entradas → bebidas → empacables.
  */
 export type SeccionLineaPedido =
   | 'mazorca'
@@ -39,10 +39,6 @@ export type LineaPedidoOrdenInput = {
   esEmpacable?: boolean;
 };
 
-function nombreEsMazorca(nombre?: string): boolean {
-  return (nombre ?? '').trim().toLowerCase().includes('mazorca');
-}
-
 function categoriaEsMenuInfantil(cat?: string): boolean {
   const c = (cat ?? '').trim().toLowerCase();
   return c === 'menú infantil' || c === 'menu infantil';
@@ -62,7 +58,7 @@ function categoriaEsEntrada(cat?: string): boolean {
 }
 
 export function seccionLineaPedido(d: LineaPedidoOrdenInput): SeccionLineaPedido {
-  if (esDetalleMazorcaAcompanamiento(d) || nombreEsMazorca(d.nombre_producto)) {
+  if (esDetalleMazorcaAcompanamiento(d)) {
     return 'mazorca';
   }
 

@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseIntPipe,
@@ -37,5 +38,10 @@ export class CategoriasController {
     @Body() dto: UpdateCategoriaDto,
   ) {
     return this.categorias.actualizar(id, dto);
+  }
+
+  @Delete('admin/:id')
+  eliminar(@Param('id', ParseIntPipe) id: number) {
+    return this.categorias.eliminar(id);
   }
 }

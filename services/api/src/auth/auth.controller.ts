@@ -39,6 +39,13 @@ export class AuthController {
     };
   }
 
+  @SkipThrottle()
+  @UseGuards(JwtAuthGuard)
+  @Post('refresh')
+  refresh(@Req() req: Request & { user: Usuario & { rol: { nombre: string } } }) {
+    return this.auth.refresh(req.user);
+  }
+
   /** Confirma la contraseña del admin (p. ej. habilitar acciones de prueba en caja). */
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @UseGuards(JwtAuthGuard, RolesGuard)

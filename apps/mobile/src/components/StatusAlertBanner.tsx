@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text } from 'react-native';
-import { status } from '../lib/theme';
+import { useVisualTheme } from '../context/VisualThemeContext';
+import { statusFromAppColors } from '../lib/visual-theme';
 
 export type StatusAlertVariant = 'recoger' | 'cocina' | 'ayuda' | 'cobro';
 
@@ -10,15 +11,18 @@ type Props = {
   onPress?: () => void;
 };
 
-const PALETTE = {
-  recoger: status.ok,
-  cocina: status.warn,
-  ayuda: status.info,
-  cobro: status.busy,
-} as const;
-
 export function StatusAlertBanner({ variant, title, message, onPress }: Props) {
-  const p = PALETTE[variant];
+  const { colors } = useVisualTheme();
+  const palette = statusFromAppColors(colors);
+  const p =
+    variant === 'recoger'
+      ? palette.ok
+      : variant === 'cocina'
+        ? palette.warn
+        : variant === 'ayuda'
+          ? palette.info
+          : palette.busy;
+
   return (
     <Pressable
       onPress={onPress}
@@ -38,18 +42,17 @@ const styles = StyleSheet.create({
   banner: {
     borderRadius: 12,
     borderWidth: StyleSheet.hairlineWidth,
-    borderLeftWidth: 3,
-    padding: 14,
+    padding: 12,
     marginBottom: 12,
   },
   title: {
     fontWeight: '700',
     fontSize: 14,
-    marginBottom: 2,
+    marginBottom: 4,
   },
   message: {
     fontSize: 13,
     lineHeight: 18,
-    opacity: 0.9,
+    fontWeight: '600',
   },
 });

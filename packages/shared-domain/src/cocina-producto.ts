@@ -67,7 +67,7 @@ export function tipoLineaCocina(d: LineaCocinaTipoInput): TipoLineaCocina {
 export function etiquetaTipoLineaCocina(tipo: TipoLineaCocina): string {
   switch (tipo) {
     case 'mazorca':
-      return 'Mazorca';
+      return 'Acompañamiento';
     case 'entrada':
       return 'Entrada';
     case 'adicional':

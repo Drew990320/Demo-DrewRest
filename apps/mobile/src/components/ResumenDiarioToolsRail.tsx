@@ -4,7 +4,10 @@ import { AccionIcon } from '../lib/app-icons';
 import { formatCOP } from '../lib/format';
 import { tituloLugarMesa } from '../lib/mesa-label';
 import { RESUMEN_TOOLS_RAIL_WIDTH } from '../lib/layout-constants';
-import { colors } from '../lib/theme';
+import type { AppColors } from '../lib/theme';
+import { useVisualTheme } from '../context/VisualThemeContext';
+import { useThemedStyles } from '../hooks/useThemedStyles';
+import { AppNavChrome } from './AppNavChrome';
 import { IconTooltipButton } from './IconTooltipButton';
 import type { ActionIconItem } from './ActionIconBar';
 
@@ -39,9 +42,11 @@ type Props = {
 function RailSection({
   title,
   actions,
+  styles,
 }: {
   title: string;
   actions: ActionIconItem[];
+  styles: ReturnType<typeof createResumenDiarioRailStyles>;
 }) {
   return (
     <View style={styles.section}>
@@ -87,13 +92,19 @@ export function ResumenDiarioToolsRail({
   onReabrirCobro,
 }: Props) {
   const insets = useSafeAreaInsets();
+  const { colors } = useVisualTheme();
+  const styles = useThemedStyles(createResumenDiarioRailStyles);
   const pedidoPagado = pedidoGrupoAccion?.pedido_estado === 'facturado';
 
   return (
-    <View
+    <AppNavChrome
       style={[
         styles.rail,
-        { paddingTop: Math.max(insets.top, 8), paddingBottom: Math.max(insets.bottom, 12) },
+        {
+          paddingTop: Math.max(insets.top, 8),
+          paddingBottom: Math.max(insets.bottom, 12),
+          borderLeftColor: colors.border,
+        },
       ]}
     >
       <ScrollView
@@ -102,9 +113,9 @@ export function ResumenDiarioToolsRail({
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <RailSection title="Caja" actions={cajaActions} />
+        <RailSection title="Caja" actions={cajaActions} styles={styles} />
         <View style={styles.divider} />
-        <RailSection title="Impresión" actions={impresionActions} />
+        <RailSection title="Impresión" actions={impresionActions} styles={styles} />
         <View style={styles.divider} />
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Pruebas</Text>
@@ -248,71 +259,71 @@ export function ResumenDiarioToolsRail({
           )}
         </View>
       </ScrollView>
-    </View>
+    </AppNavChrome>
   );
 }
 
-const styles = StyleSheet.create({
-  rail: {
-    width: RESUMEN_TOOLS_RAIL_WIDTH,
-    flexShrink: 0,
-    alignSelf: 'stretch',
-    backgroundColor: colors.surface,
-    borderLeftWidth: StyleSheet.hairlineWidth,
-    borderLeftColor: colors.border,
-    ...Platform.select({
-      web: { boxShadow: '-2px 0 12px rgba(61,54,48,0.06)' } as object,
-      default: {},
-    }),
-  },
-  scroll: { flex: 1 },
-  scrollContent: {
-    paddingHorizontal: 10,
-    paddingBottom: 16,
-    gap: 6,
-  },
-  section: {
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 6,
-  },
-  sectionTitle: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-    textAlign: 'center',
-  },
-  actionsCol: {
-    alignItems: 'center',
-    gap: 10,
-    width: '100%',
-  },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.border,
-    marginVertical: 6,
-    alignSelf: 'stretch',
-  },
-  pedidoInput: {
-    width: '100%',
-    borderWidth: 1,
-    borderColor: colors.borderInput,
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.text,
-    textAlign: 'center',
-    backgroundColor: colors.surfaceMuted,
-  },
-  pedidoHint: {
-    fontSize: 10,
-    lineHeight: 14,
-    color: colors.textMuted,
-    textAlign: 'center',
-    width: '100%',
-  },
-});
+function createResumenDiarioRailStyles(c: AppColors) {
+  return StyleSheet.create({
+    rail: {
+      width: RESUMEN_TOOLS_RAIL_WIDTH,
+      flexShrink: 0,
+      alignSelf: 'stretch',
+      borderLeftWidth: StyleSheet.hairlineWidth,
+      ...Platform.select({
+        web: { boxShadow: '-2px 0 12px rgba(61,54,48,0.06)' } as object,
+        default: {},
+      }),
+    },
+    scroll: { flex: 1 },
+    scrollContent: {
+      paddingHorizontal: 10,
+      paddingBottom: 16,
+      gap: 6,
+    },
+    section: {
+      alignItems: 'center',
+      gap: 8,
+      paddingVertical: 6,
+    },
+    sectionTitle: {
+      fontSize: 11,
+      fontWeight: '800',
+      color: c.textMuted,
+      textTransform: 'uppercase',
+      letterSpacing: 0.4,
+      textAlign: 'center',
+    },
+    actionsCol: {
+      alignItems: 'center',
+      gap: 10,
+      width: '100%',
+    },
+    divider: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: c.border,
+      marginVertical: 6,
+      alignSelf: 'stretch',
+    },
+    pedidoInput: {
+      width: '100%',
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: 10,
+      paddingVertical: 8,
+      paddingHorizontal: 10,
+      fontSize: 15,
+      fontWeight: '700',
+      color: c.text,
+      textAlign: 'center',
+      backgroundColor: c.surfaceMuted,
+    },
+    pedidoHint: {
+      fontSize: 10,
+      lineHeight: 14,
+      color: c.textMuted,
+      textAlign: 'center',
+      width: '100%',
+    },
+  });
+}

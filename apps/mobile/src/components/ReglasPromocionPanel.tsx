@@ -10,9 +10,11 @@ import {
 import { ActionIconBar } from './ActionIconBar';
 import { IconTooltipButton } from './IconTooltipButton';
 import { MoneyTextInput } from './MoneyTextInput';
+import { useVisualTheme } from '../context/VisualThemeContext';
+import { useThemedStyles } from '../hooks/useThemedStyles';
 import { digitsFromMonto, parseCOPDigits } from '../lib/cop-input';
-import { formStyles } from '../lib/form-layout';
-import { colors } from '../lib/theme';
+import { useFormStyles } from '../lib/form-layout';
+import type { AppColors } from '../lib/theme';
 import {
   nuevaReglaPromocionId,
   type ReglaPromocionPorCategoria,
@@ -31,6 +33,9 @@ export function ReglasPromocionPanel({
   categorias,
   onChange,
 }: Props) {
+  const { colors } = useVisualTheme();
+  const styles = useThemedStyles(createStyles);
+  const formStyles = useFormStyles();
   const [idCategoria, setIdCategoria] = useState<number | null>(
     categorias[0]?.id_categoria ?? null,
   );
@@ -190,21 +195,22 @@ export function ReglasPromocionPanel({
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(c: AppColors) {
+  return StyleSheet.create({
   wrap: { marginTop: 4 },
   hint: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: c.textMuted,
     marginBottom: 10,
     lineHeight: 17,
   },
   reglaRow: {
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: c.border,
     borderRadius: 10,
     padding: 10,
     marginBottom: 8,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
   },
   reglaHead: {
     flexDirection: 'row',
@@ -212,16 +218,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 8,
   },
-  reglaTitle: { flex: 1, fontWeight: '700', color: colors.text },
+  reglaTitle: { flex: 1, fontWeight: '700', color: c.text },
   reglaMeta: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: c.textMuted,
     marginVertical: 6,
   },
   fieldGap: { marginTop: 8 },
   fieldLabel: {
     fontWeight: '600',
-    color: colors.text,
+    color: c.text,
     marginBottom: 6,
     marginTop: 4,
     fontSize: 13,
@@ -240,26 +246,28 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: c.border,
     maxWidth: 140,
     alignItems: 'center',
     justifyContent: 'center',
   },
   chipOn: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primaryMuted,
+    borderColor: c.primary,
+    backgroundColor: c.primaryMuted,
   },
-  chipText: { fontSize: 12, color: colors.textMuted, textAlign: 'center' },
-  chipTextOn: { color: colors.primary, fontWeight: '600' },
+  chipText: { fontSize: 12, color: c.textMuted, textAlign: 'center' },
+  chipTextOn: { color: c.primary, fontWeight: '600' },
   input: {
     borderWidth: 1,
-    borderColor: colors.borderInput,
+    borderColor: c.borderInput,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     marginBottom: 8,
+    color: c.text,
   },
   pairRow: { flexDirection: 'row', gap: 10 },
   pairCol: { flex: 1 },
 });
+}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  FlatList,
   InteractionManager,
   Modal,
   Platform,
@@ -19,7 +20,9 @@ import { ActionIconBar } from '../../src/components/ActionIconBar';
 import { useResumenDiarioToolsRail } from '../../src/context/ResumenDiarioToolsRailContext';
 import type { ActionIconItem } from '../../src/components/ActionIconBar';
 import { FormModal } from '../../src/components/FormModal';
-import { ResumenSeccionAccordion } from '../../src/components/ResumenSeccionAccordion';
+import { ResumenSeccionNav, type ResumenSeccionId } from '../../src/components/ResumenSeccionNav';
+import { ResumenSeccionPanel } from '../../src/components/ResumenSeccionPanel';
+import { ResumenPedidoAccionesBar } from '../../src/components/ResumenPedidoAccionesBar';
 import { ResumenQuickStats } from '../../src/components/ResumenQuickStats';
 import { ResumenNestedAccordion } from '../../src/components/ResumenNestedAccordion';
 import { MoneyTextInput } from '../../src/components/MoneyTextInput';
@@ -29,7 +32,7 @@ import { ScreenScroll } from '../../src/components/ScreenScroll';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { StatusAlertBanner } from '../../src/components/StatusAlertBanner';
 import { useAuth } from '../../src/context/AuthContext';
-import { AccionIcon, AdminIcon } from '../../src/lib/app-icons';
+import { AccionIcon, AdminIcon, ResumenIcon } from '../../src/lib/app-icons';
 import { api } from '../../src/lib/api';
 import { alertarSiSinPapel } from '../../src/lib/alarma-impresora';
 import { confirmAppDialog, showNotice } from '../../src/lib/app-dialog';
@@ -56,9 +59,12 @@ import { cobrosResumenMixto } from '@la-reserva/shared-domain/factura-mixto';
 import { useRefetchOnSync } from '../../src/hooks/useRefetchOnSync';
 import { useFormFieldStyle } from '../../src/hooks/useFormFieldStyle';
 import { useResponsive } from '../../src/hooks/useResponsive';
+import { useNetwork } from '../../src/context/NetworkContext';
 import { useModoPruebasAdmin } from '../../src/hooks/useModoPruebasAdmin';
 import { formStyles } from '../../src/lib/form-layout';
-import { colors } from '../../src/lib/theme';
+import { useVisualTheme } from '../../src/context/VisualThemeContext';
+import { useThemedStyles } from '../../src/hooks/useThemedStyles';
+import type { AppColors } from '../../src/lib/theme';
 
 const LISTA_VENTAS_PREVIEW = 10;
 
@@ -70,6 +76,7 @@ type Resumen = {
   subtotal_ventas_bruto?: number;
   total_descuentos_dia?: number;
   monto_base_efectivo?: number;
+  monto_base_cierre_efectivo?: number | null;
   total_pagos_meseros?: number;
   pagos_meseros?: {
     id_registro: number;
@@ -259,9 +266,12 @@ function descripcionMovimientoCaja(
 }
 
 export default function ResumenDiarioScreen() {
+  const { colors } = useVisualTheme();
+  const styles = useThemedStyles(createResumenDiarioStyles);
   const { token, user } = useAuth();
   const router = useRouter();
   const r = useResponsive();
+  const { online } = useNetwork();
   const [data, setData] = useState<Resumen | null>(null);
   const [loading, setLoading] = useState(true);
   const [consultando, setConsultando] = useState(false);
@@ -271,7 +281,9 @@ export default function ResumenDiarioScreen() {
   const [showPicker, setShowPicker] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [montoBaseDigits, setMontoBaseDigits] = useState('');
+  const [montoBaseCierreDigits, setMontoBaseCierreDigits] = useState('');
   const [modalCaja, setModalCaja] = useState(false);
+  const [modalCajaCierre, setModalCajaCierre] = useState(false);
   const [modalMovCaja, setModalMovCaja] = useState(false);
   const [tipoMovCaja, setTipoMovCaja] = useState<'entrada_manual' | 'salida_manual'>(
     'salida_manual',
@@ -279,8 +291,12 @@ export default function ResumenDiarioScreen() {
   const [montoMovCajaDigits, setMontoMovCajaDigits] = useState('');
   const [motivoMovCaja, setMotivoMovCaja] = useState('');
   const [savingMovCaja, setSavingMovCaja] = useState(false);
+  const [imprimiendoMovCajaId, setImprimiendoMovCajaId] = useState<number | null>(
+    null,
+  );
   const [modalConsulta, setModalConsulta] = useState(false);
   const [savingCaja, setSavingCaja] = useState(false);
+  const [savingCajaCierre, setSavingCajaCierre] = useState(false);
   const [reimprimiendoId, setReimprimiendoId] = useState<number | null>(null);
   const [reimprimiendoPedidoId, setReimprimiendoPedidoId] = useState<number | null>(
     null,
@@ -306,16 +322,7 @@ export default function ResumenDiarioScreen() {
     null,
   );
   const [archivoTab, setArchivoTab] = useState<'comandas' | 'facturas'>('comandas');
-  type SeccionResumenId = 'ingresos' | 'platos' | 'items' | 'impresion' | 'detalle';
-  const [seccionesAbiertas, setSeccionesAbiertas] = useState<
-    Record<SeccionResumenId, boolean>
-  >({
-    ingresos: false,
-    platos: false,
-    items: false,
-    impresion: false,
-    detalle: false,
-  });
+  const [seccionActiva, setSeccionActiva] = useState<ResumenSeccionId>('ingresos');
   const [platosVerTodos, setPlatosVerTodos] = useState(false);
   const [itemsVerTodos, setItemsVerTodos] = useState(false);
   const [mesasAbiertas, setMesasAbiertas] = useState<Record<number, boolean>>({});
@@ -452,7 +459,20 @@ export default function ResumenDiarioScreen() {
   }, [selFacturas, selComandas]);
 
   function toggleGrupoPedido(idPedido: number) {
-    setGruposPedidoAbiertos((prev) => ({ ...prev, [idPedido]: !prev[idPedido] }));
+    setGruposPedidoAbiertos((prev) => {
+      const abriendo = !prev[idPedido];
+      if (abriendo) {
+        setFiltroNumPedido(String(idPedido));
+      }
+      return { ...prev, [idPedido]: abriendo };
+    });
+  }
+
+  function cambiarSeccion(id: ResumenSeccionId) {
+    if (seccionActiva === 'detalle' && id !== 'detalle') {
+      contraerTodasLasMesas();
+    }
+    setSeccionActiva(id);
   }
 
   function toggleMesa(numero: number) {
@@ -511,42 +531,6 @@ export default function ResumenDiarioScreen() {
     setGruposPedidoAbiertos({});
     setPedidosAbiertos({});
     setMixtosAbiertos({});
-  }
-
-  function toggleSeccion(id: SeccionResumenId) {
-    setSeccionesAbiertas((prev) => {
-      const abriendo = !prev[id];
-      if (id === 'detalle' && prev.detalle && !abriendo) {
-        setMesasAbiertas({});
-        setGruposPedidoAbiertos({});
-        setPedidosAbiertos({});
-        setMixtosAbiertos({});
-      }
-      return { ...prev, [id]: abriendo };
-    });
-  }
-
-  function expandirTodasSecciones() {
-    setSeccionesAbiertas({
-      ingresos: true,
-      platos: true,
-      items: true,
-      impresion: true,
-      detalle: true,
-    });
-  }
-
-  function contraerTodasSecciones() {
-    setSeccionesAbiertas({
-      ingresos: false,
-      platos: false,
-      items: false,
-      impresion: false,
-      detalle: false,
-    });
-    contraerTodasLasMesas();
-    setPlatosVerTodos(false);
-    setItemsVerTodos(false);
   }
 
   function formatYYYYMMDD(d: Date): string {
@@ -630,6 +614,7 @@ export default function ResumenDiarioScreen() {
   useEffect(() => {
     const ped = pedidoGrupoAccion;
     if (!ped) return;
+    setSeccionActiva('detalle');
     setMesasAbiertas((prev) => ({ ...prev, [ped.mesa_numero]: true }));
     setGruposPedidoAbiertos((prev) => ({ ...prev, [ped.id_pedido]: true }));
   }, [pedidoGrupoAccion]);
@@ -671,7 +656,25 @@ export default function ResumenDiarioScreen() {
     setMontoBaseDigits(digitsFromMonto(data.monto_base_efectivo ?? 0));
   }
 
+  function resetMontoBaseCierreDesdeData() {
+    if (!data) return;
+    const guardado = data.monto_base_cierre_efectivo;
+    const sugerido =
+      guardado != null
+        ? guardado
+        : data.efectivo_esperado_en_caja ?? 0;
+    setMontoBaseCierreDigits(digitsFromMonto(sugerido));
+  }
+
   function openCajaModal() {
+    if (!online) {
+      void showNotice(
+        'Sin conexión',
+        'No se puede registrar la caja inicial sin conexión al servidor.',
+        'warning',
+      );
+      return;
+    }
     resetMontoBaseDesdeData();
     setModalCaja(true);
   }
@@ -680,6 +683,86 @@ export default function ResumenDiarioScreen() {
     if (savingCaja) return;
     setModalCaja(false);
     resetMontoBaseDesdeData();
+  }
+
+  function openCajaCierreModal() {
+    if (!online) {
+      void showNotice(
+        'Sin conexión',
+        'No se puede registrar el cierre de caja sin conexión al servidor.',
+        'warning',
+      );
+      return;
+    }
+    resetMontoBaseCierreDesdeData();
+    setModalCajaCierre(true);
+  }
+
+  function closeCajaCierreModal() {
+    if (savingCajaCierre) return;
+    setModalCajaCierre(false);
+    resetMontoBaseCierreDesdeData();
+  }
+
+  async function guardarCajaCierre() {
+    if (!data) return;
+    if (
+      await avisarSiMontoCOPInvalido(
+        'Caja de cierre (efectivo contado)',
+        montoBaseCierreDigits,
+        showNotice,
+        { permitirCero: true },
+      )
+    ) {
+      return;
+    }
+    const n = parseCOPDigits(montoBaseCierreDigits);
+    setSavingCajaCierre(true);
+    try {
+      const res = await api<{
+        fecha: string;
+        monto_base_cierre_efectivo: number;
+        efectivo_esperado_en_caja?: number;
+        impresion_cierre?: {
+          impreso?: boolean;
+          en_cola?: boolean;
+          error?: string;
+          codigo_error?: string;
+        };
+      }>('/pedidos/caja-diaria/cierre', {
+        method: 'PUT',
+        token,
+        body: JSON.stringify({
+          fecha: data.fecha,
+          monto_base_cierre_efectivo: n,
+        }),
+      });
+      await load();
+      const imp = res.impresion_cierre;
+      if (alertarSiSinPapel(imp ?? {})) {
+        return;
+      }
+      if (imp?.impreso || imp?.en_cola) {
+        await showNotice(
+          'Cierre guardado',
+          imp.en_cola
+            ? 'Base de cierre registrada. El comprobante se imprime en cola.'
+            : 'Base de cierre registrada e impresa.',
+          'success',
+        );
+      } else if (imp?.error) {
+        await showNotice(
+          'Cierre guardado',
+          `Base registrada, pero no se imprimió: ${imp.error}`,
+          'warning',
+        );
+      }
+      setModalCajaCierre(false);
+    } catch (e) {
+      await manejarErrorAccion(e, 'guardar la base de cierre');
+    } finally {
+      setSavingCajaCierre(false);
+    }
   }
 
   function openMovCajaModal(tipo: 'entrada_manual' | 'salida_manual') {
@@ -714,7 +797,14 @@ export default function ResumenDiarioScreen() {
     }
     setSavingMovCaja(true);
     try {
-      await api('/pedidos/movimientos-caja', {
+      const res = await api<{
+        impresion_movimiento?: {
+          impreso?: boolean;
+          en_cola?: boolean;
+          error?: string;
+          codigo_error?: string;
+        };
+      }>('/pedidos/movimientos-caja', {
         method: 'POST',
         token,
         body: JSON.stringify({
@@ -726,11 +816,7 @@ export default function ResumenDiarioScreen() {
       });
       closeMovCajaModal();
       await load();
-      await showNotice(
-        tipoMovCaja === 'entrada_manual' ? 'Entrada registrada' : 'Salida registrada',
-        'El movimiento quedó en el resumen del día.',
-        'success',
-      );
+      await avisarImpresionMovimientoCaja(tipoMovCaja, res.impresion_movimiento);
     } catch (e) {
       await manejarErrorAccion(e, 'registrar el movimiento de caja');
     } finally {
@@ -738,13 +824,86 @@ export default function ResumenDiarioScreen() {
     }
   }
 
+  async function reimprimirMovimientoCaja(
+    id: number,
+    tipo: 'entrada_manual' | 'salida_manual',
+  ) {
+    if (imprimiendoMovCajaId != null) return;
+    setImprimiendoMovCajaId(id);
+    try {
+      const res = await api<{
+        impresion_movimiento?: {
+          impreso?: boolean;
+          en_cola?: boolean;
+          error?: string;
+          codigo_error?: string;
+        };
+      }>(`/pedidos/movimientos-caja/${id}/imprimir`, {
+        method: 'POST',
+        token,
+      });
+      await avisarImpresionMovimientoCaja(
+        tipo,
+        res.impresion_movimiento,
+        'reimprimir',
+      );
+    } catch (e) {
+      await manejarErrorAccion(e, 'imprimir el comprobante');
+    } finally {
+      setImprimiendoMovCajaId(null);
+    }
+  }
+
+  async function avisarImpresionMovimientoCaja(
+    tipo: 'entrada_manual' | 'salida_manual',
+    imp?: {
+      impreso?: boolean;
+      en_cola?: boolean;
+      error?: string;
+      codigo_error?: string;
+    },
+    contexto: 'registrar' | 'reimprimir' = 'registrar',
+  ) {
+    const etiqueta = tipo === 'entrada_manual' ? 'Entrada' : 'Salida';
+    if (imp && alertarSiSinPapel(imp)) return;
+    if (imp?.impreso || imp?.en_cola) {
+      await showNotice(
+        contexto === 'registrar' ? `${etiqueta} registrada` : 'Comprobante',
+        imp.en_cola
+          ? contexto === 'registrar'
+            ? `${etiqueta} registrada. Comprobante en cola de impresión.`
+            : 'Comprobante en cola de impresión.'
+          : contexto === 'registrar'
+            ? `${etiqueta} registrada e impresa.`
+            : 'Comprobante enviado a la impresora.',
+        'success',
+      );
+      return;
+    }
+    if (imp?.error) {
+      await showNotice(
+        contexto === 'registrar' ? `${etiqueta} registrada` : 'Impresión',
+        contexto === 'registrar'
+          ? `${etiqueta} registrada, pero no se imprimió: ${imp.error}`
+          : `No se pudo imprimir: ${imp.error}`,
+        'warning',
+      );
+      return;
+    }
+    if (contexto === 'registrar') {
+      await showNotice(
+        `${etiqueta} registrada`,
+        'El movimiento quedó en el resumen del día.',
+        'success',
+      );
+    }
+  }
+
   async function eliminarMovimientoCaja(id: number) {
-    const ok = await confirmAppDialog({
-      title: 'Eliminar movimiento',
-      message: '¿Quitar este movimiento manual del resumen del día?',
-      confirmText: 'Eliminar',
-      variant: 'danger',
-    });
+    const ok = await confirmAppDialog(
+      'Eliminar movimiento',
+      '¿Quitar este movimiento manual del resumen del día?',
+    );
     if (!ok) return;
     try {
       await api(`/pedidos/movimientos-caja/${id}`, {
@@ -1372,6 +1531,23 @@ export default function ResumenDiarioScreen() {
           !opts?.anidado ? ` · ${metodoPagoLabel(ped.metodo_pago)}` : ''
         }${ped.mesero ? ` · ${ped.mesero}` : ''}${ped.es_parcial ? ' · parcial' : ''}`}
         summaryRight={formatCOP(ped.total)}
+        headerActions={
+          <IconTooltipButton
+            icon={
+              reimprimiendoId === ped.id_factura
+                ? 'hourglass-outline'
+                : AccionIcon.reimprimirCobro
+            }
+            label={
+              reimprimiendoId === ped.id_factura ? 'Imprimiendo…' : 'Reimprimir cobro'
+            }
+            variant="secondary"
+            disabled={reimprimiendoId === ped.id_factura}
+            onPress={() => reimprimirFactura(ped.id_pedido, ped.id_factura)}
+            fixedSize
+            size={22}
+          />
+        }
       >
         {cargandoLineas[ped.id_factura] ? (
           <ActivityIndicator style={{ marginVertical: 8 }} />
@@ -1429,21 +1605,6 @@ export default function ResumenDiarioScreen() {
             </View>
           )}
         </View>
-        <View style={styles.actionRow}>
-          <IconTooltipButton
-            icon={
-              reimprimiendoId === ped.id_factura
-                ? 'hourglass-outline'
-                : AccionIcon.reimprimirCobro
-            }
-            label={
-              reimprimiendoId === ped.id_factura ? 'Imprimiendo…' : 'Reimprimir cobro'
-            }
-            variant="secondary"
-            disabled={reimprimiendoId === ped.id_factura}
-            onPress={() => reimprimirFactura(ped.id_pedido, ped.id_factura)}
-          />
-        </View>
       </ResumenNestedAccordion>
     );
   }
@@ -1458,6 +1619,13 @@ export default function ResumenDiarioScreen() {
         label: 'Caja inicial',
         variant: 'primary',
         onPress: openCajaModal,
+      },
+      {
+        key: 'caja-cierre',
+        icon: 'lock-closed-outline',
+        label: 'Caja cierre',
+        variant: 'primary',
+        onPress: openCajaCierreModal,
       },
       {
         key: 'entrada-caja',
@@ -1519,7 +1687,7 @@ export default function ResumenDiarioScreen() {
     return [
       {
         key: 'elegir',
-        icon: 'list-outline',
+        icon: ResumenIcon.elegirImpresion,
         label: 'Elegir qué imprimir',
         variant: 'primary',
         disabled: totalFacturas === 0,
@@ -1527,7 +1695,7 @@ export default function ResumenDiarioScreen() {
       },
       {
         key: 'completo',
-        icon: imprimiendoCompleto ? 'hourglass-outline' : 'documents-outline',
+        icon: imprimiendoCompleto ? 'hourglass-outline' : ResumenIcon.imprimirTodas,
         label: imprimiendoCompleto ? 'Imprimiendo…' : 'Imprimir todas',
         variant: 'secondary',
         disabled: imprimiendoCompleto || totalFacturas === 0,
@@ -1535,7 +1703,7 @@ export default function ResumenDiarioScreen() {
       },
       {
         key: 'totales',
-        icon: imprimiendoTotal ? 'hourglass-outline' : 'calculator-outline',
+        icon: imprimiendoTotal ? 'hourglass-outline' : ResumenIcon.totalesCaja,
         label: imprimiendoTotal ? 'Imprimiendo…' : 'Solo totales caja',
         variant: 'secondary',
         disabled: imprimiendoTotal,
@@ -1590,6 +1758,18 @@ export default function ResumenDiarioScreen() {
     ],
   );
 
+  const mesasDetalleFiltradas = useMemo(
+    () =>
+      (data?.mesas ?? []).filter((mesa) => {
+        if (!filtroPedidoDigits) return true;
+        const grupos = pedidosGrupoPorMesa.get(mesa.mesa_numero) ?? [];
+        return grupos.some((g) =>
+          pedidoCoincideFiltro(g.id_pedido, filtroPedidoDigits),
+        );
+      }),
+    [data?.mesas, filtroPedidoDigits, pedidosGrupoPorMesa],
+  );
+
   if (user && user.rol !== 'admin') {
     return (
       <View style={styles.center}>
@@ -1613,8 +1793,6 @@ export default function ResumenDiarioScreen() {
     return <ScreenLoading />;
   }
 
-  const seccionesAbiertasCount = Object.values(seccionesAbiertas).filter(Boolean).length;
-
   const mensajeCobroPendiente =
     pendientesCobro != null ? mensajePendientesCobro(pendientesCobro) : '';
 
@@ -1629,6 +1807,105 @@ export default function ResumenDiarioScreen() {
     ? itemsMenu
     : itemsMenu.slice(0, LISTA_VENTAS_PREVIEW);
   const itemsOcultos = Math.max(0, itemsMenu.length - LISTA_VENTAS_PREVIEW);
+
+  function renderMesaDetalle(mesa: Resumen['mesas'][number]) {
+    const grupos = (pedidosGrupoPorMesa.get(mesa.mesa_numero) ?? []).filter(
+      (g) => pedidoCoincideFiltro(g.id_pedido, filtroPedidoDigits),
+    );
+    const mesaAbierta = mesasAbiertas[mesa.mesa_numero] ?? false;
+    return (
+      <ResumenNestedAccordion
+        key={mesa.mesa_numero}
+        variant="mesa"
+        open={mesaAbierta}
+        onToggle={() => toggleMesa(mesa.mesa_numero)}
+        title={tituloLugarMesa(mesa.mesa_numero)}
+        subtitle={`${mesa.cobros_atendidos ?? mesa.pedidos_atendidos} cobro${
+          (mesa.cobros_atendidos ?? mesa.pedidos_atendidos) === 1 ? '' : 's'
+        } · facturas del día`}
+        summaryRight={formatCOP(mesa.total_facturado)}
+      >
+        {grupos.map((grupo) => {
+          const grupoAbierto = gruposPedidoAbiertos[grupo.id_pedido] ?? false;
+          const pedidoPagado = grupo.pedido_estado === 'facturado';
+          const cobrosVista = agruparCobrosVista(grupo.facturas);
+          return (
+            <ResumenNestedAccordion
+              key={grupo.id_pedido}
+              variant="pedido"
+              open={grupoAbierto}
+              onToggle={() => toggleGrupoPedido(grupo.id_pedido)}
+              title={`Pedido #${grupo.id_pedido}`}
+              subtitle={`${cobrosVista.length} cobro${
+                cobrosVista.length === 1 ? '' : 's'
+              }${pedidoPagado ? ' · pagado' : ''}`}
+              summaryRight={formatCOP(grupo.total)}
+            >
+              {cobrosVista.map((vista) => {
+                if (vista.tipo === 'simple') {
+                  return renderCobroFactura(vista.cobro);
+                }
+                const mixtoAbierto = mixtosAbiertos[vista.key] ?? false;
+                const totalMixto = vista.cobros.reduce((s, c) => s + c.total, 0);
+                const primera = vista.cobros[0];
+                const reparto = cobrosResumenMixto(vista.cobros)
+                  .map(
+                    (p) =>
+                      `${metodoPagoLabel(p.metodo_pago)} ${formatCOP(p.total)}`,
+                  )
+                  .join(' + ');
+                return (
+                  <ResumenNestedAccordion
+                    key={vista.key}
+                    variant="cobro"
+                    open={mixtoAbierto}
+                    onToggle={() => toggleMixto(vista.key)}
+                    title="Cobro · Pago mixto"
+                    subtitle={`${horaBogota(primera.emitida_en)} · ${reparto}${
+                      primera.mesero ? ` · ${primera.mesero}` : ''
+                    }`}
+                    summaryRight={formatCOP(totalMixto)}
+                  >
+                    {vista.cobros.map((ped) =>
+                      renderCobroFactura(ped, { anidado: true }),
+                    )}
+                  </ResumenNestedAccordion>
+                );
+              })}
+            </ResumenNestedAccordion>
+          );
+        })}
+      </ResumenNestedAccordion>
+    );
+  }
+
+  const seccionTabs = [
+    {
+      id: 'ingresos' as const,
+      label: 'Ingresos',
+      summary: formatCOP(data.efectivo_esperado_en_caja ?? 0),
+    },
+    {
+      id: 'platos' as const,
+      label: 'Platos',
+      summary: `${platosCategoria.length} cat.`,
+    },
+    {
+      id: 'items' as const,
+      label: 'Ítems',
+      summary: `${itemsMenu.length} prod.`,
+    },
+    {
+      id: 'impresion' as const,
+      label: 'Impresión',
+      summary: `${data.total_facturas} fact.`,
+    },
+    {
+      id: 'detalle' as const,
+      label: 'Mesas',
+      summary: formatCOP(data.total_facturado),
+    },
+  ];
 
   return (
     <>
@@ -1730,28 +2007,17 @@ export default function ResumenDiarioScreen() {
           </View>
         ) : null}
 
-        <View style={[styles.seccionesToolbar, r.navSidebar && styles.seccionesToolbarWide]}>
-          <Text style={[styles.seccionesHint, r.navSidebar && styles.seccionesHintWide]}>
-            {seccionesAbiertasCount === 0
-              ? 'Todas las secciones están contraídas'
-              : `${seccionesAbiertasCount} de 5 secciones abiertas`}
-          </Text>
-          <View style={styles.seccionesActions}>
-          <Pressable style={styles.sectionLinkBtn} onPress={expandirTodasSecciones} hitSlop={8}>
-            <Text style={styles.linkAction}>Expandir secciones</Text>
-          </Pressable>
-          <Pressable style={styles.sectionLinkBtn} onPress={contraerTodasSecciones} hitSlop={8}>
-            <Text style={styles.linkAction}>Contraer secciones</Text>
-          </Pressable>
-          </View>
-        </View>
+        <ResumenSeccionNav
+          tabs={seccionTabs}
+          active={seccionActiva}
+          onChange={cambiarSeccion}
+        />
 
-        <ResumenSeccionAccordion
+        {seccionActiva === 'ingresos' ? (
+        <ResumenSeccionPanel
           title="Ingresos por tipo de pago"
           subtitle="Caja inicial, efectivo, transferencia y cuadre"
           summaryRight={formatCOP(data.efectivo_esperado_en_caja ?? 0)}
-          open={seccionesAbiertas.ingresos}
-          onToggle={() => toggleSeccion('ingresos')}
         >
           <View style={styles.payRow}>
             <Text style={styles.payLabel}>Caja inicial</Text>
@@ -1874,18 +2140,42 @@ export default function ResumenDiarioScreen() {
                       {formatCOP(m.monto)}
                     </Text>
                     {esManual ? (
-                      <Pressable
-                        style={styles.movCajaDelete}
-                        onPress={() => void eliminarMovimientoCaja(m.id_movimiento)}
-                        hitSlop={8}
-                        accessibilityLabel="Eliminar movimiento"
-                      >
-                        <Ionicons
-                          name={AdminIcon.eliminar}
-                          size={18}
-                          color={colors.dangerText}
-                        />
-                      </Pressable>
+                      <View style={styles.movCajaAcciones}>
+                        <Pressable
+                          style={styles.movCajaIconBtn}
+                          onPress={() =>
+                            void reimprimirMovimientoCaja(
+                              m.id_movimiento,
+                              m.tipo as 'entrada_manual' | 'salida_manual',
+                            )
+                          }
+                          disabled={imprimiendoMovCajaId === m.id_movimiento}
+                          hitSlop={8}
+                          accessibilityLabel="Imprimir comprobante"
+                        >
+                          <Ionicons
+                            name={
+                              imprimiendoMovCajaId === m.id_movimiento
+                                ? 'hourglass-outline'
+                                : ResumenIcon.imprimirTodas
+                            }
+                            size={18}
+                            color={colors.primary}
+                          />
+                        </Pressable>
+                        <Pressable
+                          style={styles.movCajaIconBtn}
+                          onPress={() => void eliminarMovimientoCaja(m.id_movimiento)}
+                          hitSlop={8}
+                          accessibilityLabel="Eliminar movimiento"
+                        >
+                          <Ionicons
+                            name={AdminIcon.eliminar}
+                            size={18}
+                            color={colors.dangerText}
+                          />
+                        </Pressable>
+                      </View>
                     ) : null}
                   </View>
                 );
@@ -1918,21 +2208,49 @@ export default function ResumenDiarioScreen() {
               {formatCOP(data.efectivo_esperado_en_caja ?? 0)}
             </Text>
           </View>
+          {data.monto_base_cierre_efectivo != null ? (
+            <>
+              <View style={styles.payRow}>
+                <Text style={styles.payLabelStrong}>Base de cierre</Text>
+                <Text style={styles.payStrongVal}>
+                  {formatCOP(data.monto_base_cierre_efectivo)}
+                </Text>
+              </View>
+              <View style={styles.payRow}>
+                <Text style={styles.payLabel}>Diferencia (arqueo)</Text>
+                <Text
+                  style={[
+                    styles.payValue,
+                    data.monto_base_cierre_efectivo -
+                      (data.efectivo_esperado_en_caja ?? 0) !==
+                    0
+                      ? styles.payEgreso
+                      : styles.payIngreso,
+                  ]}
+                >
+                  {formatCOP(
+                    data.monto_base_cierre_efectivo -
+                      (data.efectivo_esperado_en_caja ?? 0),
+                  )}
+                </Text>
+              </View>
+            </>
+          ) : null}
           <Text style={styles.helpSmall}>
             Total entradas − total salidas. Estimación para cuadrar el efectivo
             físico; no bloquea ventas.
           </Text>
-        </ResumenSeccionAccordion>
+        </ResumenSeccionPanel>
+        ) : null}
 
-        <ResumenSeccionAccordion
+        {seccionActiva === 'platos' ? (
+        <ResumenSeccionPanel
           title="Platos por categoría"
           subtitle={
             (data.platos_por_categoria?.length ?? 0) === 0
               ? 'Sin platos facturados en esta fecha'
               : `${data.platos_por_categoria!.length} categoría${data.platos_por_categoria!.length === 1 ? '' : 's'}`
           }
-          open={seccionesAbiertas.platos}
-          onToggle={() => toggleSeccion('platos')}
         >
           <Text style={styles.help}>
             Platos principales facturados, por categoría. Subtotales brutos (antes de
@@ -1942,22 +2260,40 @@ export default function ResumenDiarioScreen() {
             <Text style={styles.empty}>Sin platos facturados en esta fecha.</Text>
           ) : (
             <>
-              <View style={styles.ventaHeadRow}>
-                <Text style={[styles.ventaHeadCell, styles.ventaColNombre]}>Categoría</Text>
-                <Text style={[styles.ventaHeadCell, styles.ventaColCant]}>Cant.</Text>
-                <Text style={[styles.ventaHeadCell, styles.ventaColSub]}>Subtotal</Text>
-              </View>
-              {platosVisibles.map((row) => (
-                <View key={row.categoria_nombre} style={styles.ventaRow}>
-                  <Text style={[styles.ventaCell, styles.ventaColNombre]} numberOfLines={2}>
-                    {row.categoria_nombre}
-                  </Text>
-                  <Text style={[styles.ventaCell, styles.ventaColCant]}>{row.cantidad}</Text>
-                  <Text style={[styles.ventaCell, styles.ventaColSub]}>
-                    {formatCOP(row.subtotal)}
-                  </Text>
-                </View>
-              ))}
+              <FlatList
+                data={platosVisibles}
+                keyExtractor={(row) => row.categoria_nombre}
+                scrollEnabled={false}
+                ListHeaderComponent={
+                  <View style={styles.ventaHeadRow}>
+                    <Text style={[styles.ventaHeadCell, styles.ventaColNombre]}>
+                      Categoría
+                    </Text>
+                    <Text style={[styles.ventaHeadCell, styles.ventaColCant]}>
+                      Cant.
+                    </Text>
+                    <Text style={[styles.ventaHeadCell, styles.ventaColSub]}>
+                      Subtotal
+                    </Text>
+                  </View>
+                }
+                renderItem={({ item: row }) => (
+                  <View style={styles.ventaRow}>
+                    <Text
+                      style={[styles.ventaCell, styles.ventaColNombre]}
+                      numberOfLines={2}
+                    >
+                      {row.categoria_nombre}
+                    </Text>
+                    <Text style={[styles.ventaCell, styles.ventaColCant]}>
+                      {row.cantidad}
+                    </Text>
+                    <Text style={[styles.ventaCell, styles.ventaColSub]}>
+                      {formatCOP(row.subtotal)}
+                    </Text>
+                  </View>
+                )}
+              />
               {platosOcultos > 0 ? (
                 <Pressable
                   style={styles.verMasBtn}
@@ -1971,17 +2307,17 @@ export default function ResumenDiarioScreen() {
               ) : null}
             </>
           )}
-        </ResumenSeccionAccordion>
+        </ResumenSeccionPanel>
+        ) : null}
 
-        <ResumenSeccionAccordion
+        {seccionActiva === 'items' ? (
+        <ResumenSeccionPanel
           title="Ítems del menú"
           subtitle={
             (data.items_menu?.length ?? 0) === 0
               ? 'Sin ítems facturados en esta fecha'
               : `${data.items_menu!.length} producto${data.items_menu!.length === 1 ? '' : 's'}`
           }
-          open={seccionesAbiertas.items}
-          onToggle={() => toggleSeccion('items')}
         >
           <Text style={styles.help}>
             Todo lo cobrado en facturas, por producto. Subtotales brutos (antes de
@@ -1991,25 +2327,40 @@ export default function ResumenDiarioScreen() {
             <Text style={styles.empty}>Sin ítems facturados en esta fecha.</Text>
           ) : (
             <>
-              <View style={styles.ventaHeadRow}>
-                <Text style={[styles.ventaHeadCell, styles.ventaColNombre]}>Producto</Text>
-                <Text style={[styles.ventaHeadCell, styles.ventaColCant]}>Cant.</Text>
-                <Text style={[styles.ventaHeadCell, styles.ventaColSub]}>Subtotal</Text>
-              </View>
-              {itemsVisibles.map((row) => (
-                <View key={row.id_producto} style={styles.ventaRow}>
-                  <View style={styles.ventaColNombre}>
-                    <Text style={styles.ventaCell} numberOfLines={2}>
-                      {row.nombre_producto}
+              <FlatList
+                data={itemsVisibles}
+                keyExtractor={(row) => String(row.id_producto)}
+                scrollEnabled={false}
+                ListHeaderComponent={
+                  <View style={styles.ventaHeadRow}>
+                    <Text style={[styles.ventaHeadCell, styles.ventaColNombre]}>
+                      Producto
                     </Text>
-                    <Text style={styles.ventaMeta}>{row.categoria_nombre}</Text>
+                    <Text style={[styles.ventaHeadCell, styles.ventaColCant]}>
+                      Cant.
+                    </Text>
+                    <Text style={[styles.ventaHeadCell, styles.ventaColSub]}>
+                      Subtotal
+                    </Text>
                   </View>
-                  <Text style={[styles.ventaCell, styles.ventaColCant]}>{row.cantidad}</Text>
-                  <Text style={[styles.ventaCell, styles.ventaColSub]}>
-                    {formatCOP(row.subtotal)}
-                  </Text>
-                </View>
-              ))}
+                }
+                renderItem={({ item: row }) => (
+                  <View style={styles.ventaRow}>
+                    <View style={styles.ventaColNombre}>
+                      <Text style={styles.ventaCell} numberOfLines={2}>
+                        {row.nombre_producto}
+                      </Text>
+                      <Text style={styles.ventaMeta}>{row.categoria_nombre}</Text>
+                    </View>
+                    <Text style={[styles.ventaCell, styles.ventaColCant]}>
+                      {row.cantidad}
+                    </Text>
+                    <Text style={[styles.ventaCell, styles.ventaColSub]}>
+                      {formatCOP(row.subtotal)}
+                    </Text>
+                  </View>
+                )}
+              />
               {itemsOcultos > 0 ? (
                 <Pressable
                   style={styles.verMasBtn}
@@ -2050,13 +2401,13 @@ export default function ResumenDiarioScreen() {
               )}
             </>
           )}
-        </ResumenSeccionAccordion>
+        </ResumenSeccionPanel>
+        ) : null}
 
-        <ResumenSeccionAccordion
+        {seccionActiva === 'impresion' ? (
+        <ResumenSeccionPanel
           title="Impresión de cierre"
           subtitle={`${data.total_facturas} factura${data.total_facturas === 1 ? '' : 's'} · imprimir archivo del día`}
-          open={seccionesAbiertas.impresion}
-          onToggle={() => toggleSeccion('impresion')}
         >
           <Text style={styles.help}>
             {toolsRail
@@ -2066,9 +2417,11 @@ export default function ResumenDiarioScreen() {
           {!toolsRail ? (
             <ActionIconBar actions={impresionActions} />
           ) : null}
-        </ResumenSeccionAccordion>
+        </ResumenSeccionPanel>
+        ) : null}
 
-        <ResumenSeccionAccordion
+        {seccionActiva === 'detalle' ? (
+        <ResumenSeccionPanel
           title="Detalle por mesa y pedido"
           subtitle={
             data.mesas.length === 0
@@ -2076,237 +2429,75 @@ export default function ResumenDiarioScreen() {
               : `${data.mesas.length} mesa${data.mesas.length === 1 ? '' : 's'} · ${data.total_facturas} cobro${data.total_facturas === 1 ? '' : 's'}`
           }
           summaryRight={formatCOP(data.total_facturado)}
-          open={seccionesAbiertas.detalle}
-          onToggle={() => toggleSeccion('detalle')}
+          toolbar={
+            <>
+              <View style={styles.sectionActionsCentered}>
+                <Pressable
+                  style={styles.sectionLinkBtn}
+                  onPress={expandirTodasLasMesas}
+                  hitSlop={8}
+                >
+                  <Text style={styles.linkAction}>Expandir mesas</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.sectionLinkBtn}
+                  onPress={contraerTodasLasMesas}
+                  hitSlop={8}
+                >
+                  <Text style={styles.linkAction}>Contraer mesas</Text>
+                </Pressable>
+              </View>
+              {!toolsRail ? (
+                <View style={styles.pedidoFiltroBlock}>
+                  <Text style={formStyles.label}>Buscar por # de pedido</Text>
+                  <TextInput
+                    style={formStyles.input}
+                    placeholder="Ej. 42"
+                    keyboardType="number-pad"
+                    value={filtroNumPedido}
+                    onChangeText={setFiltroNumPedido}
+                  />
+                  {filtroPedidoDigits && !pedidoGrupoAccion ? (
+                    <Text style={styles.pedidoFiltroHint}>
+                      {pedidosGrupoFiltrados.length === 0
+                        ? 'Ningún pedido coincide con ese número.'
+                        : `${pedidosGrupoFiltrados.length} pedidos coinciden — escribe el número completo.`}
+                    </Text>
+                  ) : null}
+                  {pedidoGrupoAccion ? (
+                    <ResumenPedidoAccionesBar
+                      grupo={pedidoGrupoAccion}
+                      reabririendoPedidoId={reabririendoPedidoId}
+                      reimprimiendoComandaId={reimprimiendoComandaId}
+                      reimprimiendoPedidoId={reimprimiendoPedidoId}
+                      onReabrir={abrirModalReabrirCobro}
+                      onReimprimirComanda={reimprimirComanda}
+                      onReimprimirTotal={reimprimirPedidoTotal}
+                    />
+                  ) : null}
+                </View>
+              ) : null}
+            </>
+          }
         >
-          <View style={styles.sectionActionsCentered}>
-            <Pressable
-              style={styles.sectionLinkBtn}
-              onPress={expandirTodasLasMesas}
-              hitSlop={8}
-            >
-              <Text style={styles.linkAction}>Expandir mesas</Text>
-            </Pressable>
-            <Pressable
-              style={styles.sectionLinkBtn}
-              onPress={contraerTodasLasMesas}
-              hitSlop={8}
-            >
-              <Text style={styles.linkAction}>Contraer mesas</Text>
-            </Pressable>
-          </View>
           <Text style={styles.help}>
             {toolsRail
               ? 'Toca una mesa para ver pedidos y cobros. Busca y reimprime desde la barra derecha.'
-              : 'Toca una mesa para ver pedidos; expande cada cobro para ver ítems y reimprimir factura. Usa el buscador para ir directo a un # de pedido.'}
+              : 'Toca una mesa para ver pedidos; expande cada cobro para ver ítems. Busca un # arriba para acciones del pedido.'}
           </Text>
-          {!toolsRail ? (
-          <View style={styles.pedidoFiltroBlock}>
-            <Text style={formStyles.label}>Buscar por # de pedido</Text>
-            <TextInput
-              style={formStyles.input}
-              placeholder="Ej. 42"
-              keyboardType="number-pad"
-              value={filtroNumPedido}
-              onChangeText={setFiltroNumPedido}
-            />
-            {filtroPedidoDigits ? (
-              pedidoGrupoAccion ? (
-                <>
-                  <Text style={styles.pedidoFiltroHint}>
-                    Pedido #{pedidoGrupoAccion.id_pedido} ·{' '}
-                    {tituloLugarMesa(pedidoGrupoAccion.mesa_numero)} ·{' '}
-                    {formatCOP(pedidoGrupoAccion.total)}
-                    {pedidoGrupoAccion.pedido_estado === 'facturado' ? ' · pagado' : ''}
-                  </Text>
-                  {pedidoGrupoAccion.pedido_estado === 'facturado' ? (
-                    <View style={styles.actionRow}>
-                      <IconTooltipButton
-                        icon={
-                          reimprimiendoComandaId === pedidoGrupoAccion.id_pedido
-                            ? 'hourglass-outline'
-                            : AccionIcon.reimprimirComanda
-                        }
-                        label={
-                          reimprimiendoComandaId === pedidoGrupoAccion.id_pedido
-                            ? 'Imprimiendo…'
-                            : 'Reimprimir comanda'
-                        }
-                        variant="secondary"
-                        disabled={
-                          reimprimiendoComandaId === pedidoGrupoAccion.id_pedido
-                        }
-                        onPress={() => reimprimirComanda(pedidoGrupoAccion.id_pedido)}
-                      />
-                      <IconTooltipButton
-                        icon={
-                          reimprimiendoPedidoId === pedidoGrupoAccion.id_pedido
-                            ? 'hourglass-outline'
-                            : AccionIcon.reimprimirTotalPedido
-                        }
-                        label={
-                          reimprimiendoPedidoId === pedidoGrupoAccion.id_pedido
-                            ? 'Imprimiendo…'
-                            : 'Reimprimir total del pedido'
-                        }
-                        variant="primary"
-                        disabled={
-                          reimprimiendoPedidoId === pedidoGrupoAccion.id_pedido
-                        }
-                        onPress={() =>
-                          reimprimirPedidoTotal(pedidoGrupoAccion.id_pedido)
-                        }
-                      />
-                    </View>
-                  ) : (
-                    <Text style={styles.pedidoFiltroHint}>
-                      Este pedido aún no está pagado; no hay comanda/total para reimprimir.
-                    </Text>
-                  )}
-                </>
-              ) : (
-                <Text style={styles.pedidoFiltroHint}>
-                  {pedidosGrupoFiltrados.length === 0
-                    ? 'Ningún pedido coincide con ese número.'
-                    : `${pedidosGrupoFiltrados.length} pedidos coinciden — escribe el número completo.`}
-                </Text>
-              )
-            ) : null}
-          </View>
-          ) : null}
           {data.mesas.length === 0 && (
             <Text style={styles.empty}>No hay pedidos facturados en esta fecha.</Text>
           )}
-          {data.mesas
-            .filter((mesa) => {
-              if (!filtroPedidoDigits) return true;
-              const grupos = pedidosGrupoPorMesa.get(mesa.mesa_numero) ?? [];
-              return grupos.some((g) =>
-                pedidoCoincideFiltro(g.id_pedido, filtroPedidoDigits),
-              );
-            })
-            .map((mesa) => {
-            const grupos = (pedidosGrupoPorMesa.get(mesa.mesa_numero) ?? []).filter(
-              (g) => pedidoCoincideFiltro(g.id_pedido, filtroPedidoDigits),
-            );
-            const mesaAbierta = mesasAbiertas[mesa.mesa_numero] ?? false;
-            return (
-              <ResumenNestedAccordion
-                key={mesa.mesa_numero}
-                variant="mesa"
-                open={mesaAbierta}
-                onToggle={() => toggleMesa(mesa.mesa_numero)}
-                title={tituloLugarMesa(mesa.mesa_numero)}
-                subtitle={`${mesa.cobros_atendidos ?? mesa.pedidos_atendidos} cobro${
-                  (mesa.cobros_atendidos ?? mesa.pedidos_atendidos) === 1 ? '' : 's'
-                } · facturas del día`}
-                summaryRight={formatCOP(mesa.total_facturado)}
-              >
-                {grupos.map((grupo) => {
-                  const grupoAbierto = gruposPedidoAbiertos[grupo.id_pedido] ?? false;
-                  const pedidoPagado = grupo.pedido_estado === 'facturado';
-                  const cobrosVista = agruparCobrosVista(grupo.facturas);
-                  return (
-                    <ResumenNestedAccordion
-                      key={grupo.id_pedido}
-                      variant="pedido"
-                      open={grupoAbierto}
-                      onToggle={() => toggleGrupoPedido(grupo.id_pedido)}
-                      title={`Pedido #${grupo.id_pedido}`}
-                      subtitle={`${cobrosVista.length} cobro${
-                        cobrosVista.length === 1 ? '' : 's'
-                      }${pedidoPagado ? ' · pagado' : ''}`}
-                      summaryRight={formatCOP(grupo.total)}
-                    >
-                      <View style={styles.actionRow}>
-                        <IconTooltipButton
-                          icon={
-                            reabririendoPedidoId === grupo.id_pedido
-                              ? 'hourglass-outline'
-                              : 'arrow-undo-outline'
-                          }
-                          label={
-                            reabririendoPedidoId === grupo.id_pedido
-                              ? 'Reabriendo…'
-                              : 'Reabrir cobro'
-                          }
-                          variant="danger"
-                          disabled={reabririendoPedidoId === grupo.id_pedido}
-                          onPress={() => abrirModalReabrirCobro(grupo.id_pedido)}
-                        />
-                      </View>
-                      {pedidoPagado && !toolsRail ? (
-                        <View style={styles.actionRow}>
-                          <IconTooltipButton
-                            icon={
-                              reimprimiendoComandaId === grupo.id_pedido
-                                ? 'hourglass-outline'
-                                : AccionIcon.reimprimirComanda
-                            }
-                            label={
-                              reimprimiendoComandaId === grupo.id_pedido
-                                ? 'Imprimiendo…'
-                                : 'Reimprimir comanda'
-                            }
-                            variant="secondary"
-                            disabled={reimprimiendoComandaId === grupo.id_pedido}
-                            onPress={() => reimprimirComanda(grupo.id_pedido)}
-                          />
-                          <IconTooltipButton
-                            icon={
-                              reimprimiendoPedidoId === grupo.id_pedido
-                                ? 'hourglass-outline'
-                                : AccionIcon.reimprimirTotalPedido
-                            }
-                            label={
-                              reimprimiendoPedidoId === grupo.id_pedido
-                                ? 'Imprimiendo…'
-                                : 'Reimprimir total del pedido'
-                            }
-                            variant="primary"
-                            disabled={reimprimiendoPedidoId === grupo.id_pedido}
-                            onPress={() => reimprimirPedidoTotal(grupo.id_pedido)}
-                          />
-                        </View>
-                      ) : null}
-                      {cobrosVista.map((vista) => {
-                        if (vista.tipo === 'simple') {
-                          return renderCobroFactura(vista.cobro);
-                        }
-                        const mixtoAbierto = mixtosAbiertos[vista.key] ?? false;
-                        const totalMixto = vista.cobros.reduce((s, c) => s + c.total, 0);
-                        const primera = vista.cobros[0];
-                        const reparto = cobrosResumenMixto(vista.cobros)
-                          .map(
-                            (p) =>
-                              `${metodoPagoLabel(p.metodo_pago)} ${formatCOP(p.total)}`,
-                          )
-                          .join(' + ');
-                        return (
-                          <ResumenNestedAccordion
-                            key={vista.key}
-                            variant="cobro"
-                            open={mixtoAbierto}
-                            onToggle={() => toggleMixto(vista.key)}
-                            title="Cobro · Pago mixto"
-                            subtitle={`${horaBogota(primera.emitida_en)} · ${reparto}${
-                              primera.mesero ? ` · ${primera.mesero}` : ''
-                            }`}
-                            summaryRight={formatCOP(totalMixto)}
-                          >
-                            {vista.cobros.map((ped) =>
-                              renderCobroFactura(ped, { anidado: true }),
-                            )}
-                          </ResumenNestedAccordion>
-                        );
-                      })}
-                    </ResumenNestedAccordion>
-                  );
-                })}
-              </ResumenNestedAccordion>
-            );
-          })}
-        </ResumenSeccionAccordion>
+          {mesasDetalleFiltradas.length > 0 ? (
+            <FlatList
+              data={mesasDetalleFiltradas}
+              keyExtractor={(mesa) => String(mesa.mesa_numero)}
+              scrollEnabled={false}
+              renderItem={({ item: mesa }) => renderMesaDetalle(mesa)}
+            />
+          ) : null}
+        </ResumenSeccionPanel>
+        ) : null}
       </ScreenScroll>
 
       <FormModal visible={modalCaja} title="Caja inicial (efectivo)" onClose={closeCajaModal}>
@@ -2339,6 +2530,49 @@ export default function ResumenDiarioScreen() {
               variant: 'primary',
               disabled: savingCaja,
               onPress: guardarCajaInicial,
+            },
+          ]}
+        />
+      </FormModal>
+
+      <FormModal
+        visible={modalCajaCierre}
+        title="Caja de cierre (efectivo)"
+        onClose={closeCajaCierreModal}
+      >
+        <Text style={formStyles.help}>
+          Efectivo contado al cerrar el día ({data.fecha}). Al guardar se imprime
+          un comprobante con la base de cierre, el efectivo esperado y la diferencia.
+        </Text>
+        <Text style={formStyles.label}>Efectivo esperado</Text>
+        <Text style={[formStyles.help, { marginBottom: 8 }]}>
+          {formatCOP(data.efectivo_esperado_en_caja ?? 0)}
+        </Text>
+        <Text style={formStyles.label}>Efectivo contado</Text>
+        <MoneyTextInput
+          style={[formStyles.input, moneyField]}
+          placeholderAmount={data.efectivo_esperado_en_caja ?? 0}
+          digits={montoBaseCierreDigits}
+          onChangeDigits={setMontoBaseCierreDigits}
+        />
+        <ActionIconBar
+          style={formStyles.modalActionBar}
+          actions={[
+            {
+              key: 'cancel',
+              icon: AdminIcon.cancelar,
+              label: 'Cancelar',
+              variant: 'secondary',
+              disabled: savingCajaCierre,
+              onPress: closeCajaCierreModal,
+            },
+            {
+              key: 'guardar',
+              icon: savingCajaCierre ? 'hourglass-outline' : AccionIcon.guardar,
+              label: savingCajaCierre ? 'Guardando…' : 'Guardar cierre',
+              variant: 'primary',
+              disabled: savingCajaCierre,
+              onPress: guardarCajaCierre,
             },
           ]}
         />
@@ -2671,7 +2905,7 @@ export default function ResumenDiarioScreen() {
               },
               {
                 key: 'todas',
-                icon: imprimiendoCompleto ? 'hourglass-outline' : 'documents-outline',
+                icon: imprimiendoCompleto ? 'hourglass-outline' : ResumenIcon.imprimirTodas,
                 label: imprimiendoCompleto ? 'Imprimiendo…' : 'Imprimir todas',
                 variant: 'secondary',
                 disabled:
@@ -2941,16 +3175,17 @@ export default function ResumenDiarioScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, padding: 16 },
+function createResumenDiarioStyles(c: AppColors) {
+  return StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background, padding: 16 },
   center: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
-    backgroundColor: colors.background,
+    backgroundColor: c.background,
   },
-  denied: { textAlign: 'center', color: colors.textMuted, marginBottom: 16, fontSize: 16 },
+  denied: { textAlign: 'center', color: c.textMuted, marginBottom: 16, fontSize: 16 },
   pageWide: {
     width: '100%',
     maxWidth: 1280,
@@ -2970,7 +3205,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
-  total: { fontSize: 28, fontWeight: '700', color: colors.primary, marginTop: 8 },
+  total: { fontSize: 28, fontWeight: '700', color: c.primary, marginTop: 8 },
   totalWide: {
     marginTop: 0,
     fontSize: 32,
@@ -2982,14 +3217,14 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
   },
   card: {
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: c.border,
     marginBottom: 12,
   },
-  sectionTitle: { fontWeight: '800', color: colors.text, marginBottom: 10, textAlign: 'center' },
+  sectionTitle: { fontWeight: '800', color: c.text, marginBottom: 10, textAlign: 'center' },
   sectionActionsCentered: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -3011,7 +3246,7 @@ const styles = StyleSheet.create({
   },
   seccionesHint: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: c.textMuted,
     textAlign: 'center',
   },
   seccionesHintWide: {
@@ -3039,20 +3274,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.borderInput,
-    backgroundColor: colors.surfaceMuted,
+    borderColor: c.border,
+    backgroundColor: c.surfaceMuted,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  linkAction: { color: colors.primary, fontWeight: '800', fontSize: 13, textAlign: 'center' },
-  help: { color: colors.textMuted, marginBottom: 10 },
+  linkAction: { color: c.text, fontWeight: '800', fontSize: 13, textAlign: 'center' },
+  help: { color: c.textMuted, marginBottom: 10 },
   pedidoFiltroBlock: {
     marginBottom: 12,
     gap: 8,
   },
   pedidoFiltroHint: {
     fontSize: 13,
-    color: colors.textMuted,
+    color: c.textMuted,
     textAlign: 'center',
   },
   pruebasMobileBlock: {
@@ -3063,13 +3298,13 @@ const styles = StyleSheet.create({
   pruebasMobileTitle: {
     fontSize: 12,
     fontWeight: '800',
-    color: colors.textMuted,
+    color: c.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
   pruebasMobileHint: {
     fontSize: 13,
-    color: colors.textMuted,
+    color: c.textMuted,
     textAlign: 'center',
     marginBottom: 4,
   },
@@ -3085,30 +3320,31 @@ const styles = StyleSheet.create({
   dateBtn: {
     width: '100%',
     borderWidth: 1,
-    borderColor: colors.borderInput,
+    borderColor: c.borderInput,
     borderRadius: 12,
     padding: 12,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     justifyContent: 'center',
   },
-  dateBtnText: { fontSize: 16, fontWeight: '700', color: colors.text, textAlign: 'center' },
+  dateBtnText: { fontSize: 16, fontWeight: '700', color: c.text, textAlign: 'center' },
   btn: {
-    backgroundColor: colors.primary,
+    backgroundColor: c.primary,
     paddingVertical: 12,
     paddingHorizontal: 14,
     borderRadius: 12,
   },
-  btnText: { color: colors.surface, fontWeight: '900' },
+  btnText: { color: c.surface, fontWeight: '900' },
   btnDisabled: { opacity: 0.65 },
   input: {
     borderWidth: 1,
-    borderColor: colors.borderInput,
+    borderColor: c.borderInput,
     borderRadius: 12,
     padding: 12,
     fontSize: 16,
     fontWeight: '700',
     marginBottom: 10,
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: c.surfaceMuted,
+    color: c.text,
   },
   payRow: {
     flexDirection: 'row',
@@ -3117,10 +3353,10 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   payRowLast: { marginBottom: 4 },
-  payLabel: { color: colors.text, fontWeight: '600' },
-  payValue: { fontWeight: '800', color: colors.text },
-  payEgreso: { color: colors.dangerText },
-  payIngreso: { color: colors.successText },
+  payLabel: { color: c.text, fontWeight: '600' },
+  payValue: { fontWeight: '800', color: c.text },
+  payEgreso: { color: c.dangerText },
+  payIngreso: { color: c.successText },
   pagosMeserosList: {
     marginTop: 4,
     marginBottom: 4,
@@ -3139,7 +3375,7 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 6,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    borderBottomColor: c.border,
   },
   movCajaInfo: {
     flex: 1,
@@ -3148,51 +3384,56 @@ const styles = StyleSheet.create({
   movCajaTipo: {
     fontSize: 11,
     fontWeight: '600',
-    color: colors.textMuted,
+    color: c.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.2,
   },
-  movCajaDelete: {
+  movCajaAcciones: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  movCajaIconBtn: {
     padding: 4,
   },
   pagoMeseroNombre: {
     flex: 1,
     fontSize: 13,
-    color: colors.textMuted,
+    color: c.textMuted,
   },
   pagoMeseroMonto: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: c.textMuted,
   },
-  payStrong: { fontWeight: '800', color: colors.primary },
-  payLabelStrong: { fontWeight: '700', color: colors.text },
-  payStrongVal: { fontWeight: '900', color: colors.primary, fontSize: 17 },
+  payStrong: { fontWeight: '800', color: c.primary },
+  payLabelStrong: { fontWeight: '700', color: c.text },
+  payStrongVal: { fontWeight: '900', color: c.primary, fontSize: 17 },
   helpInline: {
     fontSize: 11,
-    color: colors.textMuted,
+    color: c.textMuted,
     marginTop: -4,
     marginBottom: 6,
     lineHeight: 15,
   },
   divider: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.borderLight,
+    borderTopColor: c.borderLight,
     marginVertical: 8,
   },
-  helpSmall: { fontSize: 12, color: colors.textMuted, marginTop: 8, lineHeight: 16 },
+  helpSmall: { fontSize: 12, color: c.textMuted, marginTop: 8, lineHeight: 16 },
   ventaHeadRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingBottom: 6,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.borderLight,
+    borderBottomColor: c.borderLight,
     marginBottom: 4,
   },
   ventaHeadCell: {
     fontSize: 12,
     fontWeight: '800',
-    color: colors.textMuted,
+    color: c.textMuted,
     textTransform: 'uppercase',
   },
   ventaRow: {
@@ -3201,10 +3442,10 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     gap: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.borderLight,
+    borderBottomColor: c.borderLight,
   },
-  ventaCell: { color: colors.text, fontWeight: '600' },
-  ventaMeta: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
+  ventaCell: { color: c.text, fontWeight: '600' },
+  ventaMeta: { fontSize: 12, color: c.textMuted, marginTop: 2 },
   ventaColNombre: { flex: 1 },
   ventaColCant: { width: 44, textAlign: 'center', fontWeight: '800' },
   ventaColSub: { width: 96, textAlign: 'right', fontWeight: '800' },
@@ -3215,21 +3456,21 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     gap: 8,
   },
-  ventaResumenLabel: { flex: 1, color: colors.textMuted, fontSize: 13 },
-  ventaResumenVal: { fontWeight: '700', color: colors.text },
-  ventaResumenDiscount: { fontWeight: '700', color: colors.danger },
-  ventaResumenStrong: { flex: 1, fontWeight: '800', color: colors.text },
-  ventaResumenStrongVal: { fontWeight: '900', color: colors.primary, fontSize: 15 },
+  ventaResumenLabel: { flex: 1, color: c.textMuted, fontSize: 13 },
+  ventaResumenVal: { fontWeight: '700', color: c.text },
+  ventaResumenDiscount: { fontWeight: '700', color: c.danger },
+  ventaResumenStrong: { flex: 1, fontWeight: '800', color: c.text },
+  ventaResumenStrongVal: { fontWeight: '900', color: c.primary, fontSize: 15 },
   cobroMixtoBody: {
     paddingBottom: 4,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.borderLight,
+    borderTopColor: c.borderLight,
   },
   cobroMixtoHijo: {
     marginHorizontal: 8,
     marginTop: 4,
     marginBottom: 4,
-    borderColor: colors.border,
+    borderColor: c.border,
   },
   modalBackdrop: {
     flex: 1,
@@ -3238,42 +3479,42 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   modalCard: {
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: c.border,
     maxWidth: 360,
     width: '100%',
     alignSelf: 'center',
   },
-  modalTitle: { fontWeight: '900', color: colors.text, marginBottom: 10 },
-  empty: { color: colors.textMuted },
+  modalTitle: { fontWeight: '900', color: c.text, marginBottom: 10 },
+  empty: { color: c.textMuted },
   mesaBlock: {
     marginTop: 12,
     borderWidth: 1,
-    borderColor: colors.borderLight,
+    borderColor: c.borderLight,
     borderRadius: 14,
     overflow: 'hidden',
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: c.surfaceMuted,
   },
   mesaHead: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 12,
-    backgroundColor: colors.backgroundAlt,
+    backgroundColor: c.backgroundAlt,
     gap: 8,
   },
   mesaHeadLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
   mesaHeadText: { flex: 1 },
-  mesaTitle: { fontWeight: '900', color: colors.text, fontSize: 16 },
-  mesaSub: { color: colors.textMuted, marginTop: 2, fontSize: 13 },
-  mesaTotal: { fontWeight: '900', color: colors.primary, fontSize: 16 },
+  mesaTitle: { fontWeight: '900', color: c.text, fontSize: 16 },
+  mesaSub: { color: c.textMuted, marginTop: 2, fontSize: 13 },
+  mesaTotal: { fontWeight: '900', color: c.primary, fontSize: 16 },
   pedidoGrupoBlock: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-    backgroundColor: colors.surface,
+    borderTopColor: c.border,
+    backgroundColor: c.surface,
   },
   pedidoGrupoHead: {
     flexDirection: 'row',
@@ -3282,11 +3523,11 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     paddingHorizontal: 12,
     gap: 8,
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: c.surfaceMuted,
   },
   pedidoGrupoBody: {
     paddingBottom: 8,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
   },
   actionRow: {
     width: '100%',
@@ -3310,21 +3551,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surfaceMuted,
+    borderColor: c.border,
+    backgroundColor: c.surfaceMuted,
     alignItems: 'center',
   },
   archivoTabActive: {
-    borderColor: colors.primary,
-    backgroundColor: colors.backgroundAlt,
+    borderColor: c.primary,
+    backgroundColor: c.backgroundAlt,
   },
   archivoTabText: {
     fontWeight: '700',
     fontSize: 13,
-    color: colors.textMuted,
+    color: c.textMuted,
   },
   archivoTabTextActive: {
-    color: colors.primary,
+    color: c.primary,
   },
   archivoToolbar: {
     flexDirection: 'row',
@@ -3334,62 +3575,62 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   archivoSelCount: {
-    color: colors.textMuted,
+    color: c.textMuted,
     fontSize: 13,
     marginBottom: 10,
   },
-  archivoEmpty: { color: colors.textMuted, fontSize: 13, marginBottom: 8 },
+  archivoEmpty: { color: c.textMuted, fontSize: 13, marginBottom: 8 },
   archivoRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     paddingVertical: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.borderLight,
+    borderBottomColor: c.borderLight,
   },
   archivoCheck: { paddingVertical: 2 },
   archivoRowBody: { flex: 1, minWidth: 0 },
-  archivoRowTitle: { fontWeight: '700', color: colors.text, fontSize: 13 },
-  archivoRowMeta: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
+  archivoRowTitle: { fontWeight: '700', color: c.text, fontSize: 13 },
+  archivoRowMeta: { color: c.textMuted, fontSize: 12, marginTop: 2 },
   archivoPrintBtn: {
     width: 36,
     height: 36,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    borderColor: c.border,
+    backgroundColor: c.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
   archivoFacturaBlock: {
     borderWidth: 1,
-    borderColor: colors.borderLight,
+    borderColor: c.borderLight,
     borderRadius: 10,
     marginBottom: 8,
     overflow: 'hidden',
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: c.surfaceMuted,
   },
   archivoLineas: {
     paddingHorizontal: 10,
     paddingBottom: 8,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.borderLight,
+    borderTopColor: c.borderLight,
   },
   cobroBlock: {
     marginHorizontal: 8,
     marginTop: 6,
     borderWidth: 1,
-    borderColor: colors.borderLight,
+    borderColor: c.borderLight,
     borderRadius: 10,
     overflow: 'hidden',
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: c.surfaceMuted,
   },
-  cobroTitle: { fontWeight: '700', color: colors.text, fontSize: 13 },
-  cobroTotal: { fontWeight: '800', color: colors.text, fontSize: 14 },
+  cobroTitle: { fontWeight: '700', color: c.text, fontSize: 13 },
+  cobroTotal: { fontWeight: '800', color: c.text, fontSize: 14 },
   pedidoBlock: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-    backgroundColor: colors.surface,
+    borderTopColor: c.border,
+    backgroundColor: c.surface,
   },
   pedidoHead: {
     flexDirection: 'row',
@@ -3401,14 +3642,14 @@ const styles = StyleSheet.create({
   },
   pedidoHeadLeft: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
   pedidoHeadText: { flex: 1 },
-  pedidoTitle: { fontWeight: '800', color: colors.text, fontSize: 14 },
-  pedidoMeta: { color: colors.textMuted, marginTop: 2, fontSize: 12, lineHeight: 16 },
-  pedidoTotal: { fontWeight: '900', color: colors.text, fontSize: 15 },
+  pedidoTitle: { fontWeight: '800', color: c.text, fontSize: 14 },
+  pedidoMeta: { color: c.textMuted, marginTop: 2, fontSize: 12, lineHeight: 16 },
+  pedidoTotal: { fontWeight: '900', color: c.text, fontSize: 15 },
   pedidoBody: {
     paddingHorizontal: 12,
     paddingBottom: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.backgroundAlt,
+    borderTopColor: c.backgroundAlt,
   },
   lineRow: {
     flexDirection: 'row',
@@ -3418,16 +3659,16 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   lineLeft: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
-  lineQty: { fontWeight: '800', color: colors.textMuted, minWidth: 28 },
-  lineName: { flex: 1, color: colors.text, fontWeight: '600' },
+  lineQty: { fontWeight: '800', color: c.textMuted, minWidth: 28 },
+  lineName: { flex: 1, color: c.text, fontWeight: '600' },
   lineRight: { alignItems: 'flex-end' },
-  lineUnit: { fontSize: 11, color: colors.textMuted },
-  lineSub: { fontWeight: '800', color: colors.text, marginTop: 2 },
+  lineUnit: { fontSize: 11, color: c.textMuted },
+  lineSub: { fontWeight: '800', color: c.text, marginTop: 2 },
   totalsBox: {
     marginTop: 8,
     paddingTop: 8,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.borderLight,
+    borderTopColor: c.borderLight,
     gap: 4,
   },
   totalLine: {
@@ -3435,10 +3676,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  totalLabel: { color: colors.textMuted, fontWeight: '600' },
-  totalValue: { fontWeight: '700', color: colors.text },
-  totalDiscount: { fontWeight: '700', color: colors.danger },
-  totalStrong: { fontWeight: '800', color: colors.primary },
-  totalStrongVal: { fontWeight: '900', color: colors.primary },
+  totalLabel: { color: c.textMuted, fontWeight: '600' },
+  totalValue: { fontWeight: '700', color: c.text },
+  totalDiscount: { fontWeight: '700', color: c.danger },
+  totalStrong: { fontWeight: '800', color: c.primary },
+  totalStrongVal: { fontWeight: '900', color: c.primary },
 });
+}
 

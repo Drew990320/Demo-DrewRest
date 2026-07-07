@@ -15,9 +15,11 @@ module.exports = ({ config }) => {
     raw &&
     (/127\.0\.0\.1/.test(raw) || /\blocalhost\b/i.test(raw));
   const apiUrl = raw && !isLocalhost ? raw : undefined;
+  const restaurantName = process.env.EXPO_PUBLIC_RESTAURANT_NAME?.trim();
   const basePath = process.env.EXPO_PUBLIC_BASE_PATH?.trim();
   return {
     ...config,
+    name: restaurantName || config.name,
     experiments: {
       ...config.experiments,
       ...(basePath ? { baseUrl: basePath } : {}),
@@ -25,6 +27,13 @@ module.exports = ({ config }) => {
     extra: {
       ...config.extra,
       ...(apiUrl ? { apiUrl } : {}),
+      ...(restaurantName ? { restaurantName } : {}),
+    },
+    web: {
+      ...config.web,
+      ...(restaurantName
+        ? { name: restaurantName, shortName: restaurantName }
+        : {}),
     },
   };
 };

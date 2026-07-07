@@ -1,7 +1,8 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { useResponsive } from '../hooks/useResponsive';
+import { useThemedStyles } from '../hooks/useThemedStyles';
 import { formatCOP } from '../lib/format';
-import { colors } from '../lib/theme';
+import type { AppColors } from '../lib/theme';
 
 type Props = {
   cajaInicial: number;
@@ -16,6 +17,63 @@ type Props = {
   totalPagosMeseroExceso?: number;
 };
 
+function createStyles(c: AppColors) {
+  return StyleSheet.create({
+    wrap: {
+      marginBottom: 12,
+      gap: 8,
+    },
+    grid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    gridWide: {
+      flexWrap: 'nowrap',
+    },
+    card: {
+      flexGrow: 1,
+      flexBasis: '47%',
+      backgroundColor: c.surface,
+      borderRadius: 12,
+      padding: 12,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.border,
+      minWidth: 0,
+    },
+    cardWide: {
+      flexBasis: 0,
+      flex: 1,
+    },
+    cardHighlight: {
+      backgroundColor: c.primaryLight,
+      borderColor: c.primaryMuted,
+    },
+    label: {
+      fontSize: 11,
+      fontWeight: '600',
+      color: c.textMuted,
+      textTransform: 'uppercase',
+      letterSpacing: 0.3,
+    },
+    value: {
+      marginTop: 4,
+      fontSize: 15,
+      fontWeight: '700',
+      color: c.text,
+    },
+    valueHighlight: {
+      color: c.primaryDark,
+    },
+    hint: {
+      fontSize: 12,
+      lineHeight: 16,
+      color: c.textMuted,
+      paddingHorizontal: 4,
+    },
+  });
+}
+
 /** Métricas clave visibles sin abrir secciones del resumen diario. */
 export function ResumenQuickStats({
   cajaInicial,
@@ -29,6 +87,7 @@ export function ResumenQuickStats({
   totalPagosDomicilio = 0,
   totalPagosMeseroExceso = 0,
 }: Props) {
+  const styles = useThemedStyles(createStyles);
   const { navSidebar } = useResponsive();
   const hints: string[] = [];
   if (totalPagosMeseros > 0) {
@@ -69,101 +128,28 @@ export function ResumenQuickStats({
   return (
     <View style={styles.wrap}>
       <View style={[styles.grid, navSidebar && styles.gridWide]}>
-        {cards.map((c) => (
-          <StatCard
-            key={c.key}
-            label={c.label}
-            value={c.value}
-            highlight={c.highlight}
-            wide={navSidebar}
-          />
+        {cards.map((card) => (
+          <View
+            key={card.key}
+            style={[
+              styles.card,
+              navSidebar && styles.cardWide,
+              card.highlight && styles.cardHighlight,
+            ]}
+          >
+            <Text style={styles.label}>{card.label}</Text>
+            <Text
+              style={[styles.value, card.highlight && styles.valueHighlight]}
+              numberOfLines={1}
+            >
+              {card.value}
+            </Text>
+          </View>
         ))}
       </View>
       {hints.length > 0 ? (
-        <Text style={styles.hint}>Incluye {hints.join(' · ')}.</Text>
+        <Text style={styles.hint}>{hints.join(' · ')}</Text>
       ) : null}
     </View>
   );
 }
-
-function StatCard({
-  label,
-  value,
-  highlight,
-  wide,
-}: {
-  label: string;
-  value: string;
-  highlight?: boolean;
-  wide?: boolean;
-}) {
-  return (
-    <View
-      style={[
-        styles.card,
-        wide && styles.cardWide,
-        highlight && styles.cardHighlight,
-      ]}
-    >
-      <Text style={styles.label}>{label}</Text>
-      <Text style={[styles.value, highlight && styles.valueHighlight]} numberOfLines={1}>
-        {value}
-      </Text>
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  wrap: {
-    marginBottom: 12,
-    gap: 8,
-  },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  gridWide: {
-    flexWrap: 'nowrap',
-  },
-  card: {
-    flexGrow: 1,
-    flexBasis: '47%',
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    minWidth: 0,
-  },
-  cardWide: {
-    flexBasis: 0,
-    flex: 1,
-  },
-  cardHighlight: {
-    backgroundColor: colors.primaryLight,
-    borderColor: colors.primaryMuted,
-  },
-  label: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
-  },
-  value: {
-    marginTop: 4,
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  valueHighlight: {
-    color: colors.primaryDark,
-  },
-  hint: {
-    fontSize: 12,
-    lineHeight: 16,
-    color: colors.textMuted,
-    paddingHorizontal: 4,
-  },
-});

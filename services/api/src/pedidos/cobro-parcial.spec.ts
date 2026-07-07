@@ -71,6 +71,22 @@ describe('cobro-parcial', () => {
       );
     });
 
+    it('cobra empaques disponibles aunque haya menos que los platos', () => {
+      const r = expandirSolicitudesConEmpaques(
+        [
+          { id_detalle: 1, id_detalle_padre: null, cobrado: false, cantidad: 4 },
+          { id_detalle: 2, id_detalle_padre: 1, cobrado: false, cantidad: 1 },
+        ],
+        [{ id_detalle: 1, cantidad: 4 }],
+      );
+      expect(r).toEqual(
+        expect.arrayContaining([
+          { id_detalle: 1, cantidad: 4 },
+          { id_detalle: 2, cantidad: 1 },
+        ]),
+      );
+    });
+
     it('rechaza cantidad inválida', () => {
       expect(() =>
         expandirSolicitudesConEmpaques(detalles, [

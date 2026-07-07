@@ -1,12 +1,14 @@
 import 'react-native-reanimated';
 import { useEffect } from 'react';
 import { Stack, useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { MotionProvider } from '../src/context/MotionContext';
 import { AuthProvider } from '../src/context/AuthContext';
+import { VisualThemeProvider } from '../src/context/VisualThemeContext';
 import { DialogProvider } from '../src/context/DialogProvider';
 import { NetworkProvider } from '../src/context/NetworkContext';
 import { RouteRecoveryScreen } from '../src/components/RouteRecoveryScreen';
+import { ThemedStatusBar } from '../src/components/ThemedStatusBar';
 import { tituloErrorApi, mensajeErrorUsuario, esErrorRed } from '../src/lib/api-error';
 import { manejarErrorOperacion } from '../src/lib/recurso-disponible';
 
@@ -57,11 +59,13 @@ export const unstable_settings = {
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
+      <MotionProvider>
       <NetworkProvider>
+        <VisualThemeProvider>
         <AuthProvider>
           <DialogProvider>
             <GlobalApiErrorHandler />
-            <StatusBar style="dark" />
+            <ThemedStatusBar />
             <Stack screenOptions={{ headerShown: false }}>
               <Stack.Screen name="index" />
               <Stack.Screen name="(app)" />
@@ -70,7 +74,9 @@ export default function RootLayout() {
             </Stack>
           </DialogProvider>
         </AuthProvider>
+        </VisualThemeProvider>
       </NetworkProvider>
+      </MotionProvider>
     </SafeAreaProvider>
   );
 }

@@ -77,6 +77,8 @@ export function candidatosArchivoPuertoWeb(cwd = process.cwd()): string[] {
   ];
   const suffixes = [
     ['web', 'web-port.txt'],
+    ['DrewRest', 'web', 'web-port.txt'],
+    ['DrewRest', 'DrewRest', 'web', 'web-port.txt'],
     ['LaReserva', 'web', 'web-port.txt'],
     ['LaReserva', 'LaReserva', 'web', 'web-port.txt'],
   ];

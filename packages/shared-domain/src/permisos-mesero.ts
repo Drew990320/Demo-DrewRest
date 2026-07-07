@@ -1,3 +1,5 @@
+import type { PermisosChefConfig } from './permisos-chef';
+
 /** Claves de permisos configurables para el rol mesero. */
 export const PERMISOS_MESERO_KEYS = [
   'agregar_items',
@@ -87,6 +89,7 @@ export const PERMISOS_MESERO_META: Record<PermisoMeseroKey, PermisoMeseroMeta> =
 export type PermisosMeseroEfectivos = PermisosMeseroConfig & {
   puede_cerrar_anulando: boolean;
   es_admin: boolean;
+  permisos_chef?: PermisosChefConfig;
 };
 
 export function permisosMeseroTodos(): PermisosMeseroEfectivos {

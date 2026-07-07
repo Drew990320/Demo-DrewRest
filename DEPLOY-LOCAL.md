@@ -1,5 +1,7 @@
 # Despliegue local: PC como servidor + app en móviles
 
+> **Documentación completa:** ver [`documentacion/README.md`](documentacion/README.md) (guía maestra ON LAN, empaquetado, licencias, operación del POS e instrucciones para expandir con IA en la nube). Este archivo se mantiene como referencia rápida de despliegue.
+
 ## Requisitos
 
 - **Node.js 20+**
@@ -30,6 +32,14 @@ npm run prisma:ensure-mesas
 (Desde la raíz del monorepo también: `npm run prisma:deploy` y `npm run prisma:ensure-mesas`.)
 
 (Si la base está vacía y quieres datos de demo: `npm run prisma:seed` — **borra y recrea** datos de demostración.)
+
+**Error `ya existe un tipo EstadoCredito` al hacer `prisma:deploy`:** tu base ya tenía la migración `cuenta_credito` aplicada con el nombre antiguo (`20250706200000_…`). Tras renombrarla en el repo, Prisma intentó crearla de nuevo. Repara así (desde `services/api`):
+
+```powershell
+npx prisma migrate resolve --rolled-back 20250706200001_cuenta_credito
+npx prisma migrate resolve --applied 20250706200001_cuenta_credito
+npx prisma migrate deploy
+```
 
 ### 1.3 Arrancar la API
 
@@ -137,6 +147,48 @@ El APK generado suele estar bajo `apps/mobile/android/app/build/outputs/apk/rele
 | `npm run prisma:deploy` | Aplicar migraciones Prisma (`migrate deploy`) |
 | `npm run prisma:ensure-mesas` | Asegurar mesas 98 y 99 |
 | `powershell -File scripts/show-lan-ip.ps1` | Mostrar IPs LAN del PC |
+| `powershell -File scripts/backup-postgres.ps1` | Respaldo PostgreSQL (`.dump` en `backups/postgres/`) |
+| `powershell -File scripts/restore-postgres.ps1 -DumpFile <ruta>` | Restaurar respaldo (destructivo) |
+
+---
+
+## 7. Respaldo de base de datos (recomendado)
+
+El POS guarda pedidos, cobros y caja en PostgreSQL. Programa un respaldo diario en el PC del restaurante.
+
+### 7.1 Respaldo manual
+
+Con la API detenida o en horario de bajo uso:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/backup-postgres.ps1
+```
+
+Lee `DATABASE_URL` de `services/api/.env`. Los archivos quedan en `backups/postgres/` (retención 7 días).
+
+El script localiza `pg_dump` automáticamente (PATH, Laragon, `C:\Program Files\PostgreSQL\*\bin`). Si no lo encuentra, define `POSTGRES_BIN`, por ejemplo:
+
+```powershell
+$env:POSTGRES_BIN = 'C:\Program Files\PostgreSQL\17\bin'
+```
+
+### 7.2 Tarea programada (Windows)
+
+1. Abre **Programador de tareas** → Crear tarea básica.
+2. Diaria, 03:00.
+3. Acción: iniciar programa  
+   `powershell.exe`  
+   Argumentos: `-NoProfile -ExecutionPolicy Bypass -File "C:\ruta\al\repo\scripts\backup-postgres.ps1"`
+4. Ejecutar aunque el usuario no haya iniciado sesión (cuenta con permisos sobre PostgreSQL).
+
+### 7.3 Restaurar
+
+```powershell
+# Detén la API antes de restaurar.
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/restore-postgres.ps1 -DumpFile backups/postgres/drewrest-restaurant_pos-YYYYMMDD-HHMMSS.dump
+```
+
+Escribe `RESTAURAR` cuando lo pida. Luego `npm run prisma:deploy` si hubo migraciones nuevas y reinicia la API.
 
 ---
 

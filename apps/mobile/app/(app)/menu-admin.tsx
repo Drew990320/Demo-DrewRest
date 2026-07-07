@@ -14,14 +14,16 @@ import { FormModal } from '../../src/components/FormModal';
 import { MoneyTextInput } from '../../src/components/MoneyTextInput';
 import { ScreenLoading } from '../../src/components/ScreenLoading';
 import { useAuth } from '../../src/context/AuthContext';
+import { useVisualTheme } from '../../src/context/VisualThemeContext';
+import { useThemedStyles } from '../../src/hooks/useThemedStyles';
+import type { AppColors } from '../../src/lib/theme';
 import { IconTooltipButton } from '../../src/components/IconTooltipButton';
 import { AccionIcon, AdminIcon } from '../../src/lib/app-icons';
-import { formStyles } from '../../src/lib/form-layout';
+import { useFormStyles } from '../../src/lib/form-layout';
 import { api } from '../../src/lib/api';
 import { digitsFromMonto, parseCOPDigits, sanitizeMontoDigitos } from '../../src/lib/cop-input';
-import { showAppDialog, showNotice } from '../../src/lib/app-dialog';
+import { confirmAppDialog, showAppDialog, showNotice } from '../../src/lib/app-dialog';
 import { manejarErrorAccion, manejarErrorOperacion } from '../../src/lib/recurso-disponible';
-import { colors } from '../../src/lib/theme';
 import { flagsProductoMenuPorCategoria } from '../../src/lib/empaque-para-llevar';
 import { ProductoPersonalizacionesPanel } from '../../src/components/ProductoPersonalizacionesPanel';
 import { useScreenScrollPadding } from '../../src/hooks/useScreenScrollPadding';
@@ -44,6 +46,7 @@ type ProductoRow = {
   control_stock?: boolean;
   stock_disponible?: number;
   ocultar_sin_stock?: boolean;
+  total_usos_pedido?: number;
 };
 
 const TIPOS_PROTEINA = [
@@ -55,6 +58,9 @@ const TIPOS_PROTEINA = [
 ] as const;
 
 export default function MenuAdminScreen() {
+  const { colors } = useVisualTheme();
+  const styles = useThemedStyles(createStyles);
+  const formStyles = useFormStyles();
   const { token } = useAuth();
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [productos, setProductos] = useState<ProductoRow[]>([]);
@@ -224,6 +230,31 @@ export default function MenuAdminScreen() {
     }
   }
 
+  function puedeEliminarProducto(p: ProductoRow) {
+    return (p.total_usos_pedido ?? 0) === 0;
+  }
+
+  async function onEliminarPermanente(p: ProductoRow) {
+    const ok = await confirmAppDialog(
+      'Eliminar producto',
+      `¿Eliminar «${p.nombre}» de forma permanente? Esta acción no se puede deshacer.`,
+    );
+    if (!ok) return;
+    try {
+      await api(`/productos/${p.id_producto}`, {
+        method: 'DELETE',
+        token,
+      });
+      await load();
+    } catch (e) {
+      await manejarErrorOperacion(e, {
+        title: 'No se pudo eliminar',
+        message:
+          'Solo se eliminan productos sin historial de pedidos. Usa «Ocultar» para quitarlos del menú.',
+      });
+    }
+  }
+
   function openNew() {
     setEditProduct(null);
     const first = categorias[0]?.id_categoria ?? null;
@@ -364,7 +395,9 @@ export default function MenuAdminScreen() {
         ]}
       />
       <Text style={[styles.hint, formStyles.adminIntro]}>
-        Precios, datos y visibilidad del menú. Categorías y días en Categorías.
+        Precios, datos y visibilidad del menú. Ocultar quita el producto sin borrar
+        historial; eliminar solo si nunca tuvo pedidos. Categorías y días en
+        Categorías.
       </Text>
       <FlatList
         data={productos}
@@ -383,7 +416,7 @@ export default function MenuAdminScreen() {
                   {Math.round(item.precio).toLocaleString('es-CO')}
                   {item.es_plato_principal ? ' · plato principal' : ''}
                   {item.es_empacable ? ' · línea empaque' : ''}
-                  {item.es_acompanamiento_mazorca ? ' · mazorca' : ''}
+                  {item.es_acompanamiento_mazorca ? ' · acomp. comensal' : ''}
                   {item.tipo_proteina !== 'ninguno'
                     ? ` · ${item.tipo_proteina}`
                     : ''}
@@ -391,6 +424,7 @@ export default function MenuAdminScreen() {
                     ? ` · stock ${item.stock_disponible ?? 0}`
                     : ''}
                   {!productoVisible(item) ? ' · oculto' : ''}
+                  {(item.total_usos_pedido ?? 0) > 0 ? ' · con historial' : ''}
                 </Text>
               </View>
               <View style={styles.cardActions}>
@@ -418,6 +452,15 @@ export default function MenuAdminScreen() {
                     onPress={() => onRestore(item)}
                   />
                 )}
+                {puedeEliminarProducto(item) ? (
+                  <IconTooltipButton
+                    icon={AdminIcon.eliminar}
+                    label="Eliminar definitivamente"
+                    variant="danger"
+                    fixedSize
+                    onPress={() => void onEliminarPermanente(item)}
+                  />
+                ) : null}
               </View>
             </View>
           </View>
@@ -523,8 +566,10 @@ export default function MenuAdminScreen() {
         </View>
         <View style={styles.rowSwitch}>
           <View style={styles.switchTextCol}>
-            <Text style={styles.switchLabel}>Acompañamiento mazorca</Text>
-            <Text style={styles.switchHint}>Se agrega por comensal en mesas.</Text>
+            <Text style={styles.switchLabel}>Acompañamiento opcional por comensal</Text>
+            <Text style={styles.switchHint}>
+              Línea automática en mesas (opcional). Sin producto configurado no bloquea pedidos.
+            </Text>
           </View>
           <Switch
             value={mazorcaAcompanamiento}
@@ -628,22 +673,23 @@ export default function MenuAdminScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
+function createStyles(c: AppColors) {
+  return StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   hint: {
     paddingHorizontal: 16,
     paddingBottom: 8,
-    color: colors.textMuted,
+    color: c.textMuted,
     fontSize: 13,
   },
   listPad: { padding: 16, paddingTop: 0 },
   card: {
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderRadius: 12,
     padding: 14,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: c.border,
   },
   cardInactive: { opacity: 0.72 },
   cardRow: {
@@ -659,8 +705,8 @@ const styles = StyleSheet.create({
     gap: 8,
     flexShrink: 0,
   },
-  cardTitle: { fontWeight: '800', fontSize: 16, color: colors.text },
-  cardMeta: { marginTop: 4, color: colors.textMuted, fontSize: 13 },
+  cardTitle: { fontWeight: '800', fontSize: 16, color: c.text },
+  cardMeta: { marginTop: 4, color: c.textMuted, fontSize: 13 },
   modalVisibilityRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -668,9 +714,9 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: colors.border,
+    borderTopColor: c.border,
   },
-  modalVisibilityLabel: { fontWeight: '600', color: colors.text, flex: 1 },
+  modalVisibilityLabel: { fontWeight: '600', color: c.text, flex: 1 },
   modalVisibilityActions: { flexDirection: 'row', gap: 8 },
   modalLabel: { marginBottom: 2 },
   modalInput: { marginBottom: 6, paddingVertical: 8 },
@@ -681,14 +727,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 7,
     borderRadius: 10,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: c.border,
     maxWidth: 220,
   },
-  chipOn: { backgroundColor: colors.successLight, borderColor: colors.primary },
-  chipText: { fontSize: 12, color: colors.text },
-  chipTextOn: { fontWeight: '800', color: colors.mesaLibre },
+  chipOn: { backgroundColor: c.successLight, borderColor: c.primary },
+  chipText: { fontSize: 12, color: c.text },
+  chipTextOn: { fontWeight: '800', color: c.mesaLibre },
   rowSwitch: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -697,18 +743,19 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   switchTextCol: { flex: 1, minWidth: 0 },
-  switchLabel: { fontWeight: '600', color: colors.text },
+  switchLabel: { fontWeight: '600', color: c.text },
   switchHint: {
     marginTop: 2,
     fontSize: 11,
     lineHeight: 15,
-    color: colors.textMuted,
+    color: c.textMuted,
   },
   flagsNote: {
     marginTop: 4,
     marginBottom: 4,
     fontSize: 11,
-    color: colors.textMuted,
+    color: c.textMuted,
     fontStyle: 'italic',
   },
 });
+}

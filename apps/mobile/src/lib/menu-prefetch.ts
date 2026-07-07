@@ -38,8 +38,8 @@ export async function warmMenuTodayCache(
   }
 }
 
-/** Refresca el menú en segundo plano (p. ej. al abrir mesas). */
+/** Refresca el menú en segundo plano (p. ej. al abrir mesas). Usa caché si sigue vigente. */
 export function prefetchMenuToday(token: string | null | undefined): void {
   void preloadCategoriaMenuIcons();
-  void warmMenuTodayCache(token, { forceNetwork: true });
+  void warmMenuTodayCache(token);
 }

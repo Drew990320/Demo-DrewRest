@@ -48,6 +48,11 @@ enum TipoRegistroBeneficioMesero {
   pago_turno
 }
 
+enum EstadoCredito {
+  abierto
+  pagado
+}
+
 enum TipoMovInventario {
   entrada
   consumo
@@ -103,6 +108,7 @@ model Usuario {
   apellido     String   @db.VarChar(100)
   email        String   @unique @db.VarChar(150)
   passwordHash String   @map("password_hash") @db.VarChar(255)
+  passwordCambiadoEn DateTime? @map("password_cambiado_en")
   activo       Boolean  @default(true)
   creadoEn     DateTime @default(now()) @map("creado_en")
   rol          Rol      @relation(fields: [idRol], references: [idRol])
@@ -114,6 +120,7 @@ model Usuario {
   delegacionesMeseroTurno       DelegacionMeseroTurno[] @relation("DelegacionMesero")
   delegacionesMeseroRegistradas DelegacionMeseroTurno[] @relation("DelegacionRegistradaPor")
   movimientosCaja               MovimientoCaja[]
+  cuentasCredito                CuentaCredito[]
 
   @@map("usuario")
 }
@@ -160,6 +167,10 @@ model Categoria {
   visibleEnMostrador       Boolean              @default(false) @map("visible_en_mostrador")
   tipoLineaCocinaDefault   TipoLineaCocinaCat   @default(plato) @map("tipo_linea_cocina_default")
   esPlatoPrincipalDefault  Boolean              @default(false) @map("es_plato_principal_default")
+  /// Icono Material Community para la barra de categorías del menú (null = inferir por nombre).
+  iconoMenu                String?              @map("icono_menu") @db.VarChar(80)
+  /// Oculta toda la categoría del menú (reversible); los días definen visibilidad cuando está activa.
+  activo                   Boolean              @default(true)
   productos                Producto[]
 
   @@map("categoria")
@@ -219,6 +230,8 @@ model Pedido {
   prioridadCocinaOverride    PrioridadCocina?  @map("prioridad_cocina_override")
   /// Cliente camionero (mulero): aplica descuento por plato principal si la regla global está activa.
   clienteMulero                Boolean           @default(false) @map("cliente_mulero")
+  /// Etiquetas de promoción activas en el pedido (ids del catálogo en config_descuento).
+  etiquetasPromocion           Json              @default("[]") @map("etiquetas_promocion")
   mesa                       Mesa              @relation(fields: [idMesa], references: [idMesa])
   usuario                    Usuario           @relation(fields: [idUsuario], references: [idUsuario])
   detalles                   DetallePedido[]
@@ -226,6 +239,7 @@ model Pedido {
   movimientosCaja            MovimientoCaja[]
   movsInventario            MovInventario[]
   historial                  PedidoHistorial[]
+  cuentasCredito             CuentaCredito[]
 
   @@index([idMesa, estado])
   @@index([estado, creadoEn])
@@ -306,14 +320,38 @@ model Factura {
   planSeleccionReferencia Json? @map("plan_seleccion_referencia")
   /// Identificador común de un cobro mixto (efectivo + transferencia en la misma operación).
   cobroMixtoGrupo   Int?       @map("cobro_mixto_grupo")
+  /// Vuelto / exceso de cobro (efectivo, transferencia, domicilio, mesero).
+  detalleExcesoCobro Json?     @map("detalle_exceso_cobro")
   pedido            Pedido     @relation(fields: [idPedido], references: [idPedido])
   usuario           Usuario    @relation(fields: [idUsuario], references: [idUsuario])
   detalles          DetallePedido[]
   movimientosCaja   MovimientoCaja[]
+  cuentaCredito     CuentaCredito?
 
   @@index([idPedido])
   @@index([emitidaEn])
   @@map("factura")
+}
+
+model CuentaCredito {
+  idCredito      Int           @id @default(autoincrement()) @map("id_credito")
+  idPedido       Int           @map("id_pedido")
+  idFactura      Int?          @unique @map("id_factura")
+  nombreCliente  String        @map("nombre_cliente") @db.VarChar(120)
+  telefono       String?       @db.VarChar(40)
+  montoTotal     Decimal       @map("monto_total") @db.Decimal(10, 2)
+  saldoPendiente Decimal       @map("saldo_pendiente") @db.Decimal(10, 2)
+  notas          String?       @db.VarChar(500)
+  estado         EstadoCredito @default(abierto)
+  creadoEn       DateTime      @default(now()) @map("creado_en")
+  pagadoEn       DateTime?     @map("pagado_en")
+  idUsuario      Int           @map("id_usuario")
+  pedido         Pedido        @relation(fields: [idPedido], references: [idPedido])
+  factura        Factura?      @relation(fields: [idFactura], references: [idFactura])
+  usuario        Usuario       @relation(fields: [idUsuario], references: [idUsuario])
+
+  @@index([estado, creadoEn])
+  @@map("cuenta_credito")
 }
 
 /// Reglas globales de descuento en facturación (singleton id = 1).
@@ -327,6 +365,7 @@ model ConfigDescuento {
   mulerosMinPlatosPrincipales Int @default(1) @map("muleros_min_platos_principales")
   umbralSubtotalOtros   Decimal  @default(50000) @map("umbral_subtotal_otros") @db.Decimal(12, 2)
   reglasPromocion       Json     @default("[]") @map("reglas_promocion")
+  etiquetasPedido       Json     @default("[]") @map("etiquetas_pedido")
   actualizadoEn         DateTime @updatedAt @map("actualizado_en")
 
   @@map("config_descuento")
@@ -336,7 +375,7 @@ model ConfigDescuento {
 model ConfigOperativa {
   id                      Int      @id @default(1)
   precioEmpaqueParaLlevar Decimal  @default(1000) @map("precio_empaque_para_llevar") @db.Decimal(10, 2)
-  mazorcaActiva           Boolean  @default(true) @map("mazorca_activa")
+  mazorcaActiva           Boolean  @default(false) @map("mazorca_activa")
   idProductoMazorca       Int?     @map("id_producto_mazorca")
   numeroMesaParaLlevar    Int      @default(98) @map("numero_mesa_para_llevar")
   numeroMesaMostrador     Int      @default(99) @map("numero_mesa_mostrador")
@@ -376,6 +415,75 @@ model RegistroBeneficioMesero {
   @@unique([fecha, idUsuario, tipo])
   @@index([fecha])
   @@map("registro_beneficio_mesero")
+}
+
+/// Identidad, textos y módulos del restaurante (singleton id = 1).
+model ConfigRestaurante {
+  id                         Int      @id @default(1)
+  nombreComercial            String   @default("Restaurante") @map("nombre_comercial") @db.VarChar(120)
+  telefono                   String?  @db.VarChar(40)
+  direccion                  String?  @db.VarChar(255)
+  dominioEmailInterno        String   @default("restaurant.local") @map("dominio_email_interno") @db.VarChar(80)
+  /// Archivo en carpeta images/ (ej. logo.png). Vacío = buscar logo.png por defecto.
+  logoArchivo                String?  @map("logo_archivo") @db.VarChar(120)
+  textoGraciasTicket         String   @default("Gracias por su visita") @map("texto_gracias_ticket") @db.VarChar(200)
+  textoPropinaTicket         String   @default("*** PROPINA VOLUNTARIA ***") @map("texto_propina_ticket") @db.VarChar(120)
+  textoAvisoNoDian           String   @default("No constituye factura electrónica DIAN") @map("texto_aviso_no_dian") @db.VarChar(255)
+  textoPieCorreo             String?  @map("texto_pie_correo") @db.Text
+  prefijoAsuntoCorreo        String?  @map("prefijo_asunto_correo") @db.VarChar(80)
+  mostrarCreditoDrewTech     Boolean  @default(true) @map("mostrar_credito_drewtech")
+  etiquetaDescuentoSopas     String   @default("Descuento sopas") @map("etiqueta_descuento_sopas") @db.VarChar(80)
+  etiquetaDescuentoMuleros   String   @default("Descuento clientes especiales") @map("etiqueta_descuento_muleros") @db.VarChar(80)
+  moduloInventarioActivo     Boolean  @default(false) @map("modulo_inventario_activo")
+  moduloMeserosOperativosActivo Boolean @default(true) @map("modulo_meseros_operativos_activo")
+  moduloEnvioCorreoActivo    Boolean  @default(false) @map("modulo_envio_correo_activo")
+  moduloResumenDiarioActivo  Boolean  @default(true) @map("modulo_resumen_diario_activo")
+  actualizadoEn              DateTime @updatedAt @map("actualizado_en")
+
+  @@map("config_restaurante")
+}
+
+/// Personalización visual: colores, iconos de navegación y assets gráficos.
+model ConfigVisual {
+  id                 Int      @id @default(1)
+  colorPrimary       String?  @map("color_primary") @db.VarChar(7)
+  colorPrimaryDark   String?  @map("color_primary_dark") @db.VarChar(7)
+  colorSecondary     String?  @map("color_secondary") @db.VarChar(7)
+  colorBackground    String?  @map("color_background") @db.VarChar(7)
+  colorBackgroundAlt String?  @map("color_background_alt") @db.VarChar(7)
+  colorSurface       String?  @map("color_surface") @db.VarChar(7)
+  colorText          String?  @map("color_text") @db.VarChar(7)
+  colorTextMuted     String?  @map("color_text_muted") @db.VarChar(7)
+  colorBorder        String?  @map("color_border") @db.VarChar(7)
+  logoLoginArchivo   String?  @map("logo_login_archivo") @db.VarChar(120)
+  logoFacturaArchivo String?  @map("logo_factura_archivo") @db.VarChar(120)
+  logoTicketArchivo  String?  @map("logo_ticket_archivo") @db.VarChar(120)
+  faviconArchivo     String?  @map("favicon_archivo") @db.VarChar(120)
+  navbarFondoArchivo String?  @map("navbar_fondo_archivo") @db.VarChar(120)
+  /// Mapa clave nav → nombre Ionicons (JSON).
+  iconosNav          Json?    @map("iconos_nav")
+  /// Mapa clave acción → nombre Ionicons (JSON).
+  iconosAccion       Json?    @map("iconos_accion")
+  /// minimalista | profesional | calido | expresivo
+  estiloVisual       String?  @default("minimalista") @map("estilo_visual") @db.VarChar(20)
+  /// rectangular | redonda | cuadrada | barra
+  mesaForma          String?  @map("mesa_forma") @db.VarChar(20)
+  /// cuadricula | compacta | lista
+  mesaVista          String?  @map("mesa_vista") @db.VarChar(20)
+  actualizadoEn      DateTime @updatedAt @map("actualizado_en")
+
+  @@map("config_visual")
+}
+
+/// Toggles de acciones para el rol chef (singleton id = 1).
+model PermisosChefConfig {
+  id                Int     @id @default(1)
+  verColaCocina     Boolean @default(true) @map("ver_cola_cocina")
+  marcarListo       Boolean @default(true) @map("marcar_listo")
+  reimprimirComanda Boolean @default(true) @map("reimprimir_comanda")
+  anularLineaCocina Boolean @default(true) @map("anular_linea_cocina")
+
+  @@map("permisos_chef_config")
 }
 
 /// Toggles globales de acciones permitidas al rol mesero (singleton id=1).
@@ -435,10 +543,11 @@ model MovimientoCaja {
 
 /// Monto inicial de efectivo en caja al abrir el día (por fecha calendario Bogotá).
 model CajaDiaria {
-  idCajaDiaria      Int      @id @default(autoincrement()) @map("id_caja_diaria")
-  fecha             DateTime @unique @db.Date
-  montoBaseEfectivo Decimal  @map("monto_base_efectivo") @db.Decimal(12, 2)
-  actualizadoEn     DateTime @updatedAt @map("actualizado_en")
+  idCajaDiaria            Int      @id @default(autoincrement()) @map("id_caja_diaria")
+  fecha                   DateTime @unique @db.Date
+  montoBaseEfectivo       Decimal  @map("monto_base_efectivo") @db.Decimal(12, 2)
+  montoBaseCierreEfectivo Decimal? @map("monto_base_cierre_efectivo") @db.Decimal(12, 2)
+  actualizadoEn           DateTime @updatedAt @map("actualizado_en")
 
   @@map("caja_diaria")
 }

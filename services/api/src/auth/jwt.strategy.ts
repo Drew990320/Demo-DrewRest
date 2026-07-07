@@ -12,6 +12,8 @@ export type JwtPayload = {
   sub: number;
   email: string;
   rol: string;
+  /** Unix ms de password_cambiado_en al emitir el token. */
+  pwdAt?: number;
 };
 
 @Injectable()
@@ -42,6 +44,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
     if (!user?.activo) {
       throw new UnauthorizedException('Usuario inactivo o inexistente');
+    }
+    const pwdAtEsperado = (user.passwordCambiadoEn ?? user.creadoEn).getTime();
+    if (payload.pwdAt == null || payload.pwdAt < pwdAtEsperado) {
+      throw new UnauthorizedException('Sesión expirada. Inicia sesión de nuevo.');
     }
     setCachedAuthUser(user);
     return user;

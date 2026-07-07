@@ -1,15 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { SerialPort } from 'serialport';
 import type { ComandaTicket } from './comanda-ticket';
 import type { FacturaTicket } from './factura-ticket';
 import { buildComandaEscPos } from './comanda-escpos.builder';
 import { buildFacturaEscPos } from './factura-escpos.builder';
-import { buildBaseCajaEscPos, buildCierreCajaEscPos } from './cierre-caja-escpos.builder';
+import { buildBaseCajaCierreEscPos, buildBaseCajaEscPos, buildCierreCajaEscPos, buildMovimientoCajaEscPos } from './cierre-caja-escpos.builder';
 import { buildCuentasDivididasEscPos } from './cuentas-divididas-escpos.builder';
-import type { BaseCajaTicket, CierreCajaTicket } from './cierre-caja-ticket';
+import type { BaseCajaCierreTicket, BaseCajaTicket, CierreCajaTicket, MovimientoCajaTicket } from './cierre-caja-ticket';
 import type { CuentasDivididasTicket } from './cuentas-divididas-ticket';
 import { consultarPapelSerial } from './escpos-paper-status';
+import { loadSerialPortClass } from './serialport-loader';
 import { printRawWindows } from './windows-raw-print';
 import { consultarPapelWindows } from './windows-printer-status';
 
@@ -211,6 +211,39 @@ export class ComandaPrinterService {
     return this.encolarImpresion(() => this.enviarBuffer(buffer, 'cierre'));
   }
 
+  /** Comprobante de arqueo al cerrar caja del día. */
+  async imprimirBaseCajaCierre(
+    ticket: BaseCajaCierreTicket,
+  ): Promise<ResultadoImpresion> {
+    let buffer: Buffer;
+    try {
+      buffer = await buildBaseCajaCierreEscPos(ticket, this.charWidth());
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this.logger.error(`Error generando ESC/POS base cierre: ${msg}`);
+      return { impreso: false, error: `Error generando base cierre: ${msg}` };
+    }
+    return this.encolarImpresion(() => this.enviarBuffer(buffer, 'cierre'));
+  }
+
+  /** Comprobante de entrada o salida manual de caja. */
+  async imprimirMovimientoCaja(
+    ticket: MovimientoCajaTicket,
+  ): Promise<ResultadoImpresion> {
+    let buffer: Buffer;
+    try {
+      buffer = await buildMovimientoCajaEscPos(ticket, this.charWidth());
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this.logger.error(`Error generando ESC/POS movimiento caja: ${msg}`);
+      return {
+        impreso: false,
+        error: `Error generando comprobante de caja: ${msg}`,
+      };
+    }
+    return this.encolarImpresion(() => this.enviarBuffer(buffer, 'cierre'));
+  }
+
   private async enviarBuffer(
     buffer: Buffer,
     tipo: 'comanda' | 'factura' | 'cierre',
@@ -219,7 +252,7 @@ export class ComandaPrinterService {
       return {
         impreso: false,
         error:
-          'Impresora deshabilitada. En api/.env (LaReserva) o services/api/.env pon PRINTER_ENABLED=true',
+          'Impresora deshabilitada. En api/.env (DrewRest) o services/api/.env pon PRINTER_ENABLED=true',
       };
     }
 
@@ -363,8 +396,9 @@ export class ComandaPrinterService {
     throw new Error(`Destino no reconocido: ${target}`);
   }
 
-  private sendSerial(path: string, buffer: Buffer): Promise<void> {
+  private async sendSerial(path: string, buffer: Buffer): Promise<void> {
     const baud = this.baudRate();
+    const SerialPort = await loadSerialPortClass();
     return new Promise((resolve, reject) => {
       const port = new SerialPort(
         { path, baudRate: baud, autoOpen: false },

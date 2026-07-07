@@ -12,46 +12,54 @@ import Animated, { FadeIn, FadeInUp, FadeOut } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
-import { NavIcon } from '../lib/app-icons';
+import { useVisualTheme } from '../context/VisualThemeContext';
+import type { NavIconKey } from '@la-reserva/shared-domain/nav-app-icon';
 import { MOTION } from '../lib/motion';
-import { colors } from '../lib/theme';
 
 type IonName = ComponentProps<typeof Ionicons>['name'];
 
 type MoreItem = {
-  key: string;
-  icon: IonName;
+  key: NavIconKey;
   label: string;
   href: string;
-  subtitle?: string;
 };
 
 type Props = {
   visible: boolean;
   onClose: () => void;
-  /** Admin: panel completo. Mesero: solo cerrar sesión. */
   mode?: 'admin' | 'mesero';
+  modulos?: { modulo_meseros_operativos_activo?: boolean };
 };
 
-export function AppNavMoreSheet({ visible, onClose, mode = 'admin' }: Props) {
+export function AppNavMoreSheet({
+  visible,
+  onClose,
+  mode = 'admin',
+  modulos,
+}: Props) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { logout } = useAuth();
+  const { colors, navIcon } = useVisualTheme();
 
   const items: MoreItem[] = [
-    { key: 'usuarios', icon: NavIcon.usuarios, label: 'Usuarios', href: '/(app)/usuarios' },
-    { key: 'menu', icon: NavIcon.editarMenu, label: 'Editar menú', href: '/(app)/menu-admin' },
-    { key: 'categorias', icon: NavIcon.diasMenu, label: 'Días del menú', href: '/(app)/categorias-admin' },
-    { key: 'mesas-admin', icon: NavIcon.gestionarMesas, label: 'Gestionar mesas', href: '/(app)/mesas-admin' },
-    { key: 'config', icon: NavIcon.configuracion, label: 'Configuración', href: '/(app)/configuracion' },
-    { key: 'conexion', icon: NavIcon.conexionMovil, label: 'Conexión móvil', href: '/(app)/conexion-movil' },
-    { key: 'permisos', icon: NavIcon.permisos, label: 'Permisos meseros', href: '/(app)/permisos' },
+    { key: 'usuarios', label: 'Usuarios', href: '/(app)/usuarios' },
+    { key: 'editar_menu', label: 'Editar menú', href: '/(app)/menu-admin' },
+    { key: 'categorias', label: 'Días del menú', href: '/(app)/categorias-admin' },
+    { key: 'mesas_admin', label: 'Gestionar mesas', href: '/(app)/mesas-admin' },
     {
-      key: 'turno',
-      icon: NavIcon.meserosOperativos,
-      label: 'Turno y beneficios',
-      href: '/(app)/meseros-operativos',
+      key: 'descuentos_promociones',
+      label: 'Descuentos y promociones',
+      href: '/(app)/descuentos-promociones',
     },
+    { key: 'creditos', label: 'Créditos / fiados', href: '/(app)/creditos' },
+    { key: 'personalizacion', label: 'Personalización visual', href: '/(app)/personalizacion-visual' },
+    { key: 'configuracion', label: 'Configuración', href: '/(app)/configuracion' },
+    { key: 'conexion', label: 'Conexión móvil', href: '/(app)/conexion-movil' },
+    { key: 'permisos', label: 'Permisos', href: '/(app)/permisos' },
+    ...(modulos?.modulo_meseros_operativos_activo !== false
+      ? [{ key: 'turno' as const, label: 'Turno y beneficios', href: '/(app)/meseros-operativos' }]
+      : []),
   ];
 
   function go(href: string) {
@@ -76,13 +84,10 @@ export function AppNavMoreSheet({ visible, onClose, mode = 'admin' }: Props) {
       </Pressable>
       <Animated.View
         entering={FadeInUp.duration(MOTION.normal).springify()}
-        style={[
-          styles.sheet,
-          { paddingBottom: Math.max(insets.bottom, 16) },
-        ]}
+        style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16), backgroundColor: colors.background, borderColor: colors.border }]}
       >
-        <View style={styles.handle} />
-        <Text style={styles.title}>
+        <View style={[styles.handle, { backgroundColor: colors.borderInput }]} />
+        <Text style={[styles.title, { color: colors.text, borderBottomColor: colors.border }]}>
           {mode === 'admin' ? 'Administración' : 'Tu cuenta'}
         </Text>
         <ScrollView
@@ -94,29 +99,37 @@ export function AppNavMoreSheet({ visible, onClose, mode = 'admin' }: Props) {
             ? items.map((item) => (
                 <Pressable
                   key={item.key}
-                  style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+                  style={({ pressed }) => [
+                    styles.row,
+                    pressed && { backgroundColor: colors.surfaceMuted },
+                  ]}
                   onPress={() => go(item.href)}
                 >
-                  <View style={styles.rowIcon}>
-                    <Ionicons name={item.icon} size={22} color={colors.primary} />
+                  <View style={[styles.rowIcon, { backgroundColor: colors.surfaceMuted }]}>
+                    <Ionicons name={navIcon(item.key)} size={22} color={colors.text} />
                   </View>
-                  <Text style={styles.rowLabel}>{item.label}</Text>
+                  <Text style={[styles.rowLabel, { color: colors.text }]}>{item.label}</Text>
                   <Ionicons name="chevron-forward" size={18} color={colors.textHint} />
                 </Pressable>
               ))
             : null}
           <Pressable
-            style={({ pressed }) => [styles.row, styles.rowDanger, pressed && styles.rowPressed]}
+            style={({ pressed }) => [
+              styles.row,
+              styles.rowDanger,
+              { borderTopColor: colors.border },
+              pressed && { backgroundColor: colors.surfaceMuted },
+            ]}
             onPress={() => void onLogout()}
           >
-            <View style={[styles.rowIcon, styles.rowIconDanger]}>
-              <Ionicons name={NavIcon.cerrarSesion} size={22} color={colors.danger} />
+            <View style={[styles.rowIcon, { backgroundColor: colors.dangerLight }]}>
+              <Ionicons name={navIcon('cuenta')} size={22} color={colors.danger} />
             </View>
-            <Text style={[styles.rowLabel, styles.rowLabelDanger]}>Cerrar sesión</Text>
+            <Text style={[styles.rowLabel, { color: colors.dangerText }]}>Cerrar sesión</Text>
           </Pressable>
         </ScrollView>
-        <Pressable style={styles.closeBtn} onPress={onClose}>
-          <Text style={styles.closeBtnText}>Cerrar</Text>
+        <Pressable style={[styles.closeBtn, { backgroundColor: colors.surfaceMuted }]} onPress={onClose}>
+          <Text style={[styles.closeBtnText, { color: colors.textMuted }]}>Cerrar</Text>
         </Pressable>
       </Animated.View>
     </Modal>
@@ -134,11 +147,9 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     maxHeight: '82%',
-    backgroundColor: colors.background,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     borderWidth: 1,
-    borderColor: colors.border,
     borderBottomWidth: 0,
   },
   handle: {
@@ -146,18 +157,15 @@ const styles = StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: colors.borderInput,
     marginTop: 10,
     marginBottom: 4,
   },
   title: {
     fontSize: 18,
     fontWeight: '800',
-    color: colors.text,
     textAlign: 'center',
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
   },
   scroll: { maxHeight: 420 },
   scrollContent: { paddingVertical: 8 },
@@ -168,26 +176,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 14,
   },
-  rowPressed: { backgroundColor: colors.surfaceMuted },
-  rowDanger: { marginTop: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  rowDanger: { marginTop: 8, borderTopWidth: StyleSheet.hairlineWidth },
   rowIcon: {
     width: 40,
     height: 40,
     borderRadius: 12,
-    backgroundColor: colors.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  rowIconDanger: { backgroundColor: colors.dangerLight },
-  rowLabel: { flex: 1, fontSize: 16, fontWeight: '600', color: colors.text },
-  rowLabelDanger: { color: colors.dangerText },
+  rowLabel: { flex: 1, fontSize: 16, fontWeight: '600' },
   closeBtn: {
     marginHorizontal: 20,
     marginTop: 8,
     paddingVertical: 14,
     borderRadius: 12,
-    backgroundColor: colors.surfaceMuted,
     alignItems: 'center',
   },
-  closeBtnText: { fontWeight: '700', color: colors.textMuted, fontSize: 15 },
+  closeBtnText: { fontWeight: '700', fontSize: 15 },
 });

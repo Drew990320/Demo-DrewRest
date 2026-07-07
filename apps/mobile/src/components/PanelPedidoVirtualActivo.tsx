@@ -7,9 +7,11 @@ import { useRefreshPedidoSuave } from '../hooks/useRefreshPedidoSuave';
 import { usePermisosMesero } from '../hooks/usePermisosMesero';
 import { useResponsive } from '../hooks/useResponsive';
 import { usePedidoToolsRail } from '../context/ResumenDiarioToolsRailContext';
+import { useThemedStyles } from '../hooks/useThemedStyles';
 import { ActionIconBar, type ActionIconItem } from './ActionIconBar';
 import { IconTooltipButton } from './IconTooltipButton';
 import { PedidoIcon } from '../lib/app-icons';
+import { mergePedidoRailActions } from '../lib/pedido-rail-actions';
 import { api } from '../lib/api';
 import { confirmAppDialog, showNotice } from '../lib/app-dialog';
 import { formatCOP } from '../lib/format';
@@ -29,7 +31,23 @@ import {
   esMesaMostradorNumero,
   esMesaParaLlevarNumero,
 } from '../lib/mesa-label';
-import { colors } from '../lib/theme';
+import type { AppColors } from '../lib/theme';
+import {
+  empaqueFaltanteEnDetallePadre,
+  resumenEmpaqueParaLlevar,
+} from '../lib/empaque-para-llevar';
+import {
+  EmpaqueParaLlevarAjuste,
+  reducirEmpaqueDetalle,
+  type DetalleEmpaqueUi,
+} from './EmpaqueParaLlevarAjuste';
+
+export function esParaLlevarPedido(
+  modo: ModoPanelPedidoInline,
+  modoServicio?: 'en_mesa' | 'para_llevar',
+): boolean {
+  return modo === 'para_llevar' || modoServicio === 'para_llevar';
+}
 
 export type ModoPanelPedidoInline = 'mostrador' | 'para_llevar' | 'mesa';
 
@@ -52,11 +70,15 @@ export type PedidoVirtualDetalle = {
     id_detalle_padre: number | null;
     nombre_producto: string;
     cantidad: number;
+    precio_unitario?: number;
     subtotal_linea: number;
     nota_cocina: string | null;
     marcar_cocina?: boolean;
     enviado_cocina?: boolean;
     es_acompanamiento_mazorca?: boolean;
+    es_empacable?: boolean;
+    es_plato_principal?: boolean;
+    categoria_nombre?: string;
     personalizaciones: { descripcion: string }[];
   }[];
   facturas?: { id_factura: number }[];
@@ -87,6 +109,113 @@ function etiquetaEstadoPedido(p: PedidoVirtualDetalle): string {
   return estado;
 }
 
+function createPanelStyles(c: AppColors) {
+  return StyleSheet.create({
+    box: {
+      marginTop: 4,
+      paddingTop: 12,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: c.borderLight,
+      gap: 4,
+      position: 'relative',
+    },
+    contenido: {
+      gap: 4,
+    },
+    contenidoAtenuado: {
+      opacity: 0.72,
+    },
+    actualizandoOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.surfaceMuted,
+      opacity: 0.92,
+    },
+    actualizandoText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: c.textMuted,
+    },
+    boxSinBorde: {
+      marginTop: 0,
+      paddingTop: 0,
+      borderTopWidth: 0,
+    },
+    head: {
+      flexDirection: 'row',
+      alignItems: 'baseline',
+      justifyContent: 'space-between',
+      gap: 8,
+      marginBottom: 8,
+    },
+    pedidoId: { fontWeight: '900', color: c.primary, fontSize: 18 },
+    meta: { fontSize: 13, color: c.textMuted, fontWeight: '600' },
+    empty: {
+      fontSize: 14,
+      color: c.textMuted,
+      lineHeight: 20,
+      paddingVertical: 8,
+    },
+    line: {
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: c.borderLight,
+      paddingVertical: 10,
+    },
+    lineMain: { fontSize: 16, color: c.text, fontWeight: '600' },
+    linePrice: { fontSize: 14, color: c.textMuted, marginTop: 4 },
+    nota: { fontSize: 13, color: c.secondary, marginTop: 4 },
+    pers: { fontSize: 13, color: c.textMuted, marginTop: 2 },
+    subLine: {
+      fontSize: 12,
+      color: c.textHint,
+      fontStyle: 'italic',
+      flex: 1,
+    },
+    empaqueSubRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginTop: 4,
+    },
+    subLineFalta: {
+      fontSize: 12,
+      color: c.warning,
+      marginTop: 4,
+      fontWeight: '600',
+    },
+    lineActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginTop: 10,
+      gap: 10,
+    },
+    qtyRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    qtyVal: {
+      fontWeight: '900',
+      fontSize: 16,
+      color: c.text,
+      minWidth: 24,
+      textAlign: 'center',
+    },
+    total: {
+      marginTop: 10,
+      fontSize: 15,
+      fontWeight: '800',
+      color: c.text,
+      textAlign: 'right',
+    },
+    extra: {
+      marginTop: 12,
+      paddingTop: 12,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: c.borderLight,
+    },
+    actionBar: { marginTop: 12 },
+  });
+}
+
 export function PanelPedidoVirtualActivo({
   pedido,
   modo,
@@ -100,11 +229,14 @@ export function PanelPedidoVirtualActivo({
   extra,
   actualizando = false,
 }: Props) {
+  const styles = useThemedStyles(createPanelStyles);
   const router = useRouter();
   const isFocused = useIsFocused();
   const { permisos } = usePermisosMesero();
   const [busy, setBusy] = useState(false);
   const [busyPasarCocina, setBusyPasarCocina] = useState(false);
+
+  const esParaLlevar = esParaLlevarPedido(modo, pedido.modo_servicio);
 
   const {
     platosPendientesCocina,
@@ -127,7 +259,17 @@ export function PanelPedidoVirtualActivo({
 
   const lineasAgrupadas = useMemo(() => {
     const padres = pedido.detalles.filter((d) => d.id_detalle_padre == null);
-    return agruparLineasPedido(padres, { soloEstadoVisible: true }).filter(
+    return agruparLineasPedido(
+      padres.map((d) => ({
+        ...d,
+        precio_unitario: d.precio_unitario ?? 0,
+        personalizaciones: d.personalizaciones.map((p) => ({
+          ...p,
+          tipo: 'extra',
+        })),
+      })),
+      { soloEstadoVisible: true },
+    ).filter(
       (d) => !esDetalleMazorcaAcompanamiento(d),
     );
   }, [pedido.detalles]);
@@ -137,6 +279,35 @@ export function PanelPedidoVirtualActivo({
       pedido.detalles
         .filter((d) => d.id_detalle_padre == null)
         .reduce((sum, d) => sum + d.subtotal_linea, 0),
+    [pedido.detalles],
+  );
+
+  const resumenEmpaque = useMemo(
+    () =>
+      resumenEmpaqueParaLlevar(
+        esParaLlevar ? 'para_llevar' : pedido.modo_servicio,
+        pedido.detalles.map((d) => ({
+          id_detalle: d.id_detalle,
+          id_detalle_padre: d.id_detalle_padre,
+          cantidad: d.cantidad,
+          es_empacable: d.es_empacable,
+          es_plato_principal: d.es_plato_principal,
+          categoria_nombre: d.categoria_nombre,
+        })),
+      ),
+    [esParaLlevar, pedido.modo_servicio, pedido.detalles],
+  );
+
+  const detallesEmpaqueUi = useMemo(
+    (): DetalleEmpaqueUi[] =>
+      pedido.detalles.map((d) => ({
+        id_detalle: d.id_detalle,
+        id_detalle_padre: d.id_detalle_padre,
+        cantidad: d.cantidad,
+        es_empacable: d.es_empacable,
+        es_plato_principal: d.es_plato_principal,
+        categoria_nombre: d.categoria_nombre,
+      })),
     [pedido.detalles],
   );
 
@@ -262,6 +433,31 @@ export function PanelPedidoVirtualActivo({
     }
   }
 
+  async function reducirEmpaqueEnGrupo(
+    empaquesGrupo: PedidoVirtualDetalle['detalles'],
+  ) {
+    if (busy || empaquesGrupo.length === 0) return;
+    setBusy(true);
+    try {
+      await reducirEmpaqueDetalle(
+        empaquesGrupo.map((d) => ({
+          id_detalle: d.id_detalle,
+          id_detalle_padre: d.id_detalle_padre,
+          cantidad: d.cantidad,
+          es_empacable: d.es_empacable,
+          es_plato_principal: d.es_plato_principal,
+          categoria_nombre: d.categoria_nombre,
+        })),
+        token,
+      );
+      await refreshSuave();
+    } catch (e) {
+      await manejarErrorAccion(e, 'quitar empaque');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function cancelarPedido() {
     if (busy) return;
     if ((pedido.facturas?.length ?? 0) > 0) {
@@ -350,35 +546,32 @@ export function PanelPedidoVirtualActivo({
     .join(';');
 
   const pedidoActions = useMemo((): ActionIconItem[] => {
-    return [
-      ...accionesExtra,
-      ...(permisos.agregar_items
-        ? [
-            {
-              key: 'menu',
-              icon: menuIcon,
-              label: menuLabel,
-              variant: 'secondary' as const,
-              onPress: () => router.push(menuHref),
-            },
-          ]
-        : []),
-      ...accionesCocina,
-      ...(mostrarCobrar && permisos.cobrar
-        ? [
-            {
+    return mergePedidoRailActions({
+      menu: permisos.agregar_items
+        ? {
+            key: 'menu',
+            icon: menuIcon,
+            label: menuLabel,
+            variant: 'secondary' as const,
+            onPress: () => router.push(menuHref),
+          }
+        : null,
+      cocina: accionesCocina,
+      reimprimir: accionesExtra,
+      cobrar:
+        mostrarCobrar && permisos.cobrar
+          ? {
               key: 'cobrar',
               icon: PedidoIcon.cobrar,
               label: 'Cobrar',
               variant: 'money' as const,
               onPress: () =>
                 router.push(`/(app)/pedido/${pedido.id_pedido}/factura`),
-            },
-          ]
-        : []),
-      ...(mostrarCancelar && permisos.cancelar_pedido
-        ? [
-            {
+            }
+          : null,
+      cancelar:
+        mostrarCancelar && permisos.cancelar_pedido
+          ? {
               key: 'cancelar',
               icon: 'close-circle-outline' as const,
               label: tieneCobrosParciales
@@ -387,10 +580,9 @@ export function PanelPedidoVirtualActivo({
               variant: 'danger' as const,
               disabled: busy || tieneCobrosParciales,
               onPress: cancelarPedido,
-            },
-          ]
-        : []),
-    ];
+            }
+          : null,
+    });
   }, [
     accionesExtra,
     permisos,
@@ -440,6 +632,17 @@ export function PanelPedidoVirtualActivo({
         </View>
       ) : null}
 
+      {esParaLlevar ? (
+        <EmpaqueParaLlevarAjuste
+          idPedido={pedido.id_pedido}
+          detalles={detallesEmpaqueUi}
+          esParaLlevar={esParaLlevar}
+          token={token}
+          onRefresh={() => refreshSuave({ inmediato: true })}
+          puedeEditar={permisos.editar_cantidades}
+        />
+      ) : null}
+
       {lineasAgrupadas.length === 0 ? (
         <Text style={styles.empty}>{emptyText}</Text>
       ) : (
@@ -454,6 +657,30 @@ export function PanelPedidoVirtualActivo({
             (sum, h) => sum + h.cantidad,
             0,
           );
+          const detalleRef = pedido.detalles.find(
+            (x) => x.id_detalle === d.id_detalle_incremento,
+          );
+          const faltanteLinea =
+            detalleRef && resumenEmpaque
+              ? empaqueFaltanteEnDetallePadre(
+                  {
+                    id_detalle: detalleRef.id_detalle,
+                    id_detalle_padre: detalleRef.id_detalle_padre,
+                    cantidad: d.cantidad,
+                    es_empacable: detalleRef.es_empacable,
+                    es_plato_principal: detalleRef.es_plato_principal,
+                    categoria_nombre: detalleRef.categoria_nombre,
+                  },
+                  pedido.detalles.map((x) => ({
+                    id_detalle: x.id_detalle,
+                    id_detalle_padre: x.id_detalle_padre,
+                    cantidad: x.cantidad,
+                    es_empacable: x.es_empacable,
+                    es_plato_principal: x.es_plato_principal,
+                    categoria_nombre: x.categoria_nombre,
+                  })),
+                )
+              : 0;
           return (
             <View key={d.ids_detalle.join('-')} style={styles.line}>
               <Text style={styles.lineMain}>
@@ -463,9 +690,25 @@ export function PanelPedidoVirtualActivo({
               </Text>
               <Text style={styles.linePrice}>{formatCOP(d.subtotal_linea)}</Text>
               {empaqueCantidad > 0 ? (
-                <Text style={styles.subLine}>
-                  ↳ {empaqueCantidad > 1 ? `${empaqueCantidad}× ` : ''}
-                  empaque para llevar
+                <View style={styles.empaqueSubRow}>
+                  <Text style={styles.subLine}>
+                    ↳ {empaqueCantidad > 1 ? `${empaqueCantidad}× ` : ''}
+                    empaque para llevar
+                  </Text>
+                  {editarLineas && permisos.editar_cantidades ? (
+                    <IconTooltipButton
+                      icon="remove-circle-outline"
+                      label="Quitar un empaque"
+                      size={20}
+                      onPress={() => reducirEmpaqueEnGrupo(empaquesGrupo)}
+                      disabled={busy}
+                    />
+                  ) : null}
+                </View>
+              ) : faltanteLinea > 0 ? (
+                <Text style={styles.subLineFalta}>
+                  ↳ falta{faltanteLinea > 1 ? `n ${faltanteLinea}` : ''} empaque
+                  para llevar
                 </Text>
               ) : null}
               {notaVisible ? (
@@ -534,95 +777,3 @@ export function PanelPedidoVirtualActivo({
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  box: {
-    marginTop: 4,
-    paddingTop: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.borderLight,
-    gap: 4,
-    position: 'relative',
-  },
-  contenido: {
-    gap: 4,
-  },
-  contenidoAtenuado: {
-    opacity: 0.72,
-  },
-  actualizandoOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.35)',
-  },
-  actualizandoText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.textMuted,
-  },
-  boxSinBorde: {
-    marginTop: 0,
-    paddingTop: 0,
-    borderTopWidth: 0,
-  },
-  head: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    gap: 8,
-    marginBottom: 8,
-  },
-  pedidoId: { fontWeight: '900', color: colors.primary, fontSize: 18 },
-  meta: { fontSize: 13, color: colors.textMuted, fontWeight: '600' },
-  empty: {
-    fontSize: 14,
-    color: colors.textMuted,
-    lineHeight: 20,
-    paddingVertical: 8,
-  },
-  line: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.borderLight,
-    paddingVertical: 10,
-  },
-  lineMain: { fontSize: 16, color: colors.text, fontWeight: '600' },
-  linePrice: { fontSize: 14, color: colors.textMuted, marginTop: 4 },
-  nota: { fontSize: 13, color: colors.secondary, marginTop: 4 },
-  pers: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
-  subLine: {
-    fontSize: 12,
-    color: colors.textHint,
-    marginTop: 4,
-    fontStyle: 'italic',
-  },
-  lineActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 10,
-    gap: 10,
-  },
-  qtyRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  qtyVal: {
-    fontWeight: '900',
-    fontSize: 16,
-    color: colors.text,
-    minWidth: 24,
-    textAlign: 'center',
-  },
-  total: {
-    marginTop: 10,
-    fontSize: 15,
-    fontWeight: '800',
-    color: colors.text,
-    textAlign: 'right',
-  },
-  extra: {
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.borderLight,
-  },
-  actionBar: { marginTop: 12 },
-});

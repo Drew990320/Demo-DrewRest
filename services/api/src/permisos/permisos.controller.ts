@@ -15,6 +15,7 @@ import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import {
   AsignarDelegacionCierreDto,
+  PatchPermisosChefDto,
   PatchPermisosMeseroDto,
 } from './dto/permisos.dto';
 import { PermisosService } from './permisos.service';
@@ -42,6 +43,12 @@ export class PermisosController {
   @Roles('admin')
   actualizarMesero(@Body() dto: PatchPermisosMeseroDto) {
     return this.permisos.actualizarConfig(dto);
+  }
+
+  @Patch('chef')
+  @Roles('admin')
+  actualizarChef(@Body() dto: PatchPermisosChefDto) {
+    return this.permisos.actualizarConfigChef(dto);
   }
 
   @Put('delegacion/cierre-anulacion')

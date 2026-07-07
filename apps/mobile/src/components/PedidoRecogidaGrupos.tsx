@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { IconTooltipButton } from './IconTooltipButton';
 import { AccionIcon } from '../lib/app-icons';
@@ -12,7 +13,10 @@ import {
 } from '../lib/recogida-parcial';
 import { detallePuedeRecogerMesero } from '../lib/cocina-pedido-view';
 import { notaCocinaVisibleUsuario } from '../lib/nota-cocina-ui';
-import { colors, status } from '../lib/theme';
+import { useVisualTheme } from '../context/VisualThemeContext';
+import { useThemedStyles } from '../hooks/useThemedStyles';
+import { statusFromAppColors } from '../lib/visual-theme';
+import type { AppColors } from '../lib/theme';
 
 type Props = {
   idPedido: number;
@@ -29,6 +33,66 @@ function grupoKey(idPedido: number, g: LineaPedidoGrupo): string {
   return `${idPedido}:${g.ids_detalle.join('-')}`;
 }
 
+function createStyles(
+  c: AppColors,
+  status: ReturnType<typeof statusFromAppColors>,
+) {
+  return StyleSheet.create({
+    line: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: c.borderLight,
+      paddingTop: 10,
+      marginTop: 8,
+    },
+    lineEnMesa: {
+      backgroundColor: c.surfaceMuted,
+      marginHorizontal: -8,
+      paddingHorizontal: 8,
+      borderRadius: 8,
+      borderTopWidth: 0,
+    },
+    lineSinCocina: {
+      backgroundColor: status.warn.bg,
+      marginHorizontal: -8,
+      paddingHorizontal: 8,
+      borderRadius: 8,
+      borderTopWidth: 0,
+    },
+    lineListoRecoger: {
+      backgroundColor: status.ok.bg,
+      marginHorizontal: -8,
+      paddingHorizontal: 8,
+      borderRadius: 8,
+      borderTopWidth: 0,
+    },
+    lineRecogerOpcional: {
+      backgroundColor: status.warn.bg,
+      marginHorizontal: -8,
+      paddingHorizontal: 8,
+      borderRadius: 8,
+      borderTopWidth: 0,
+    },
+    lineMain: { fontSize: 15, fontWeight: '700', color: c.text },
+    lineEstado: { marginTop: 4, fontSize: 12, fontWeight: '700', color: c.successText },
+    lineEstadoSinCocina: { color: status.warn.fg },
+    lineEstadoRecoger: { color: status.ok.accent },
+    lineEstadoRecogerOpcional: { color: status.warn.fg },
+    lineEstadoEnMesa: { color: c.info, fontWeight: '800' },
+    lineActions: { marginTop: 8, gap: 8 },
+    qtyRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    qtyPickVal: {
+      minWidth: 44,
+      textAlign: 'center',
+      fontWeight: '800',
+      color: c.text,
+      fontSize: 14,
+    },
+    iconRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
+    nota: { color: c.secondary, marginTop: 4 },
+    pers: { color: c.textMuted, marginTop: 4, fontSize: 13 },
+  });
+}
+
 export function PedidoRecogidaGrupos({
   idPedido,
   detalles,
@@ -39,6 +103,12 @@ export function PedidoRecogidaGrupos({
   onFalta,
   soloRecogibles = false,
 }: Props) {
+  const { colors } = useVisualTheme();
+  const status = useMemo(() => statusFromAppColors(colors), [colors]);
+  const styles = useThemedStyles(
+    useMemo(() => (c: AppColors) => createStyles(c, status), [status]),
+  );
+
   const byId = new Map(detalles.map((d) => [d.id_detalle, d]));
   const grupos = agruparDetallesMesero(detalles).filter((g) => {
     if (!soloRecogibles) return true;
@@ -166,58 +236,3 @@ export function filtrarDetallesSoloRecogibles(
 ): PedidoCocinaView['detalles'] {
   return detalles.filter(detallePuedeRecogerMesero);
 }
-
-const styles = StyleSheet.create({
-  line: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.borderLight,
-    paddingTop: 10,
-    marginTop: 8,
-  },
-  lineEnMesa: {
-    backgroundColor: colors.surfaceMuted,
-    marginHorizontal: -8,
-    paddingHorizontal: 8,
-    borderRadius: 8,
-    borderTopWidth: 0,
-  },
-  lineSinCocina: {
-    backgroundColor: status.warn.bg,
-    marginHorizontal: -8,
-    paddingHorizontal: 8,
-    borderRadius: 8,
-    borderTopWidth: 0,
-  },
-  lineListoRecoger: {
-    backgroundColor: status.ok.bg,
-    marginHorizontal: -8,
-    paddingHorizontal: 8,
-    borderRadius: 8,
-    borderTopWidth: 0,
-  },
-  lineRecogerOpcional: {
-    backgroundColor: status.warn.bg,
-    marginHorizontal: -8,
-    paddingHorizontal: 8,
-    borderRadius: 8,
-    borderTopWidth: 0,
-  },
-  lineMain: { fontSize: 15, fontWeight: '700', color: colors.text },
-  lineEstado: { marginTop: 4, fontSize: 12, fontWeight: '700', color: colors.successText },
-  lineEstadoSinCocina: { color: status.warn.fg },
-  lineEstadoRecoger: { color: status.ok.accent },
-  lineEstadoRecogerOpcional: { color: status.warn.fg },
-  lineEstadoEnMesa: { color: colors.info, fontWeight: '800' },
-  lineActions: { marginTop: 8, gap: 8 },
-  qtyRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  qtyPickVal: {
-    minWidth: 44,
-    textAlign: 'center',
-    fontWeight: '800',
-    color: colors.text,
-    fontSize: 14,
-  },
-  iconRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
-  nota: { color: colors.secondary, marginTop: 4 },
-  pers: { color: colors.textMuted, marginTop: 4, fontSize: 13 },
-});

@@ -1,6 +1,8 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../lib/theme';
+import { useVisualTheme } from '../context/VisualThemeContext';
+import { useThemedStyles } from '../hooks/useThemedStyles';
+import type { AppColors } from '../lib/theme';
 
 type Props = {
   value: number;
@@ -11,6 +13,51 @@ type Props = {
   label?: string;
 };
 
+function createStyles(c: AppColors) {
+  return StyleSheet.create({
+    wrap: {
+      gap: 8,
+      alignItems: 'center',
+    },
+    label: {
+      fontWeight: '700',
+      fontSize: 13,
+      color: c.offline,
+      textAlign: 'center',
+    },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+    },
+    btn: {
+      width: 44,
+      height: 44,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    btnPressed: {
+      backgroundColor: c.surfaceMuted,
+    },
+    btnDisabled: {
+      opacity: 0.45,
+    },
+    valWrap: {
+      minWidth: 40,
+      alignItems: 'center',
+    },
+    val: {
+      fontSize: 24,
+      fontWeight: '900',
+      color: c.text,
+    },
+  });
+}
+
 export function QtyStepper({
   value,
   onChange,
@@ -19,6 +66,9 @@ export function QtyStepper({
   disabled,
   label,
 }: Props) {
+  const { colors } = useVisualTheme();
+  const styles = useThemedStyles(createStyles);
+
   return (
     <View style={styles.wrap}>
       {label ? <Text style={styles.label}>{label}</Text> : null}
@@ -56,46 +106,3 @@ export function QtyStepper({
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  wrap: {
-    gap: 8,
-    alignItems: 'center',
-  },
-  label: {
-    fontWeight: '700',
-    fontSize: 13,
-    color: colors.offline,
-    textAlign: 'center',
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  btn: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.borderInput,
-    backgroundColor: colors.surfaceMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  btnPressed: {
-    backgroundColor: colors.borderLight,
-  },
-  btnDisabled: {
-    opacity: 0.45,
-  },
-  valWrap: {
-    minWidth: 40,
-    alignItems: 'center',
-  },
-  val: {
-    fontSize: 24,
-    fontWeight: '900',
-    color: colors.text,
-  },
-});

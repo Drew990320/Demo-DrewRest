@@ -128,6 +128,7 @@ export function serializarPedidoVistaOperativa(p: PedidoVistaOperativaRow) {
     id_mesa: p.idMesa,
     mesa_numero: p.mesa.numero,
     estado: p.estado,
+    modo_servicio: p.modoServicio,
     num_comensales: p.numComensales,
     creado_en: p.creadoEn,
     prioridad_cocina: prioridadCocina,

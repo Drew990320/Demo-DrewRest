@@ -3,7 +3,6 @@ import {
   bufferFromPrinter,
   createEscPosPrinter,
   DEFAULT_ESC_POS_WIDTH,
-  printEncabezadoLaReserva,
   wrapEscPos,
 } from './escpos-utils';
 
@@ -16,7 +15,7 @@ export async function buildComandaEscPos(
   const w = charWidth;
   const sep = '-'.repeat(w);
 
-  await printEncabezadoLaReserva(printer);
+  await printer.alignCenter();
   await printer.println('COMANDA COCINA');
   if (ticket.es_adicional) {
     await printer.bold(true);

@@ -50,7 +50,8 @@ export function useAppNavLayout(): AppNavLayout {
 
     let visible = zone !== 'hidden';
     if (visible && zone === 'operacion' && esChef && !esAdmin) {
-      visible = false;
+      // El chef solo opera en cocina; ahí necesita barra con salida (Cuenta).
+      visible = pathname.includes('/cocina');
     }
     if (visible && zone === 'pedido' && !puedeTomarPedidos(user?.rol)) {
       visible = false;

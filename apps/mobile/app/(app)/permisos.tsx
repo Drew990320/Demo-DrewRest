@@ -15,6 +15,10 @@ import { ActionIconBar } from '../../src/components/ActionIconBar';
 import { ScreenLoading } from '../../src/components/ScreenLoading';
 import { ScreenScroll } from '../../src/components/ScreenScroll';
 import { useAuth } from '../../src/context/AuthContext';
+import { useVisualTheme } from '../../src/context/VisualThemeContext';
+import { useThemedStyles } from '../../src/hooks/useThemedStyles';
+import { useFormStyles } from '../../src/lib/form-layout';
+import type { AppColors } from '../../src/lib/theme';
 import { AdminIcon } from '../../src/lib/app-icons';
 import { api } from '../../src/lib/api';
 import { confirmAppDialog, showNotice } from '../../src/lib/app-dialog';
@@ -27,7 +31,12 @@ import {
   type PermisoMeseroKey,
   type PermisosMeseroConfig,
 } from '@la-reserva/shared-domain/permisos-mesero';
-import { colors } from '../../src/lib/theme';
+import {
+  PERMISOS_CHEF_KEYS,
+  PERMISOS_CHEF_META,
+  type PermisoChefKey,
+  type PermisosChefConfig,
+} from '@la-reserva/shared-domain/permisos-chef';
 
 type MeseroFila = {
   id_usuario: number;
@@ -38,6 +47,7 @@ type MeseroFila = {
 type ResumenPermisos = {
   fecha: string;
   permisos_mesero: PermisosMeseroConfig;
+  permisos_chef: PermisosChefConfig;
   delegacion_cierre_anulacion: {
     id_usuario: number;
     nombre: string;
@@ -57,6 +67,9 @@ function parseFechaInput(iso: string): Date {
 }
 
 export default function PermisosAdminScreen() {
+  const { colors } = useVisualTheme();
+  const styles = useThemedStyles(createStyles);
+  const formStyles = useFormStyles();
   const { token, user } = useAuth();
   const router = useRouter();
   const [fecha, setFecha] = useState(() => fechaCalendarioBogota(new Date()));
@@ -115,6 +128,25 @@ export default function PermisosAdminScreen() {
     } catch (e) {
       await manejarErrorOperacion(e, {
         title: 'Permisos',
+        message: 'No se pudo guardar el cambio.',
+      });
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function togglePermisoChef(key: PermisoChefKey, next: boolean) {
+    setBusyKey(`chef:${key}`);
+    try {
+      await api('/permisos/chef', {
+        method: 'PATCH',
+        token,
+        body: JSON.stringify({ [key]: next }),
+      });
+      await load();
+    } catch (e) {
+      await manejarErrorOperacion(e, {
+        title: 'Permisos chef',
         message: 'No se pudo guardar el cambio.',
       });
     } finally {
@@ -205,9 +237,37 @@ export default function PermisosAdminScreen() {
       }
     >
       <Text style={styles.intro}>
-        Define qué acciones pueden hacer los meseros en mesa y designa quién puede
+        Define qué acciones pueden hacer meseros y chefs, y designa quién puede
         cerrar anulando lo pendiente cada día.
       </Text>
+
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>Acciones del chef</Text>
+        <Text style={styles.hint}>
+          Si desactivas una opción, ningún chef podrá usarla hasta que la vuelvas
+          a activar.
+        </Text>
+        {PERMISOS_CHEF_KEYS.map((key) => {
+          const meta = PERMISOS_CHEF_META[key];
+          const activo = data.permisos_chef[key];
+          const busy = busyKey === `chef:${key}`;
+          return (
+            <View key={key} style={styles.toggleRow}>
+              <View style={styles.toggleText}>
+                <Text style={styles.toggleTitle}>{meta.titulo}</Text>
+                <Text style={styles.toggleHint}>{meta.detalle}</Text>
+              </View>
+              <Switch
+                value={activo}
+                disabled={busy}
+                onValueChange={(v) => void togglePermisoChef(key, v)}
+                trackColor={{ false: colors.border, true: colors.primarySoft }}
+                thumbColor={activo ? colors.primary : colors.surface}
+              />
+            </View>
+          );
+        })}
+      </View>
 
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Acciones del mesero</Text>
@@ -334,58 +394,60 @@ export default function PermisosAdminScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: colors.background },
+function createStyles(c: AppColors) {
+  return StyleSheet.create({
+  scroll: { flex: 1, backgroundColor: c.background },
   content: { gap: 16 },
-  intro: { color: colors.textMuted, fontSize: 14, lineHeight: 20 },
+  intro: { color: c.textMuted, fontSize: 14, lineHeight: 20 },
   card: {
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderRadius: 12,
     padding: 16,
     gap: 12,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: c.border,
   },
-  sectionTitle: { fontSize: 17, fontWeight: '700', color: colors.text },
-  hint: { fontSize: 13, color: colors.textMuted, lineHeight: 18 },
-  hintSmall: { fontSize: 13, color: colors.textMuted, fontStyle: 'italic' },
+  sectionTitle: { fontSize: 17, fontWeight: '700', color: c.text },
+  hint: { fontSize: 13, color: c.textMuted, lineHeight: 18 },
+  hintSmall: { fontSize: 13, color: c.textMuted, fontStyle: 'italic' },
   toggleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     paddingVertical: 8,
     borderTopWidth: 1,
-    borderTopColor: colors.border,
+    borderTopColor: c.border,
   },
   toggleText: { flex: 1, gap: 2 },
-  toggleTitle: { fontSize: 15, fontWeight: '600', color: colors.text },
-  toggleHint: { fontSize: 12, color: colors.textMuted },
+  toggleTitle: { fontSize: 15, fontWeight: '600', color: c.text },
+  toggleHint: { fontSize: 12, color: c.textMuted },
   fechaBtn: {
     alignSelf: 'flex-start',
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 8,
-    backgroundColor: colors.backgroundAlt,
+    backgroundColor: c.backgroundAlt,
   },
-  fechaBtnText: { color: colors.primary, fontWeight: '600' },
+  fechaBtnText: { color: c.primary, fontWeight: '600' },
   delegacionActiva: { gap: 6 },
-  delegacionNombre: { fontWeight: '600', color: colors.text },
-  linkBtn: { color: colors.primary, fontWeight: '600' },
+  delegacionNombre: { fontWeight: '600', color: c.text },
+  linkBtn: { color: c.primary, fontWeight: '600' },
   delegacionLista: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   delegacionChip: {
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.backgroundAlt,
+    borderColor: c.border,
+    backgroundColor: c.backgroundAlt,
   },
   delegacionChipActivo: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primarySoft,
+    borderColor: c.primary,
+    backgroundColor: c.primarySoft,
   },
-  delegacionChipText: { color: colors.text, fontSize: 13 },
-  delegacionChipTextActivo: { color: colors.primary, fontWeight: '700' },
+  delegacionChipText: { color: c.text, fontSize: 13 },
+  delegacionChipTextActivo: { color: c.primary, fontWeight: '700' },
   deniedWrap: { flex: 1, justifyContent: 'center', padding: 24, gap: 16 },
-  denied: { textAlign: 'center', color: colors.textMuted, fontSize: 15 },
+  denied: { textAlign: 'center', color: c.textMuted, fontSize: 15 },
 });
+}

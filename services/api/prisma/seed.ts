@@ -66,21 +66,21 @@ async function main() {
         idRol: rolMesero.idRol,
         nombre: 'Mesero',
         apellido: 'Demo',
-        email: 'mesero@lareserva.local',
+        email: 'mesero@restaurant.local',
         passwordHash: hash('mesero123'),
       },
       {
         idRol: rolChef.idRol,
         nombre: 'Chef',
         apellido: 'Demo',
-        email: 'chef@lareserva.local',
+        email: 'chef@restaurant.local',
         passwordHash: hash('chef123'),
       },
       {
         idRol: rolAdmin.idRol,
         nombre: 'Administrador',
         apellido: '',
-        email: 'admin@lareserva.local',
+        email: 'admin@restaurant.local',
         passwordHash: hash('admin123'),
       },
     ],
@@ -181,7 +181,7 @@ async function main() {
       dias: ALL,
       productos: [
         { nombre: 'Entrada de chorizo', precio: 6000 },
-        { nombre: 'Mazorca para dos', precio: 3000 },
+        { nombre: 'Acompañamiento para dos', precio: 3000 },
         { nombre: 'Papas a la francesa', precio: 6000 },
         { nombre: 'Ensalada', precio: 3000 },
         { nombre: 'Porción de papa al vapor', precio: 1000 },
@@ -269,30 +269,7 @@ async function main() {
     }
   }
 
-  const catEntradas = await prisma.categoria.findFirst({
-    where: { nombre: { contains: 'Entradas' } },
-  });
-  if (catEntradas) {
-    const existe = await prisma.producto.findFirst({
-      where: { esAcompanamientoMazorca: true },
-    });
-    if (!existe) {
-      await prisma.producto.create({
-        data: {
-          idCategoria: catEntradas.idCategoria,
-          nombre: 'Mazorca (acompañamiento)',
-          descripcion: 'Incluida con el servicio · 1 por comensal',
-          precio: 0,
-          activo: true,
-          esPlatoPrincipal: false,
-          esEmpacable: false,
-          esAcompanamientoMazorca: true,
-        },
-      });
-    }
-  }
-
-  const omitir = ['Sin yuca', 'Sin papa', 'Sin ensalada', 'Sin mazorca'];
+  const omitir = ['Sin yuca', 'Sin papa', 'Sin ensalada'];
   const aderezos = ['Chipotle', 'Agridulce', 'Chimichurri'];
 
   for (const pid of productosPersonalizablesIds) {
@@ -354,6 +331,12 @@ async function main() {
     'Seed OK. Productos con personalización (fuertes, infantil, compartir):',
     productosPersonalizablesIds.length,
   );
+
+  await prisma.configOperativa.upsert({
+    where: { id: 1 },
+    create: { id: 1, mazorcaActiva: false },
+    update: {},
+  });
 }
 
 main()

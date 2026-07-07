@@ -22,6 +22,12 @@ import {
 } from '../../../../src/components/CobroPersonaPlanPanel';
 import { CtaButton } from '../../../../src/components/CtaButton';
 import { IconTooltipButton } from '../../../../src/components/IconTooltipButton';
+import {
+  EmpaqueParaLlevarAjuste,
+  reducirEmpaqueDetalle,
+  type DetalleEmpaqueUi,
+} from '../../../../src/components/EmpaqueParaLlevarAjuste';
+import { empaqueFaltanteEnDetallePadre } from '../../../../src/lib/empaque-para-llevar';
 import { MetodoPagoSelector } from '../../../../src/components/MetodoPagoSelector';
 import {
   ModoDividirSelector,
@@ -33,6 +39,7 @@ import { PlanCobroPersonas } from '../../../../src/components/PlanCobroPersonas'
 import { MixtoPagoFields } from '../../../../src/components/MixtoPagoFields';
 import { TransferenciaSoloFields } from '../../../../src/components/TransferenciaSoloFields';
 import { ScreenHeader } from '../../../../src/components/ScreenHeader';
+import { RestaurantLogo } from '../../../../src/components/RestaurantLogo';
 import { ScreenLoading } from '../../../../src/components/ScreenLoading';
 import { api } from '../../../../src/lib/api';
 import { AccionIcon, PedidoIcon } from '../../../../src/lib/app-icons';
@@ -57,7 +64,12 @@ import {
   avisarSiFaltanObligatorios,
   avisarSiMontoCOPInvalido,
 } from '../../../../src/lib/form-validation';
-import { UMBRAL_SUBTOTAL_OTROS_COP, calcularDescuentosPedido } from '../../../../src/lib/descuentos-pedido';
+import { calcularDescuentosPedido } from '../../../../src/lib/descuentos-pedido';
+import {
+  ETIQUETA_LEGACY_MULERO,
+  type EtiquetaPromocionPedido,
+  type ReglaPromocion,
+} from '@la-reserva/shared-domain/promociones-pedido';
 import {
   expandirSolicitudesConEmpaques,
   lineasDescuentoDesdeSolicitudes,
@@ -109,26 +121,27 @@ import { FacturaImpresionOpciones } from '../../../../src/components/FacturaImpr
 import { enviarFacturaPorCorreo } from '../../../../src/lib/factura-correo';
 import { useNetwork } from '../../../../src/context/NetworkContext';
 import { useFormFieldStyle } from '../../../../src/hooks/useFormFieldStyle';
-import { formStyles } from '../../../../src/lib/form-layout';
+import { useFormStyles } from '../../../../src/lib/form-layout';
 import { appShadow } from '../../../../src/lib/shadow';
-import { colors } from '../../../../src/lib/theme';
+import { useVisualTheme } from '../../../../src/context/VisualThemeContext';
+import { useThemedStyles } from '../../../../src/hooks/useThemedStyles';
+import type { AppColors } from '../../../../src/lib/theme';
 
 type DescuentosEstimados = {
   descuento_sopas: number;
   descuento_muleros: number;
   descuento_promociones?: number;
+  promociones_desglose?: { id: string; etiqueta: string; monto: number }[];
 };
 
 type ConfigDescuentos = {
-  sopas_activo: boolean;
-  sopas_monto_por_unidad: number;
-  muleros_activo: boolean;
-  muleros_monto_por_plato_principal: number;
-  umbral_subtotal_otros: number;
+  reglas_promocion: ReglaPromocion[];
+  etiquetas_pedido: EtiquetaPromocionPedido[];
 };
 
 type DetalleFactura = {
   id_detalle: number;
+  id_factura?: number | null;
   id_producto?: number;
   id_detalle_padre: number | null;
   subtotal_linea: number;
@@ -139,6 +152,7 @@ type DetalleFactura = {
   id_categoria?: number;
   participa_descuento_sopas?: boolean;
   es_plato_principal?: boolean;
+  es_empacable?: boolean;
   cobrado?: boolean;
   nota_cocina?: string | null;
   es_cuota_pendiente_reparto?: boolean;
@@ -148,8 +162,10 @@ type DetalleFactura = {
 type PedidoFull = {
   id_pedido: number;
   id_mesa?: number;
+  modo_servicio?: 'en_mesa' | 'para_llevar';
   num_comensales?: number;
   cliente_mulero?: boolean;
+  etiquetas_promocion?: string[];
   detalles: DetalleFactura[];
   descuentos_estimados?: DescuentosEstimados;
   cobro_pendiente?: { items: number; subtotal: number };
@@ -171,6 +187,21 @@ type PedidoFull = {
 
 type MetodoPago = MetodoPagoUi;
 
+function etiquetasActivasEnPedido(p: PedidoFull): string[] {
+  const set = new Set(p.etiquetas_promocion ?? []);
+  if (p.cliente_mulero) {
+    set.add(ETIQUETA_LEGACY_MULERO);
+  }
+  return [...set];
+}
+
+function contextoDescuentosPedido(p: PedidoFull) {
+  return {
+    etiquetas_promocion: etiquetasActivasEnPedido(p),
+    cliente_mulero: Boolean(p.cliente_mulero),
+  };
+}
+
 function serialDetallesPedido(p: PedidoFull) {
   return p.detalles.map((d) => ({
     id_detalle: d.id_detalle,
@@ -191,6 +222,16 @@ function anexarCobroTransferenciaSolo(
   const exceso = resumenTransferenciaUi(total, tr).exceso;
   if (exceso > 0 && devolucionMetodo) {
     body.devolucion_exceso_metodo = devolucionMetodo;
+  }
+}
+
+function anexarCobroEfectivoRecibido(
+  body: Record<string, unknown>,
+  recibeDigits: string,
+) {
+  const recibido = parseCOPDigits(recibeDigits);
+  if (recibido > 0) {
+    body.monto_recibido_efectivo = recibido;
   }
 }
 
@@ -266,6 +307,9 @@ function solicitudesCobroParaPedido(
 }
 
 export default function FacturaScreen() {
+  const { colors } = useVisualTheme();
+  const styles = useThemedStyles(createFacturaStyles);
+  const formStyles = useFormStyles();
   const { pedidoId } = useLocalSearchParams<{ pedidoId: string }>();
   const { token, user } = useAuth();
   const { permisos: permMesero } = usePermisosMesero();
@@ -279,7 +323,6 @@ export default function FacturaScreen() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [savingConfig, setSavingConfig] = useState(false);
   const [metodo, setMetodo] = useState<MetodoPago | null>(null);
   const [recibeDigits, setRecibeDigits] = useState('');
   const [mixtoTransferenciaDigits, setMixtoTransferenciaDigits] = useState('');
@@ -288,12 +331,6 @@ export default function FacturaScreen() {
   const [transferenciaSoloDigits, setTransferenciaSoloDigits] = useState('');
   const [devolucionExcesoMetodo, setDevolucionExcesoMetodo] =
     useState<DevolucionExcesoMetodo | null>(null);
-  const [descSopaOn, setDescSopaOn] = useState(false);
-  const [descMulerosOn, setDescMulerosOn] = useState(false);
-  const [descSopaDigits, setDescSopaDigits] = useState('');
-  const [descMulerosDigits, setDescMulerosDigits] = useState('');
-  const [configDirty, setConfigDirty] = useState(false);
-  const [reglaCamionerosActiva, setReglaCamionerosActiva] = useState(false);
   const [configReglas, setConfigReglas] = useState<ConfigDescuentos | null>(null);
   const [dividirCuenta, setDividirCuenta] = useState(false);
   const [modoDividir, setModoDividir] = useState<ModoDividirCuenta>('platos');
@@ -312,7 +349,7 @@ export default function FacturaScreen() {
   const [seleccionReferenciaCombinado, setSeleccionReferenciaCombinado] = useState<
     DetalleCobroCantidad[]
   >([]);
-  const [marcandoCamionero, setMarcandoCamionero] = useState(false);
+  const [marcandoEtiquetas, setMarcandoEtiquetas] = useState(false);
   const [precuentaConCopia, setPrecuentaConCopia] = useState(false);
   const [imprimiendoPrecuenta, setImprimiendoPrecuenta] = useState(false);
   const [imprimirFactura, setImprimirFactura] = useState(true);
@@ -361,13 +398,7 @@ export default function FacturaScreen() {
       token,
       cacheKey: 'config_descuentos',
     });
-    setDescSopaOn(cfg.sopas_activo);
-    setDescMulerosOn(cfg.muleros_activo);
-    setDescSopaDigits(digitsFromMonto(cfg.sopas_monto_por_unidad));
-    setDescMulerosDigits(digitsFromMonto(cfg.muleros_monto_por_plato_principal));
-    setReglaCamionerosActiva(cfg.muleros_activo);
     setConfigReglas(cfg);
-    setConfigDirty(false);
     return cfg;
   }, [token]);
 
@@ -610,7 +641,7 @@ export default function FacturaScreen() {
       ? calcularDescuentosPedido(
           lineas,
           configReglas,
-          Boolean(p.cliente_mulero),
+          contextoDescuentosPedido(p),
         )
       : (p.descuentos_estimados ?? {
           descuento_sopas: 0,
@@ -618,10 +649,7 @@ export default function FacturaScreen() {
           descuento_promociones: 0,
         });
     const sub = lineas.reduce((s, d) => s + d.subtotal_linea, 0);
-    const sumaDesc =
-      desc.descuento_sopas +
-      desc.descuento_muleros +
-      (desc.descuento_promociones ?? 0);
+    const sumaDesc = desc.descuento_promociones ?? 0;
     const total = Math.max(0, sub - sumaDesc);
     return { total, descuentosValidos: sumaDesc <= sub };
   }
@@ -737,32 +765,54 @@ export default function FacturaScreen() {
         descuento_sopas: 0,
         descuento_muleros: 0,
         descuento_promociones: 0,
+        promociones_desglose: [],
       };
     }
-    if (configReglas) {
+    if (configReglas && pedido) {
       return calcularDescuentosPedido(
         lineasCobro,
         configReglas,
-        Boolean(pedido?.cliente_mulero),
+        contextoDescuentosPedido(pedido),
       );
     }
-    return pedido?.descuentos_estimados ?? {
-      descuento_sopas: 0,
-      descuento_muleros: 0,
-      descuento_promociones: 0,
+    return {
+      ...(pedido?.descuentos_estimados ?? {
+        descuento_sopas: 0,
+        descuento_muleros: 0,
+        descuento_promociones: 0,
+      }),
+      promociones_desglose: pedido?.descuentos_estimados?.promociones_desglose ?? [],
     };
   }, [lineasCobro, configReglas, pedido]);
 
   const subtotalItems = lineasCobro.reduce((s, d) => s + d.subtotal_linea, 0);
-  const montoDescSopa = descuentosCobro.descuento_sopas;
-  const montoDescMuleros = descuentosCobro.descuento_muleros;
+  const desglosePromociones = descuentosCobro.promociones_desglose ?? [];
   const montoDescPromo = descuentosCobro.descuento_promociones ?? 0;
-  const sumaDescuentos =
-    montoDescSopa + montoDescMuleros + montoDescPromo;
+  const sumaDescuentos = montoDescPromo;
   const totalCobrar = Math.max(0, subtotalItems - sumaDescuentos);
   const descuentosValidos = sumaDescuentos <= subtotalItems;
-  const umbralOtros = UMBRAL_SUBTOTAL_OTROS_COP;
+  const etiquetasPedidoUi = useMemo(
+    () => (configReglas?.etiquetas_pedido ?? []).filter((e) => e.activa),
+    [configReglas],
+  );
+  const etiquetasActivasPedido = useMemo(
+    () => (pedido ? new Set(etiquetasActivasEnPedido(pedido)) : new Set<string>()),
+    [pedido],
+  );
   const hayPendientes = (pedido?.cobro_pendiente?.items ?? detallesPendientes.length) > 0;
+  const esParaLlevar = pedido?.modo_servicio === 'para_llevar';
+  const detallesEmpaqueUi = useMemo(
+    (): DetalleEmpaqueUi[] =>
+      (pedido?.detalles ?? []).map((d) => ({
+        id_detalle: d.id_detalle,
+        id_detalle_padre: d.id_detalle_padre,
+        cantidad: d.cantidad,
+        es_empacable: d.es_empacable,
+        es_plato_principal: d.es_plato_principal,
+        categoria_nombre: d.categoria_nombre,
+      })),
+    [pedido?.detalles],
+  );
   const cobrosParciales = (pedido?.facturas?.length ?? 0) > 0;
 
   const cobrosVistaParciales = useMemo(() => {
@@ -1446,6 +1496,7 @@ export default function FacturaScreen() {
     metodo === 'efectivo' && recibeDigits !== '' && recibidoNum >= totalCobrar;
   const bloqueaCobroEstandar =
     busy ||
+    !online ||
     !descuentosValidos ||
     solicitudesCobro.length === 0 ||
     (dividirCuenta && unidadesTanda === 0);
@@ -1493,7 +1544,7 @@ export default function FacturaScreen() {
     ],
   );
   const bloqueaCobroPlan =
-    busy || !estadoCobroPlan.puedeIntentarCobro;
+    busy || !online || !estadoCobroPlan.puedeIntentarCobro;
   const deshabilitarCobroPlan =
     bloqueaCobroPlan ||
     (Boolean(metodoPersonaActiva) && estadoCobroPlan.cobroIncompleto);
@@ -1521,73 +1572,27 @@ export default function FacturaScreen() {
       ? totalPendienteCompleto
       : totalCobrar;
 
-  async function guardarConfigDescuentos() {
-    if (
-      descSopaOn &&
-      (await avisarSiMontoCOPInvalido(
-        'Monto descuento por sopa',
-        descSopaDigits,
-        showNotice,
-      ))
-    ) {
-      return;
-    }
-    if (
-      descMulerosOn &&
-      (await avisarSiMontoCOPInvalido(
-        'Monto descuento camionero',
-        descMulerosDigits,
-        showNotice,
-      ))
-    ) {
-      return;
-    }
-    setSavingConfig(true);
+  async function actualizarEtiquetasPromocion(etiquetaId: string, activa: boolean) {
+    if (!pedido) return;
+    const actuales = etiquetasActivasEnPedido(pedido);
+    const next = activa
+      ? [...new Set([...actuales, etiquetaId])]
+      : actuales.filter((id) => id !== etiquetaId);
+    setMarcandoEtiquetas(true);
     try {
-      await api<ConfigDescuentos>('/pedidos/config-descuentos', {
-        method: 'PUT',
-        token,
-        body: JSON.stringify({
-          sopas_activo: descSopaOn,
-          sopas_monto_por_unidad: parseCOPDigits(descSopaDigits),
-          muleros_activo: descMulerosOn,
-          muleros_monto_por_plato_principal: parseCOPDigits(descMulerosDigits),
-        }),
-      });
-      setConfigDirty(false);
-      setReglaCamionerosActiva(descMulerosOn);
-      await loadPedido();
-      await showNotice(
-        'Descuentos guardados',
-        'La regla queda activa para todos los pedidos posteriores.',
-        'success',
-      );
-    } catch (e) {
-      await manejarErrorOperacion(e, {
-        title: 'No se guardaron los descuentos',
-        message: 'Revisa los montos e intenta de nuevo.',
-      });
-    } finally {
-      setSavingConfig(false);
-    }
-  }
-
-  async function marcarClienteCamionero(clienteMulero: boolean) {
-    setMarcandoCamionero(true);
-    try {
-      const p = await api<PedidoFull>(`/pedidos/${pedidoId}/cliente-mulero`, {
+      const p = await api<PedidoFull>(`/pedidos/${pedidoId}/etiquetas-promocion`, {
         method: 'PATCH',
         token,
-        body: JSON.stringify({ cliente_mulero: clienteMulero }),
+        body: JSON.stringify({ etiquetas_promocion: next }),
       });
       setPedido(p);
     } catch (e) {
       await manejarErrorOperacion(e, {
-        title: 'No se actualizó el cliente',
+        title: 'No se actualizaron las etiquetas',
         message: 'Intenta de nuevo en unos segundos.',
       });
     } finally {
-      setMarcandoCamionero(false);
+      setMarcandoEtiquetas(false);
     }
   }
 
@@ -2059,6 +2064,14 @@ export default function FacturaScreen() {
   }
 
   async function cobrarPersonaPlan(indice: number) {
+    if (!online) {
+      await showNotice(
+        'Sin conexión',
+        'No se puede cobrar sin conexión al servidor del restaurante.',
+        'warning',
+      );
+      return;
+    }
     if (planMontos.length === 0) return;
     if (indice !== avancePlanCobro) {
       await showNotice(
@@ -2286,6 +2299,8 @@ export default function FacturaScreen() {
           transferenciaSoloDigits,
           devolucionExcesoMetodo,
         );
+      } else if (met === 'efectivo') {
+        anexarCobroEfectivoRecibido(body, recibeDigits);
       }
       const res = await api<
         PedidoFull & { cobro_completo?: boolean; id_factura_emitida?: number }
@@ -2491,6 +2506,14 @@ export default function FacturaScreen() {
   }
 
   async function cobrar() {
+    if (!online) {
+      await showNotice(
+        'Sin conexión',
+        'No se puede cobrar sin conexión al servidor del restaurante.',
+        'warning',
+      );
+      return;
+    }
     if (metodo === 'mixto') {
       await confirmarCobroEstandar();
       return;
@@ -2584,6 +2607,8 @@ export default function FacturaScreen() {
           transferenciaSoloDigits,
           devolucionExcesoMetodo,
         );
+      } else if (metodo === 'efectivo') {
+        anexarCobroEfectivoRecibido(body, recibeDigits);
       }
       const res = await api<{
         cobro_completo?: boolean;
@@ -2846,6 +2871,14 @@ export default function FacturaScreen() {
         eyebrow="Factura"
         title={`Cobrar pedido #${pedido.id_pedido}`}
       />
+      {!online && puedeCobrar ? (
+        <View style={styles.offlineBanner}>
+          <Text style={styles.offlineBannerText}>
+            Sin conexión al servidor. No se puede cobrar hasta recuperar la red.
+          </Text>
+        </View>
+      ) : null}
+      <RestaurantLogo compact variant="factura" />
 
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Detalle</Text>
@@ -2945,6 +2978,19 @@ export default function FacturaScreen() {
           </View>
         ) : null}
 
+        {hayPendientes && esParaLlevar && pedido ? (
+          <EmpaqueParaLlevarAjuste
+            idPedido={pedido.id_pedido}
+            detalles={detallesEmpaqueUi}
+            esParaLlevar={esParaLlevar}
+            token={token}
+            onRefresh={async () => {
+              await loadPedido();
+            }}
+            puedeEditar={permMesero.editar_cantidades}
+          />
+        ) : null}
+
         {hayPendientes ? (
           <View style={styles.discHead}>
             <View style={{ flex: 1, paddingRight: 12 }}>
@@ -3033,6 +3079,24 @@ export default function FacturaScreen() {
             (sum, h) => sum + h.subtotal_linea,
             0,
           );
+          const faltanteGrupo = g.ids_detalle.reduce((sum, idPadre) => {
+            const d = pedido.detalles.find((x) => x.id_detalle === idPadre);
+            if (!d) return sum;
+            return (
+              sum +
+              empaqueFaltanteEnDetallePadre(
+                {
+                  id_detalle: d.id_detalle,
+                  id_detalle_padre: d.id_detalle_padre,
+                  cantidad: d.cantidad,
+                  es_empacable: d.es_empacable,
+                  es_plato_principal: d.es_plato_principal,
+                  categoria_nombre: d.categoria_nombre,
+                },
+                detallesEmpaqueUi,
+              )
+            );
+          }, 0);
 
           return (
             <View key={g.ids_detalle.join('-')}>
@@ -3087,7 +3151,7 @@ export default function FacturaScreen() {
               {empaqueCantidad > 0 ? (
                 <View style={[styles.line, styles.lineHijo, cobrado && styles.lineCobrado]}>
                   <View style={styles.checkPlaceholder} />
-                  <View style={styles.lineBody}>
+                  <View style={[styles.lineBody, styles.empaqueSubRow]}>
                     <Text
                       style={[
                         styles.lineName,
@@ -3097,8 +3161,43 @@ export default function FacturaScreen() {
                     >
                       ↳ {empaqueCantidad > 1 ? `${empaqueCantidad}× ` : ''}
                       empaque para llevar
+                      {faltanteGrupo > 0
+                        ? ` · ${faltanteGrupo} plato${faltanteGrupo === 1 ? '' : 's'} sin empaque`
+                        : ''}
                       {incluidoHijo && sel === 0 ? ' · incluido' : ''}
                     </Text>
+                    {esParaLlevar &&
+                    !cobrado &&
+                    permMesero.editar_cantidades ? (
+                      <IconTooltipButton
+                        icon="remove-circle-outline"
+                        label="Quitar un empaque"
+                        size={20}
+                        onPress={async () => {
+                          if (busy) return;
+                          setBusy(true);
+                          try {
+                            await reducirEmpaqueDetalle(
+                              empaquesGrupo.map((d) => ({
+                                id_detalle: d.id_detalle,
+                                id_detalle_padre: d.id_detalle_padre,
+                                cantidad: d.cantidad,
+                                es_empacable: d.es_empacable,
+                                es_plato_principal: d.es_plato_principal,
+                                categoria_nombre: d.categoria_nombre,
+                              })),
+                              token,
+                            );
+                            await loadPedido();
+                          } catch (e) {
+                            await manejarErrorAccion(e, 'quitar empaque');
+                          } finally {
+                            setBusy(false);
+                          }
+                        }}
+                        disabled={busy}
+                      />
+                    ) : null}
                   </View>
                   <Text
                     style={[styles.price, cobrado && styles.lineNameCobrado]}
@@ -3209,114 +3308,31 @@ export default function FacturaScreen() {
         </View>
       ) : null}
 
-      {esAdmin ? (
+      {etiquetasPedidoUi.length > 0 ? (
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Reglas de descuento (administrador)</Text>
-
-          <Text style={styles.subsectionTitle}>Sopas</Text>
+          <Text style={styles.sectionTitle}>Promociones del pedido</Text>
           <Text style={styles.adminHint}>
-            Se aplica automáticamente si hay más de 1 sopa, hay otros ítems en el
-            pedido y esos otros suman más de {formatCOP(umbralOtros)}.
+            Activa las etiquetas que correspondan a este pedido antes de cobrar.
           </Text>
-
-          <View style={styles.discRow}>
-            <View style={styles.discHead}>
-              <Text style={styles.discLabel}>Descuento sopas activo</Text>
+          {etiquetasPedidoUi.map((et) => (
+            <View key={et.id} style={styles.discHead}>
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text style={styles.discLabel}>{et.etiqueta}</Text>
+                {et.descripcion ? (
+                  <Text style={styles.adminHint}>{et.descripcion}</Text>
+                ) : null}
+              </View>
               <Switch
-                value={descSopaOn}
-                onValueChange={(v) => {
-                  setDescSopaOn(v);
-                  setConfigDirty(true);
-                }}
+                value={etiquetasActivasPedido.has(et.id)}
+                onValueChange={(v) => void actualizarEtiquetasPromocion(et.id, v)}
+                disabled={marcandoEtiquetas || busy}
                 trackColor={{ false: colors.borderInput, true: colors.successBorder }}
-                thumbColor={descSopaOn ? colors.primary : colors.borderLight}
+                thumbColor={
+                  etiquetasActivasPedido.has(et.id) ? colors.primary : colors.borderLight
+                }
               />
             </View>
-            {descSopaOn ? (
-              <>
-                <Text style={styles.fieldHint}>Monto por unidad de sopa</Text>
-                <MoneyTextInput
-                  style={[styles.input, moneyField]}
-                  placeholderAmount={2000}
-                  digits={descSopaDigits}
-                  onChangeDigits={(t) => {
-                    setDescSopaDigits(t);
-                    setConfigDirty(true);
-                  }}
-                />
-              </>
-            ) : null}
-          </View>
-
-          <Text style={[styles.subsectionTitle, styles.subsectionGap]}>
-            Clientes camioneros (muleros)
-          </Text>
-          <Text style={styles.adminHint}>
-            No es un plato: son clientes especiales. Al cobrar, marca el pedido
-            como camionero y se rebaja el monto configurado por cada plato
-            principal del menú.
-          </Text>
-
-          <View style={styles.discRow}>
-            <View style={styles.discHead}>
-              <Text style={styles.discLabel}>Descuento camioneros activo</Text>
-              <Switch
-                value={descMulerosOn}
-                onValueChange={(v) => {
-                  setDescMulerosOn(v);
-                  setConfigDirty(true);
-                }}
-                trackColor={{ false: colors.borderInput, true: colors.successBorder }}
-                thumbColor={descMulerosOn ? colors.primary : colors.borderLight}
-              />
-            </View>
-            {descMulerosOn ? (
-              <>
-                <Text style={styles.fieldHint}>Monto por plato principal</Text>
-                <MoneyTextInput
-                  style={[styles.input, moneyField]}
-                  placeholderAmount={10000}
-                  digits={descMulerosDigits}
-                  onChangeDigits={(t) => {
-                    setDescMulerosDigits(t);
-                    setConfigDirty(true);
-                  }}
-                />
-              </>
-            ) : null}
-          </View>
-
-          <View style={styles.saveConfigRow}>
-            <IconTooltipButton
-              icon={savingConfig ? 'hourglass-outline' : AccionIcon.guardar}
-              label={
-                savingConfig ? 'Guardando…' : 'Guardar reglas de descuento'
-              }
-              variant="primary"
-              disabled={!configDirty || savingConfig}
-              onPress={guardarConfigDescuentos}
-            />
-          </View>
-        </View>
-      ) : null}
-
-      {reglaCamionerosActiva ? (
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Cliente camionero</Text>
-          <Text style={styles.adminHint}>
-            Activa si este pedido es de un camionero (mulero). El descuento se
-            calcula por cada plato principal del pedido.
-          </Text>
-          <View style={styles.discHead}>
-            <Text style={styles.discLabel}>Es cliente camionero</Text>
-            <Switch
-              value={Boolean(pedido.cliente_mulero)}
-              onValueChange={marcarClienteCamionero}
-              disabled={marcandoCamionero || busy}
-              trackColor={{ false: colors.borderInput, true: colors.successBorder }}
-              thumbColor={pedido.cliente_mulero ? colors.primary : colors.borderLight}
-            />
-          </View>
+          ))}
         </View>
       ) : null}
 
@@ -3330,17 +3346,12 @@ export default function FacturaScreen() {
         <Text style={styles.subtotalLine}>
           Subtotal ítems: {formatCOP(subtotalItems)}
         </Text>
-        {montoDescSopa > 0 ? (
-          <Text style={styles.descLine}>
-            − Descuento sopas: {formatCOP(montoDescSopa)}
+        {desglosePromociones.map((d) => (
+          <Text key={d.id} style={styles.descLine}>
+            − {d.etiqueta}: {formatCOP(d.monto)}
           </Text>
-        ) : null}
-        {montoDescMuleros > 0 ? (
-          <Text style={styles.descLine}>
-            − Descuento camionero: {formatCOP(montoDescMuleros)}
-          </Text>
-        ) : null}
-        {montoDescPromo > 0 ? (
+        ))}
+        {desglosePromociones.length === 0 && montoDescPromo > 0 ? (
           <Text style={styles.descLine}>
             − Promociones: {formatCOP(montoDescPromo)}
           </Text>
@@ -3780,9 +3791,24 @@ export default function FacturaScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createFacturaStyles(colors: AppColors) {
+  return StyleSheet.create({
   screenRoot: { flex: 1, backgroundColor: colors.background },
   container: { flex: 1, backgroundColor: colors.background, padding: 16 },
+  offlineBanner: {
+    backgroundColor: colors.warningLight,
+    borderWidth: 1,
+    borderColor: colors.warningBorder,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+  },
+  offlineBannerText: {
+    color: colors.warningText,
+    fontWeight: '700',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
   stickyPayBar: {
     position: 'absolute',
     left: 0,
@@ -3910,6 +3936,12 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.borderLight,
   },
   lineHijo: { paddingLeft: 28 },
+  empaqueSubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
   lineCobrado: { opacity: 0.55 },
   lineBody: { flex: 1, paddingRight: 8 },
   lineName: { color: colors.text, fontWeight: '600' },
@@ -4087,6 +4119,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     backgroundColor: colors.surfaceMuted,
+    color: colors.text,
   },
   vueltoOk: {
     marginTop: 10,
@@ -4147,3 +4180,4 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
 });
+}

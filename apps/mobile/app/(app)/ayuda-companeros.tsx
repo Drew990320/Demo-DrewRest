@@ -8,8 +8,9 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
+import { useOperacionToolsRail } from '../../src/context/ResumenDiarioToolsRailContext';
 import { AnimatedEnter } from '../../src/components/AnimatedEnter';
-import { ActionIconBar } from '../../src/components/ActionIconBar';
+import { ActionIconBar, type ActionIconItem } from '../../src/components/ActionIconBar';
 import { EmptyState } from '../../src/components/EmptyState';
 import { PedidoRecogidaGrupos } from '../../src/components/PedidoRecogidaGrupos';
 import { LugarPedidoIcon } from '../../src/components/LugarPedidoIcon';
@@ -24,7 +25,7 @@ import { ScreenScroll } from '../../src/components/ScreenScroll';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { useConfigOperativa } from '../../src/hooks/useConfigOperativa';
 import { api } from '../../src/lib/api';
-import { AdminIcon, PedidoIcon } from '../../src/lib/app-icons';
+import { AdminIcon, NavIcon, PedidoIcon } from '../../src/lib/app-icons';
 import { showNotice } from '../../src/lib/app-dialog';
 import {
   normalizarPedidoCocinaView,
@@ -44,10 +45,13 @@ import {
 } from '../../src/lib/mesa-label';
 import { appShadow } from '../../src/lib/shadow';
 import { puedeVerMisPedidos } from '../../src/hooks/usePuedeTomarPedidos';
+import { useResponsive } from '../../src/hooks/useResponsive';
 import { useSeleccionPedido } from '../../src/hooks/useSeleccionPedido';
 import { batchAfectaMisPedidos, joinPedidoRooms } from '../../src/lib/pedido-sync';
 import { useRefetchOnSync } from '../../src/hooks/useRefetchOnSync';
-import { colors } from '../../src/lib/theme';
+import { useVisualTheme } from '../../src/context/VisualThemeContext';
+import { useThemedStyles } from '../../src/hooks/useThemedStyles';
+import type { AppColors } from '../../src/lib/theme';
 import { manejarErrorAccion, manejarErrorOperacion } from '../../src/lib/recurso-disponible';
 import { alertarSiSinPapel } from '../../src/lib/alarma-impresora';
 
@@ -57,9 +61,12 @@ type AyudaCompanerosResponse = {
 };
 
 export default function AyudaCompanerosScreen() {
+  const { colors } = useVisualTheme();
+  const styles = useThemedStyles(createAyudaCompanerosStyles);
   const { token, user } = useAuth();
   const { config: opConfig } = useConfigOperativa();
   const router = useRouter();
+  const r = useResponsive();
   const puedeVer = puedeVerMisPedidos(user?.rol);
   const [items, setItems] = useState<PedidoCocinaView[]>([]);
   const [totalPlatos, setTotalPlatos] = useState(0);
@@ -347,6 +354,59 @@ export default function AyudaCompanerosScreen() {
     }
   }
 
+  const pedidoRail = pedidoSeleccionado ?? itemsOrdenados[0] ?? null;
+
+  const ayudaRailActions = useMemo((): ActionIconItem[] => {
+    const actions: ActionIconItem[] = [
+      {
+        key: 'actualizar',
+        icon: refreshing ? 'hourglass-outline' : 'refresh-outline',
+        label: refreshing ? 'Actualizando…' : 'Actualizar',
+        variant: 'secondary',
+        disabled: refreshing,
+        onPress: () => void onRefresh(),
+      },
+      {
+        key: 'mis-pedidos',
+        icon: NavIcon.misPedidos,
+        label: 'Mis pedidos',
+        variant: 'secondary',
+        disabled: reimprimiendoId != null,
+        onPress: () => router.push('/(app)/mis-pedidos'),
+      },
+    ];
+    if (pedidoRail) {
+      const lugar = etiquetaLugarMesa(pedidoRail.mesa_numero);
+      actions.push({
+        key: 'reimprimir',
+        icon:
+          reimprimiendoId === pedidoRail.id_pedido
+            ? 'hourglass-outline'
+            : PedidoIcon.reimprimirComanda,
+        label:
+          reimprimiendoId === pedidoRail.id_pedido
+            ? 'Imprimiendo…'
+            : `Reimprimir · ${lugar}`,
+        variant: 'secondary',
+        disabled: reimprimiendoId != null,
+        onPress: () => void reimprimirComanda(pedidoRail.id_pedido),
+      });
+    }
+    return actions;
+  }, [pedidoRail, refreshing, reimprimiendoId, etiquetaLugarMesa, router]);
+
+  useOperacionToolsRail(
+    r.navSidebar && puedeVer,
+    {
+      sectionTitle: 'Ayuda',
+      actions: ayudaRailActions,
+      hint: pedidoRail
+        ? `${etiquetaLugarMesa(pedidoRail.mesa_numero)} · ${nombreMeseroPedido(pedidoRail)}.`
+        : 'Cuando un compañero tenga platos listos, aparecerán aquí.',
+    },
+    [ayudaRailActions, pedidoRail?.id_pedido, totalPlatos],
+  );
+
   if (!user || loading) {
     return <ScreenLoading />;
   }
@@ -420,15 +480,6 @@ export default function AyudaCompanerosScreen() {
         <EmptyState
           title="Nada pendiente"
           message="Ningún compañero tiene platos por recoger en este momento."
-          actions={[
-            {
-              key: 'mis-pedidos',
-              icon: AdminIcon.volverMesas,
-              label: 'Volver a mis pedidos',
-              variant: 'primary',
-              onPress: () => router.push('/(app)/mis-pedidos'),
-            },
-          ]}
         />
       ) : null}
 
@@ -549,27 +600,28 @@ export default function AyudaCompanerosScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, padding: 16 },
+function createAyudaCompanerosStyles(c: AppColors) {
+  return StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background, padding: 16 },
   cardEnter: { marginBottom: 0 },
   center: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
-    backgroundColor: colors.background,
+    backgroundColor: c.background,
   },
-  denied: { textAlign: 'center', color: colors.textMuted, marginBottom: 16, fontSize: 16 },
+  denied: { textAlign: 'center', color: c.textMuted, marginBottom: 16, fontSize: 16 },
   resumenCard: {
-    backgroundColor: colors.info,
+    backgroundColor: c.info,
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: colors.infoText,
+    borderColor: c.infoText,
   },
   resumenKicker: {
-    color: colors.onInfoMuted,
+    color: c.onInfoMuted,
     fontWeight: '700',
     fontSize: 12,
     letterSpacing: 0.4,
@@ -578,17 +630,17 @@ const styles = StyleSheet.create({
   resumenHero: {
     fontSize: 44,
     fontWeight: '900',
-    color: colors.surface,
+    color: c.onPrimary,
     marginTop: 4,
     lineHeight: 48,
   },
   resumenHeroLabel: {
     fontSize: 15,
     fontWeight: '700',
-    color: colors.onInfoSoft,
+    color: c.onPrimary,
     marginTop: 2,
   },
-  resumenSub: { marginTop: 8, color: colors.onInfoMuted, fontSize: 13, lineHeight: 18 },
+  resumenSub: { marginTop: 8, color: c.onPrimaryMuted, fontSize: 13, lineHeight: 18 },
   linkMisPedidos: {
     marginTop: 12,
     alignSelf: 'center',
@@ -599,9 +651,12 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: c.border,
+    backgroundColor: c.surfaceMuted,
   },
   linkMisPedidosText: {
-    color: colors.primary,
+    color: c.text,
     fontWeight: '800',
     fontSize: 14,
     textAlign: 'center',
@@ -614,71 +669,72 @@ const styles = StyleSheet.create({
   },
   chipPedidoId: {
     fontWeight: '800',
-    color: colors.text,
+    color: c.text,
     fontVariant: ['tabular-nums'],
   },
-  chipPedidoIdOn: { color: colors.primaryDark },
+  chipPedidoIdOn: { color: c.primaryDark },
   cardTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
   card: {
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderRadius: 16,
     padding: 16,
     marginBottom: 16,
     borderWidth: 2,
-    borderColor: colors.border,
+    borderColor: c.border,
     ...appShadow,
   },
-  cardBordeAlta: { borderLeftWidth: 4, borderLeftColor: colors.danger, borderColor: colors.dangerBorder },
-  cardBordeBaja: { borderLeftWidth: 4, borderLeftColor: colors.warning, borderColor: colors.warningBorder },
+  cardBordeAlta: { borderLeftWidth: 4, borderLeftColor: c.danger, borderColor: c.dangerBorder },
+  cardBordeBaja: { borderLeftWidth: 4, borderLeftColor: c.warning, borderColor: c.warningBorder },
   cardTop: { marginBottom: 4 },
   rowPills: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 },
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: colors.infoLight,
+    backgroundColor: c.infoLight,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 999,
   },
-  pillText: { fontSize: 12, fontWeight: '800', color: colors.info },
+  pillText: { fontSize: 12, fontWeight: '800', color: c.info },
   pillMesero: {
-    backgroundColor: colors.primaryLight,
+    backgroundColor: c.primaryLight,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 999,
   },
-  pillMeseroText: { fontSize: 12, fontWeight: '800', color: colors.primaryDark },
+  pillMeseroText: { fontSize: 12, fontWeight: '800', color: c.primaryDark },
   pillRecoger: {
-    backgroundColor: colors.successLight,
+    backgroundColor: c.successLight,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 999,
   },
-  pillRecogerText: { fontSize: 12, fontWeight: '800', color: colors.successText },
-  cardTitle: { fontSize: 18, fontWeight: '800', color: colors.text },
-  cardMeta: { marginTop: 4, color: colors.textMuted, fontSize: 13 },
+  pillRecogerText: { fontSize: 12, fontWeight: '800', color: c.successText },
+  cardTitle: { fontSize: 18, fontWeight: '800', color: c.text },
+  cardMeta: { marginTop: 4, color: c.textMuted, fontSize: 13 },
   loadingDetalle: {
     marginTop: 12,
     fontSize: 14,
-    color: colors.textMuted,
+    color: c.textMuted,
     textAlign: 'center',
     paddingVertical: 8,
   },
   recogidaTitle: {
     fontWeight: '800',
     fontSize: 15,
-    color: colors.text,
+    color: c.text,
     marginBottom: 4,
   },
   recogidaHint: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: c.textMuted,
     lineHeight: 17,
     marginBottom: 8,
   },
 });
+}

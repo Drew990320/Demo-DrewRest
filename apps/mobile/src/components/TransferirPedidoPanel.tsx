@@ -13,6 +13,7 @@ import { AnimatedPressable } from './AnimatedPressable';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../lib/api';
 import { colors } from '../lib/theme';
+import { estiloTarjetaMesa } from '../lib/visual-theme';
 import { esMesaVirtualNumero, tituloLugarMesa } from '../lib/mesa-label';
 import {
   AYUDA_TRANSFERENCIA_PEDIDO,
@@ -22,6 +23,7 @@ import { confirmAppDialog, showNotice } from '../lib/app-dialog';
 import { manejarErrorAccion } from '../lib/recurso-disponible';
 import { useRefetchOnSync } from '../hooks/useRefetchOnSync';
 import { useResponsive } from '../hooks/useResponsive';
+import { useVisualTheme } from '../context/VisualThemeContext';
 
 type MesaRow = {
   id_mesa: number;
@@ -86,6 +88,9 @@ function MesaOpcion({
   columnPct: `${number}%`;
   minHeight: number;
 }) {
+  const { colors } = useVisualTheme();
+  const libre = estiloTarjetaMesa(colors, 'libre');
+
   return (
     <View style={[styles.gridCell, { width: columnPct }]}>
       <AnimatedPressable
@@ -93,12 +98,19 @@ function MesaOpcion({
         onPress={onPress}
         style={[
           styles.mesaBtn,
-          { minHeight },
+          {
+            minHeight,
+            borderColor: libre.borderColor,
+            borderLeftColor: libre.accent,
+            backgroundColor: libre.backgroundColor,
+          },
           disabled && styles.mesaBtnDisabled,
         ]}
       >
-        <Text style={styles.mesaBtnNum}>{mesa.numero}</Text>
-        <Text style={styles.mesaBtnLabel}>Libre</Text>
+        <Text style={[styles.mesaBtnNum, { color: colors.text }]}>
+          {mesa.numero}
+        </Text>
+        <Text style={[styles.mesaBtnLabel, { color: libre.text }]}>Libre</Text>
       </AnimatedPressable>
     </View>
   );
@@ -425,11 +437,8 @@ const styles = StyleSheet.create({
   },
   mesaBtn: {
     borderWidth: 2,
-    borderColor: colors.mesaLibreBorder,
     borderLeftWidth: 5,
-    borderLeftColor: colors.success,
     borderRadius: 12,
-    backgroundColor: colors.mesaLibreBg,
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 10,
@@ -439,14 +448,12 @@ const styles = StyleSheet.create({
   mesaBtnNum: {
     fontWeight: '900',
     fontSize: 28,
-    color: colors.text,
     lineHeight: 32,
   },
   mesaBtnLabel: {
     marginTop: 2,
     fontSize: 12,
     fontWeight: '700',
-    color: colors.successText,
   },
   modalCancelBtn: {
     marginTop: 8,

@@ -20,6 +20,7 @@ import { usePermisosMesero } from '../../../src/hooks/usePermisosMesero';
 import { ActionIconBar, type ActionIconItem } from '../../../src/components/ActionIconBar';
 import { usePedidoToolsRail } from '../../../src/context/ResumenDiarioToolsRailContext';
 import { AdminIcon, PedidoIcon } from '../../../src/lib/app-icons';
+import { mergePedidoRailActions } from '../../../src/lib/pedido-rail-actions';
 import { IconTooltipButton } from '../../../src/components/IconTooltipButton';
 import { api } from '../../../src/lib/api';
 import { deleteOfflineCache } from '../../../src/lib/offline-cache';
@@ -84,6 +85,7 @@ type PedidoDetalle = {
     listo_cocina?: boolean;
     listo_para_recoger?: boolean;
     es_acompanamiento_mazorca?: boolean;
+    es_cuota_pendiente_reparto?: boolean;
     personalizaciones: { id_opcion?: number; descripcion: string; tipo: string }[];
   }[];
   facturas?: { id_factura: number }[];
@@ -98,7 +100,7 @@ type MesaRow = {
 function etiquetaEstadoPedido(
   p: PedidoDetalle,
   mesaNumero?: number,
-  mazorcaActiva = true,
+  mazorcaActiva = false,
 ): string {
   const estado = p.estado.replace(/_/g, ' ');
   if (p.modo_servicio === 'para_llevar') {
@@ -631,8 +633,8 @@ export default function MesaDetailScreen() {
 
   const pedidoActions = useMemo((): ActionIconItem[] => {
     if (!pedido || !mesa) return [];
-    return [
-      permMesero.agregar_items
+    return mergePedidoRailActions({
+      menu: permMesero.agregar_items
         ? {
             key: 'menu',
             icon: mv.esMostrador(mesa.numero)
@@ -652,7 +654,7 @@ export default function MesaDetailScreen() {
               ),
           }
         : null,
-      permMesero.enviar_cocina
+      cocina: permMesero.enviar_cocina
         ? {
             key: 'cocina',
             icon: PedidoIcon.pasarCocina,
@@ -668,7 +670,7 @@ export default function MesaDetailScreen() {
             onPress: pasarACocina,
           }
         : null,
-      permMesero.reimprimir_comanda
+      reimprimir: permMesero.reimprimir_comanda
         ? {
             key: 'reimprimir-cocina',
             icon: PedidoIcon.reimprimirComanda,
@@ -683,7 +685,7 @@ export default function MesaDetailScreen() {
             onPress: reimprimirComandaCocina,
           }
         : null,
-      permMesero.cobrar
+      cobrar: permMesero.cobrar
         ? {
             key: 'cobrar',
             icon: PedidoIcon.cobrar,
@@ -693,7 +695,7 @@ export default function MesaDetailScreen() {
               router.push(`/(app)/pedido/${pedido.id_pedido}/factura`),
           }
         : null,
-      {
+      navegacion: {
         key: 'volver',
         icon: 'arrow-back-outline',
         label: mv.esMostrador(mesa.numero)
@@ -710,7 +712,7 @@ export default function MesaDetailScreen() {
                 : '/(app)/mesas',
           ),
       },
-      permMesero.cancelar_pedido
+      cancelar: permMesero.cancelar_pedido
         ? {
             key: 'cancelar',
             icon: 'close-circle-outline',
@@ -722,7 +724,7 @@ export default function MesaDetailScreen() {
             onPress: cancelarPedido,
           }
         : null,
-    ].filter((x): x is NonNullable<typeof x> => x != null);
+    });
   }, [
     pedido,
     mesa,
@@ -889,8 +891,8 @@ export default function MesaDetailScreen() {
               <View style={styles.comensalesHead}>
                 <Text style={styles.comensalesLabel}>Comensales en mesa</Text>
                 <Text style={styles.comensalesHint}>
-                  Ajusta cuántas mazorcas van a cocina (no depende solo de
-                  platos fuertes).
+                  Ajusta cuántos acompañamientos por comensal van a cocina (no
+                  depende solo de platos fuertes).
                 </Text>
               </View>
               <View style={styles.qtyRow}>
@@ -1110,6 +1112,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     fontSize: 16,
     backgroundColor: colors.surface,
+    color: colors.text,
   },
   primary: {
     backgroundColor: colors.primary,

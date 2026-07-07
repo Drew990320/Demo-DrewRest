@@ -8,7 +8,9 @@ import {
   type ReactNode,
 } from 'react';
 import type { ActionIconItem } from '../components/ActionIconBar';
+import { OperacionToolsRail, type OperacionToolsRailModel } from '../components/OperacionToolsRail';
 import { PedidoToolsRail, type PedidoToolsRailModel } from '../components/PedidoToolsRail';
+import { PersonalizacionVisualToolsRail, type PersonalizacionPickerTab } from '../components/PersonalizacionVisualToolsRail';
 import { ResumenDiarioToolsRail } from '../components/ResumenDiarioToolsRail';
 import { useAppNavLayout } from '../hooks/useAppNavLayout';
 
@@ -40,9 +42,21 @@ export type ResumenDiarioToolsRailModel = {
   onReabrirCobro: (idPedido: number) => void;
 };
 
+export type PersonalizacionVisualToolsRailModel = {
+  saving: boolean;
+  onGuardar: () => void;
+  onRestablecer: () => void;
+  pickerTab: PersonalizacionPickerTab;
+  selectedPickerLabel: string | null;
+  pickerOpen: boolean;
+  onTogglePicker: () => void;
+};
+
 export type AppToolsRailModel =
   | { kind: 'resumen'; model: ResumenDiarioToolsRailModel }
-  | { kind: 'pedido'; model: PedidoToolsRailModel };
+  | { kind: 'pedido'; model: PedidoToolsRailModel }
+  | { kind: 'operacion'; model: OperacionToolsRailModel }
+  | { kind: 'personalizacion'; model: PersonalizacionVisualToolsRailModel };
 
 type Ctx = {
   model: AppToolsRailModel | null;
@@ -122,6 +136,49 @@ export function usePedidoToolsRail(
   );
 }
 
+/** Publica acciones globales de una pantalla operativa en la barra derecha (tablet+). */
+export function useOperacionToolsRail(
+  enabled: boolean,
+  model: OperacionToolsRailModel,
+  syncDeps: readonly unknown[],
+) {
+  usePublishAppToolsRail(
+    enabled,
+    { kind: 'operacion', model },
+    syncDeps,
+  );
+}
+
+/** @deprecated Usa useOperacionToolsRail con sectionTitle «Cocina». */
+export function useCocinaToolsRail(
+  enabled: boolean,
+  model: { cocinaActions: ActionIconItem[]; cocinaHint?: string },
+  syncDeps: readonly unknown[],
+) {
+  useOperacionToolsRail(
+    enabled,
+    {
+      sectionTitle: 'Cocina',
+      actions: model.cocinaActions,
+      hint: model.cocinaHint,
+    },
+    syncDeps,
+  );
+}
+
+/** Publica guardar / restablecer / selector de iconos en la barra derecha (tablet+). */
+export function usePersonalizacionVisualToolsRail(
+  enabled: boolean,
+  model: PersonalizacionVisualToolsRailModel,
+  syncDeps: readonly unknown[],
+) {
+  usePublishAppToolsRail(
+    enabled,
+    { kind: 'personalizacion', model },
+    syncDeps,
+  );
+}
+
 export function useAppToolsRailActive(): boolean {
   const ctx = useContext(AppToolsRailContext);
   return !!ctx?.model;
@@ -134,6 +191,12 @@ export function AppToolsRailSlot() {
   if (!nav.sidebar || !ctx?.model) return null;
   if (ctx.model.kind === 'resumen') {
     return <ResumenDiarioToolsRail {...ctx.model.model} />;
+  }
+  if (ctx.model.kind === 'personalizacion') {
+    return <PersonalizacionVisualToolsRail {...ctx.model.model} />;
+  }
+  if (ctx.model.kind === 'operacion') {
+    return <OperacionToolsRail {...ctx.model.model} />;
   }
   return <PedidoToolsRail {...ctx.model.model} />;
 }

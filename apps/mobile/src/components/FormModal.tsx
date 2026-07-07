@@ -10,9 +10,10 @@ import {
   useWindowDimensions,
   View,
   type ViewStyle,
+  type StyleProp,
 } from 'react-native';
 import { useResponsive } from '../hooks/useResponsive';
-import { formShellStyle, formStyles } from '../lib/form-layout';
+import { formShellStyle, useFormStyles } from '../lib/form-layout';
 
 type Props = {
   visible: boolean;
@@ -26,7 +27,7 @@ type Props = {
   footer?: ReactNode;
   /** Altura máxima del área con scroll (px). */
   scrollMaxHeight?: number;
-  cardStyle?: ViewStyle;
+  cardStyle?: StyleProp<ViewStyle>;
 };
 
 export function FormModal({
@@ -41,6 +42,7 @@ export function FormModal({
   cardStyle,
 }: Props) {
   const r = useResponsive();
+  const formStyles = useFormStyles();
   const { height: winH } = useWindowDimensions();
   const shell = formShellStyle(
     r.width,

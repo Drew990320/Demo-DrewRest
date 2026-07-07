@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "La Reserva",
+    "name": "Restaurante POS",
     "slug": "mobile",
-    "scheme": "lareserva",
+    "scheme": "restaurantpos",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -11,7 +11,7 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#FAF6F0"
+      "backgroundColor": "#EDF3FA"
     },
     "ios": {
       "supportsTablet": true,
@@ -26,7 +26,7 @@
       "package": "com.lareserva.app",
       "usesCleartextTraffic": true,
       "adaptiveIcon": {
-        "backgroundColor": "#FAF6F0",
+        "backgroundColor": "#EDF3FA",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -35,10 +35,10 @@
     },
     "web": {
       "favicon": "./assets/favicon.png",
-      "name": "La Reserva",
-      "shortName": "La Reserva",
-      "themeColor": "#FAF6F0",
-      "backgroundColor": "#FAF6F0"
+      "name": "Restaurante POS",
+      "shortName": "POS",
+      "themeColor": "#EDF3FA",
+      "backgroundColor": "#EDF3FA"
     },
     "plugins": [
       "expo-dev-client",

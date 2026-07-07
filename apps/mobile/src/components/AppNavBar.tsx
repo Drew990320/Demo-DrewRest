@@ -2,7 +2,6 @@ import { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 import { useMemo, useState } from 'react';
 import {
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -16,9 +15,11 @@ import { useAppNavBadges } from '../hooks/useAppNavBadges';
 import { useAppNavLayout } from '../hooks/useAppNavLayout';
 import { useNavCapabilities } from '../hooks/useAppNavLayout';
 import { usePedidoNavMeta } from '../hooks/usePedidoNavMeta';
+import { useModulosRestaurante } from '../hooks/useModulosRestaurante';
 import { usePermisosMesero } from '../hooks/usePermisosMesero';
+import { useMesasVirtuales } from '../hooks/useMesasVirtuales';
 import { useResponsive } from '../hooks/useResponsive';
-import { NavIcon, PedidoIcon } from '../lib/app-icons';
+import { useVisualTheme } from '../context/VisualThemeContext';
 import {
   appNavZoneFromPath,
   isAdminRoutePath,
@@ -28,9 +29,16 @@ import {
   isPedidoMenuPath,
 } from '../lib/app-nav-zones';
 import { BOTTOM_NAV_BAR_HEIGHT, SIDEBAR_NAV_WIDTH } from '../lib/layout-constants';
+import { type AppColors } from '../lib/theme';
 import { blurWebFocus } from '../lib/web-a11y';
-import { colors } from '../lib/theme';
+import {
+  navBarChromeStyle,
+  navItemChromeStyle,
+  navItemIconColor,
+  navItemLabelStyle,
+} from '../lib/visual-chrome';
 import { AppNavMoreSheet } from './AppNavMoreSheet';
+import { AppNavChrome } from './AppNavChrome';
 
 type IonName = ComponentProps<typeof Ionicons>['name'];
 
@@ -54,22 +62,29 @@ function NavItemButton({
   variant,
   compactLabel,
   onPress,
+  themeColors,
+  chrome,
+  layout,
 }: {
   item: NavItemDef;
   variant: 'bottom' | 'sidebar';
   compactLabel: boolean;
   onPress: () => void;
+  themeColors: AppColors;
+  chrome: ReturnType<typeof useVisualTheme>['chrome'];
+  layout: ReturnType<typeof useVisualTheme>['layout'];
 }) {
   const active = item.active;
-  const accent = active ? colors.primary : colors.textMuted;
-  const bg = active ? colors.primaryLight : 'transparent';
+  const accent = navItemIconColor(chrome, themeColors, active);
+  const itemChrome = navItemChromeStyle(chrome, layout, themeColors, active, variant);
+  const labelChrome = navItemLabelStyle(chrome, themeColors, active, layout);
 
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [
         variant === 'bottom' ? styles.bottomItem : styles.sidebarItem,
-        { backgroundColor: bg },
+        itemChrome,
         pressed && styles.pressed,
       ]}
       accessibilityRole="button"
@@ -83,8 +98,16 @@ function NavItemButton({
           color={accent}
         />
         {item.badge != null && item.badge > 0 ? (
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>
+          <View
+            style={[
+              styles.badge,
+              {
+                backgroundColor: themeColors.danger,
+                borderColor: themeColors.surface,
+              },
+            ]}
+          >
+            <Text style={[styles.badgeText, { color: themeColors.onPrimary }]}>
               {item.badge > 99 ? '99+' : item.badge}
             </Text>
           </View>
@@ -94,8 +117,7 @@ function NavItemButton({
         <Text
           style={[
             variant === 'bottom' ? styles.bottomLabel : styles.sidebarLabel,
-            { color: active ? colors.primaryDark : colors.textMuted },
-            active && styles.labelActive,
+            labelChrome,
           ]}
           numberOfLines={1}
         >
@@ -114,55 +136,81 @@ export function AppNavBar({ variant, style }: Props) {
   const caps = useNavCapabilities();
   const { badges, mostradorActivo, paraLlevarActivo } = useAppNavBadges();
   const { permisos: permMesero } = usePermisosMesero();
-  const { idMesa } = usePedidoNavMeta(nav.pedidoId);
+  const modulos = useModulosRestaurante();
+  const mv = useMesasVirtuales();
+  const { idMesa, mesaNumero } = usePedidoNavMeta(nav.pedidoId);
   const { isCompact } = useResponsive();
+  const { colors: themeColors, navIcon, chrome, layout } = useVisualTheme();
   const [moreOpen, setMoreOpen] = useState(false);
+  const ni = navIcon;
 
   const zone = appNavZoneFromPath(pathname);
+  const chefSolo = caps.esChef && !caps.esAdmin;
 
   const items = useMemo((): NavItemDef[] => {
     if (zone === 'pedido' && nav.pedidoId) {
       const pid = nav.pedidoId;
+      const listadoMesasHref =
+        mesaNumero != null && mv.esMostrador(mesaNumero)
+          ? '/(app)/mostrador'
+          : mesaNumero != null && mv.esParaLlevar(mesaNumero)
+            ? '/(app)/para-llevar'
+            : '/(app)/mesas';
+      const listadoMesasLabel =
+        mesaNumero != null && mv.esMostrador(mesaNumero)
+          ? mv.resueltas.etiqueta_mostrador
+          : mesaNumero != null && mv.esParaLlevar(mesaNumero)
+            ? mv.resueltas.etiqueta_para_llevar
+            : 'Mesas';
       return [
+        {
+          key: 'mesas',
+          label: listadoMesasLabel,
+          icon: ni('mesas'),
+          href: listadoMesasHref,
+          active: false,
+        },
         {
           key: 'mesa',
           label: 'Mesa',
-          icon: 'restaurant-outline',
-          href: idMesa != null ? `/(app)/mesa/${idMesa}` : '/(app)/mesas',
+          icon: ni('mesa'),
+          href: idMesa != null ? `/(app)/mesa/${idMesa}` : listadoMesasHref,
           active: false,
         },
         {
           key: 'menu',
           label: 'Menú',
-          icon: PedidoIcon.agregarMenu,
+          icon: ni('menu'),
           href: `/(app)/pedido/${pid}/menu`,
           active: isPedidoMenuPath(pathname),
         },
         {
           key: 'cobrar',
           label: 'Cobrar',
-          icon: PedidoIcon.cobrar,
+          icon: ni('cobrar'),
           href: `/(app)/pedido/${pid}/factura`,
           active: isPedidoFacturaPath(pathname),
         },
       ];
     }
 
-    const list: NavItemDef[] = [
-      {
+    const list: NavItemDef[] = [];
+
+    if (!chefSolo) {
+      list.push({
         key: 'mesas',
         label: 'Mesas',
-        icon: 'grid-outline',
+        icon: ni('mesas'),
         href: '/(app)/mesas',
         active: isMesasHomePath(pathname) || isMesaDetailPath(pathname),
-      },
-    ];
+      });
+    }
 
     if (caps.veMisPedidos) {
       list.push({
         key: 'pedidos',
         label: 'Pedidos',
-        icon: NavIcon.misPedidos,
+        icon: ni('pedidos'),
         href: '/(app)/mis-pedidos',
         badge: badges.misPedidos,
         active: pathname.includes('/mis-pedidos'),
@@ -173,7 +221,7 @@ export function AppNavBar({ variant, style }: Props) {
       list.push({
         key: 'mostrador',
         label: 'Mostrador',
-        icon: NavIcon.mostrador,
+        icon: ni('mostrador'),
         href: '/(app)/mostrador',
         badge: badges.mostrador,
         active: pathname.includes('/mostrador'),
@@ -184,7 +232,7 @@ export function AppNavBar({ variant, style }: Props) {
       list.push({
         key: 'para-llevar',
         label: 'Para llevar',
-        icon: NavIcon.paraLlevar,
+        icon: ni('para_llevar'),
         href: '/(app)/para-llevar',
         badge: badges.paraLlevar,
         active: pathname.includes('/para-llevar'),
@@ -195,7 +243,7 @@ export function AppNavBar({ variant, style }: Props) {
       list.push({
         key: 'ayuda',
         label: 'Ayuda',
-        icon: NavIcon.ayudaCompaneros,
+        icon: ni('ayuda'),
         href: '/(app)/ayuda-companeros',
         badge: badges.ayudaCompaneros,
         active: pathname.includes('/ayuda-companeros'),
@@ -206,25 +254,27 @@ export function AppNavBar({ variant, style }: Props) {
       list.push({
         key: 'cocina',
         label: 'Cocina',
-        icon: NavIcon.cocina,
+        icon: ni('cocina'),
         href: '/(app)/cocina',
         active: pathname.includes('/cocina'),
       });
     }
 
-    if (caps.esAdmin) {
+    if (caps.esAdmin && modulos.modulo_resumen_diario_activo) {
       list.push({
         key: 'caja',
         label: 'Caja',
-        icon: NavIcon.resumenDiario,
+        icon: ni('caja'),
         href: '/(app)/resumen-diario',
         badge: badges.resumenDiario,
         active: pathname.includes('/resumen-diario'),
       });
+    }
+    if (caps.esAdmin) {
       list.push({
         key: 'mas',
         label: 'Más',
-        icon: 'ellipsis-horizontal',
+        icon: ni('mas'),
         action: 'more',
         active:
           isAdminRoutePath(pathname) &&
@@ -233,11 +283,11 @@ export function AppNavBar({ variant, style }: Props) {
           !pathname.includes('/para-llevar') &&
           !pathname.includes('/ayuda-companeros'),
       });
-    } else if (caps.tomaPedidos) {
+    } else if (caps.tomaPedidos || chefSolo) {
       list.push({
         key: 'mas',
         label: 'Cuenta',
-        icon: NavIcon.cerrarSesion,
+        icon: ni('cuenta'),
         action: 'more',
         active: false,
       });
@@ -249,12 +299,17 @@ export function AppNavBar({ variant, style }: Props) {
     nav.pedidoId,
     pathname,
     idMesa,
+    mesaNumero,
+    mv,
     caps,
     badges,
     mostradorActivo,
     paraLlevarActivo,
     permMesero.ayuda_companeros,
+    modulos.modulo_resumen_diario_activo,
     variant,
+    ni,
+    chefSolo,
   ]);
 
   if (!nav.visible || items.length < 2) {
@@ -272,38 +327,49 @@ export function AppNavBar({ variant, style }: Props) {
     }
   }
 
+  const barStyle = [
+    variant === 'bottom' ? styles.bottomBar : styles.sidebarBar,
+    navBarChromeStyle(chrome, layout, themeColors, variant),
+    variant === 'bottom' &&
+      chrome.navBar !== 'floating' && {
+        paddingBottom: Math.max(insets.bottom, 4),
+        height: BOTTOM_NAV_BAR_HEIGHT + Math.max(insets.bottom, 4),
+      },
+    variant === 'bottom' &&
+      chrome.navBar === 'floating' && {
+        paddingBottom: Math.max(insets.bottom, 8),
+        marginBottom: Math.max(insets.bottom, 0),
+      },
+    variant === 'sidebar' && { width: SIDEBAR_NAV_WIDTH },
+    style,
+  ];
+
+  const barInner = items.map((item) => (
+    <NavItemButton
+      key={item.key}
+      item={item}
+      variant={variant}
+      compactLabel={variant === 'sidebar' && isCompact}
+      themeColors={themeColors}
+      chrome={chrome}
+      layout={layout}
+      onPress={() => onItemPress(item)}
+    />
+  ));
+
   const bar = (
-    <View
-      style={[
-        variant === 'bottom' ? styles.bottomBar : styles.sidebarBar,
-        variant === 'bottom' && {
-          paddingBottom: Math.max(insets.bottom, 4),
-          height: BOTTOM_NAV_BAR_HEIGHT + Math.max(insets.bottom, 4),
-        },
-        variant === 'sidebar' && { width: SIDEBAR_NAV_WIDTH },
-        style,
-      ]}
-    >
-      {items.map((item) => (
-        <NavItemButton
-          key={item.key}
-          item={item}
-          variant={variant}
-          compactLabel={variant === 'sidebar' && isCompact}
-          onPress={() => onItemPress(item)}
-        />
-      ))}
-    </View>
+    <AppNavChrome style={barStyle}>{barInner}</AppNavChrome>
   );
 
   return (
     <>
       {bar}
-      {caps.esAdmin || caps.tomaPedidos ? (
+      {caps.esAdmin || caps.tomaPedidos || chefSolo ? (
         <AppNavMoreSheet
           visible={moreOpen}
           onClose={() => setMoreOpen(false)}
           mode={caps.esAdmin ? 'admin' : 'mesero'}
+          modulos={modulos}
         />
       ) : null}
     </>
@@ -315,20 +381,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'stretch',
     justifyContent: 'space-around',
-    backgroundColor: colors.surface,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
     paddingTop: 6,
-    ...Platform.select({
-      web: { boxShadow: '0 -2px 12px rgba(61,54,48,0.08)' } as object,
-      default: {},
-    }),
   },
   sidebarBar: {
     width: SIDEBAR_NAV_WIDTH,
-    backgroundColor: colors.surface,
-    borderRightWidth: StyleSheet.hairlineWidth,
-    borderRightColor: colors.border,
     paddingVertical: 16,
     paddingHorizontal: 10,
     gap: 6,
@@ -363,15 +419,12 @@ const styles = StyleSheet.create({
     minWidth: 16,
     height: 16,
     borderRadius: 8,
-    backgroundColor: colors.danger,
     borderWidth: 1.5,
-    borderColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 3,
   },
   badgeText: {
-    color: colors.onPrimary,
     fontSize: 9,
     fontWeight: '900',
   },
@@ -383,9 +436,7 @@ const styles = StyleSheet.create({
   },
   sidebarLabel: {
     fontSize: 12,
-    fontWeight: '600',
     textAlign: 'center',
     lineHeight: 15,
   },
-  labelActive: { fontWeight: '800' },
 });

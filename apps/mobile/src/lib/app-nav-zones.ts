@@ -2,7 +2,7 @@
 export type AppNavZone = 'operacion' | 'pedido' | 'admin' | 'hidden';
 
 const ADMIN_ROUTE =
-  /\/(usuarios|menu-admin|categorias-admin|mesas-admin|configuracion|conexion-movil|permisos|meseros-operativos|resumen-diario)(\/|$)/;
+  /\/(usuarios|menu-admin|categorias-admin|mesas-admin|descuentos-promociones|creditos|configuracion|conexion-movil|permisos|meseros-operativos|personalizacion-visual|resumen-diario)(\/|$)/;
 
 const OPERACION_ROUTE =
   /\/(mesas|mostrador|para-llevar|mis-pedidos|ayuda-companeros|mesa\/\d+)(\/|$)/;

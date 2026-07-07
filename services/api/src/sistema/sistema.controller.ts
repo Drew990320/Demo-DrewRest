@@ -1,5 +1,16 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Res, UseGuards } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
+import type { Response } from 'express';
+import * as fs from 'fs';
+import {
+  resolveRestaurantLogoPath,
+  restaurantHasLogo,
+  restaurantName,
+  restaurantTicketAddress,
+  restaurantTicketPhone,
+} from '../common/restaurant-branding';
+import { mimeFromLogoPath } from '../restaurante/logo-upload.util';
+import { ConfigRestauranteService } from '../restaurante/config-restaurante.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
@@ -7,6 +18,39 @@ import { detectarRedLocal, leerPuertoWeb, PUERTO_WEB_POR_DEFECTO } from './red-l
 
 @Controller('sistema')
 export class SistemaController {
+  constructor(private readonly configRestaurante: ConfigRestauranteService) {}
+
+  /** Nombre, contacto y logo del restaurante (público: login sin sesión). */
+  @SkipThrottle()
+  @Get('branding')
+  async branding() {
+    await this.configRestaurante.obtenerRow();
+    const tieneLogo = restaurantHasLogo();
+    return {
+      nombre: restaurantName(),
+      telefono: restaurantTicketPhone() || null,
+      direccion: restaurantTicketAddress() || null,
+      tiene_logo: tieneLogo,
+      logo_url: tieneLogo ? '/sistema/logo' : null,
+    };
+  }
+
+  /** Logo PNG desde la carpeta `images/` del despliegue. */
+  @SkipThrottle()
+  @Get('logo')
+  async logo(@Res() res: Response) {
+    await this.configRestaurante.obtenerRow();
+    const logoPath = resolveRestaurantLogoPath();
+    if (!logoPath) {
+      res.status(404).json({ message: 'Logo no configurado' });
+      return;
+    }
+    res.setHeader('Content-Type', mimeFromLogoPath(logoPath));
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.send(fs.readFileSync(logoPath));
+  }
+
   /** IP y URLs para que meseros abran la app en el celular (misma red local). */
   @SkipThrottle()
   @Get('conexion-celulares')

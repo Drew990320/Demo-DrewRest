@@ -21,10 +21,10 @@ export function usePedidoNotificaciones() {
   useEffect(() => {
     if (!puedeVerMisPedidos(user?.rol) || user?.id == null) return;
 
-    const idMesero = user.id;
+    const idMesero = Number(user.id);
 
     const unsubLlama = subscribeCocinaLlamaMesero((payload) => {
-      if (payload.idMesero !== idMesero) return;
+      if (Number(payload.idMesero) !== idMesero) return;
       void showBriefNotice(
         tituloCocinaLlamaMesero(
           payload.platosListos,
@@ -37,7 +37,7 @@ export function usePedidoNotificaciones() {
     });
 
     const unsubCompanero = subscribeCompaneroAgregoItems((payload) => {
-      if (payload.idMeseroDueno !== idMesero) return;
+      if (Number(payload.idMeseroDueno) !== idMesero) return;
       const accion = payload.accion ?? 'agregado';
       void showBriefNotice(
         tituloCompaneroModificoPedido(accion),

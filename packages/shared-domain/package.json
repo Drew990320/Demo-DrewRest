@@ -18,6 +18,30 @@
       "types": "./dist/categoria-reglas.d.ts",
       "default": "./dist/categoria-reglas.js"
     },
+    "./categoria-menu-icon": {
+      "types": "./dist/categoria-menu-icon.d.ts",
+      "default": "./dist/categoria-menu-icon.js"
+    },
+    "./nav-app-icon": {
+      "types": "./dist/nav-app-icon.d.ts",
+      "default": "./dist/nav-app-icon.js"
+    },
+    "./action-app-icon": {
+      "types": "./dist/action-app-icon.d.ts",
+      "default": "./dist/action-app-icon.js"
+    },
+    "./visual-style": {
+      "types": "./dist/visual-style.d.ts",
+      "default": "./dist/visual-style.js"
+    },
+    "./mesa-visual": {
+      "types": "./dist/mesa-visual.d.ts",
+      "default": "./dist/mesa-visual.js"
+    },
+    "./visual-palette": {
+      "types": "./dist/visual-palette.d.ts",
+      "default": "./dist/visual-palette.js"
+    },
     "./cobro-parcial": {
       "types": "./dist/cobro-parcial.d.ts",
       "default": "./dist/cobro-parcial.js"
@@ -66,6 +90,14 @@
       "types": "./dist/factura-mixto.d.ts",
       "default": "./dist/factura-mixto.js"
     },
+    "./factura-cobro-plan": {
+      "types": "./dist/factura-cobro-plan.d.ts",
+      "default": "./dist/factura-cobro-plan.js"
+    },
+    "./factura-vuelto": {
+      "types": "./dist/factura-vuelto.d.ts",
+      "default": "./dist/factura-vuelto.js"
+    },
     "./mazorca-pedido": {
       "types": "./dist/mazorca-pedido.d.ts",
       "default": "./dist/mazorca-pedido.js"
@@ -106,6 +138,10 @@
       "types": "./dist/permisos-mesero.d.ts",
       "default": "./dist/permisos-mesero.js"
     },
+    "./permisos-chef": {
+      "types": "./dist/permisos-chef.d.ts",
+      "default": "./dist/permisos-chef.js"
+    },
     "./comanda-lineas-group": {
       "types": "./dist/comanda-lineas-group.d.ts",
       "default": "./dist/comanda-lineas-group.js"
@@ -138,9 +174,13 @@
   "scripts": {
     "build": "tsc",
     "prepare": "npm run build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "jest --config jest.config.cjs"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "jest": "^30.0.0",
+    "ts-jest": "^29.2.5",
     "typescript": "~5.7.3"
   }
 }

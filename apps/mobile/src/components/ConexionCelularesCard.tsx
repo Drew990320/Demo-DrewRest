@@ -140,63 +140,67 @@ export function ConexionCelularesCard({
             </Text>
           ) : (
             <>
-              {usaPuertoDistinto ? (
-                <View style={styles.portNotice}>
-                  <Text style={styles.portNoticeText}>
-                    La app está corriendo en el puerto {puertoQr} (Expo / navegador
-                    actual). El servidor empaquetado usa el puerto {puertoServidor}.
+              {data != null ? (
+                <>
+                  {usaPuertoDistinto ? (
+                    <View style={styles.portNotice}>
+                      <Text style={styles.portNoticeText}>
+                        La app está corriendo en el puerto {puertoQr} (Expo / navegador
+                        actual). El servidor empaquetado usa el puerto {puertoServidor}.
+                      </Text>
+                    </View>
+                  ) : null}
+                  {data.puerto_web_por_defecto != null &&
+                  data.puerto_web !== data.puerto_web_por_defecto &&
+                  !usaPuertoDistinto ? (
+                    <View style={styles.portNotice}>
+                      <Text style={styles.portNoticeText}>
+                        El puerto {data.puerto_web_por_defecto} estaba ocupado. La web del
+                        restaurante usa el puerto {data.puerto_web}.
+                      </Text>
+                    </View>
+                  ) : null}
+                  <View style={styles.qrSection}>
+                    <Text style={styles.label}>Escanea con el celular</Text>
+                    <Text style={styles.qrHint}>
+                      Misma red Wi‑Fi · abre la app en el navegador del teléfono
+                    </Text>
+                    <View style={styles.qrBox}>
+                      <QRCode
+                        value={urlCelular}
+                        size={isPage ? 220 : 200}
+                        color="#1a1a1a"
+                        backgroundColor="#ffffff"
+                      />
+                    </View>
+                  </View>
+                  <Text style={[styles.label, styles.labelSpaced]}>
+                    O abre / copia esta dirección:
                   </Text>
-                </View>
+                  <Pressable style={styles.urlBox} onPress={() => void onCopiarUrl()}>
+                    <Text style={styles.url} selectable>
+                      {urlCelular}
+                    </Text>
+                    <Text style={styles.tapCopy}>Toca para copiar</Text>
+                  </Pressable>
+                  {data.adaptador ? (
+                    <Text style={styles.meta}>
+                      Red: {data.tipo_red === 'wifi' ? 'Wi-Fi' : data.tipo_red === 'ethernet' ? 'Ethernet' : 'LAN'} (
+                      {data.adaptador})
+                    </Text>
+                  ) : null}
+                  <Text style={styles.meta}>En este PC: {data.url_web_local}</Text>
+                  {data.health_celular ? (
+                    <Text style={styles.meta}>Probar API: {data.health_celular}</Text>
+                  ) : null}
+                  <Text style={styles.aviso}>{data.aviso}</Text>
+                </>
               ) : null}
-              {data.puerto_web_por_defecto != null &&
-              data.puerto_web !== data.puerto_web_por_defecto &&
-              !usaPuertoDistinto ? (
-                <View style={styles.portNotice}>
-                  <Text style={styles.portNoticeText}>
-                    El puerto {data.puerto_web_por_defecto} estaba ocupado. La web del
-                    restaurante usa el puerto {data.puerto_web}.
-                  </Text>
-                </View>
-              ) : null}
-              <View style={styles.qrSection}>
-                <Text style={styles.label}>Escanea con el celular</Text>
-                <Text style={styles.qrHint}>
-                  Misma red Wi‑Fi · abre La Reserva en el navegador del teléfono
-                </Text>
-                <View style={styles.qrBox}>
-                  <QRCode
-                    value={urlCelular}
-                    size={isPage ? 220 : 200}
-                    color="#1a1a1a"
-                    backgroundColor="#ffffff"
-                  />
-                </View>
-              </View>
-              <Text style={[styles.label, styles.labelSpaced]}>
-                O abre / copia esta dirección:
-              </Text>
-              <Pressable style={styles.urlBox} onPress={() => void onCopiarUrl()}>
-                <Text style={styles.url} selectable>
-                  {urlCelular}
-                </Text>
-                <Text style={styles.tapCopy}>Toca para copiar</Text>
+              <Pressable style={styles.refreshBtn} onPress={() => void cargar()} hitSlop={8}>
+                <Text style={styles.refreshText}>Actualizar</Text>
               </Pressable>
-              {data.adaptador ? (
-                <Text style={styles.meta}>
-                  Red: {data.tipo_red === 'wifi' ? 'Wi-Fi' : data.tipo_red === 'ethernet' ? 'Ethernet' : 'LAN'} (
-                  {data.adaptador})
-                </Text>
-              ) : null}
-              <Text style={styles.meta}>En este PC: {data.url_web_local}</Text>
-              {data.health_celular ? (
-                <Text style={styles.meta}>Probar API: {data.health_celular}</Text>
-              ) : null}
-              <Text style={styles.aviso}>{data.aviso}</Text>
             </>
           )}
-          <Pressable style={styles.refreshBtn} onPress={() => void cargar()} hitSlop={8}>
-            <Text style={styles.refreshText}>Actualizar</Text>
-          </Pressable>
         </View>
       )}
     </View>

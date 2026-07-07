@@ -5,11 +5,13 @@ on:
     branches: [main, master]
     paths:
       - 'services/api/**'
+      - 'packages/shared-domain/**'
       - '.github/workflows/api-ci.yml'
   pull_request:
     branches: [main, master]
     paths:
       - 'services/api/**'
+      - 'packages/shared-domain/**'
       - '.github/workflows/api-ci.yml'
 
 concurrency:
@@ -57,6 +59,10 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Test shared-domain
+        working-directory: packages/shared-domain
+        run: npm ci && npm test
 
       - name: Prepare database schema (CI)
         run: npm run prisma:ci-setup

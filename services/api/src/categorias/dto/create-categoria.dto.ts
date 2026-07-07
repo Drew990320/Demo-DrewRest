@@ -5,8 +5,10 @@ import {
   IsOptional,
   IsString,
   MaxLength,
+  ValidateIf,
 } from 'class-validator';
 import type { TipoLineaCocinaCategoria } from '@la-reserva/shared-domain/categoria-reglas';
+import { CATEGORIA_MENU_ICON_IDS } from '@la-reserva/shared-domain/categoria-menu-icon';
 
 export class CreateCategoriaDto {
   @IsString()
@@ -69,4 +71,10 @@ export class CreateCategoriaDto {
   @IsOptional()
   @IsIn(['plato', 'entrada', 'adicional'])
   tipo_linea_cocina_default?: TipoLineaCocinaCategoria;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v != null && v !== '')
+  @IsString()
+  @IsIn(CATEGORIA_MENU_ICON_IDS)
+  icono_menu?: string | null;
 }

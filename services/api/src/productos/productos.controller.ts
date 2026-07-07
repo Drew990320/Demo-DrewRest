@@ -50,6 +50,6 @@ export class ProductosController {
 
   @Delete(':id')
   eliminar(@Param('id', ParseIntPipe) id: number) {
-    return this.productos.desactivar(id);
+    return this.productos.eliminarPermanente(id);
   }
 }

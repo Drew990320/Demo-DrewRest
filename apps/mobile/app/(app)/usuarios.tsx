@@ -17,7 +17,6 @@ import { useAuth } from '../../src/context/AuthContext';
 import { useResponsive } from '../../src/hooks/useResponsive';
 import { api } from '../../src/lib/api';
 import { AdminIcon } from '../../src/lib/app-icons';
-import { formStyles } from '../../src/lib/form-layout';
 import { confirmAppDialog, showNotice } from '../../src/lib/app-dialog';
 import { manejarErrorAccion, manejarErrorOperacion } from '../../src/lib/recurso-disponible';
 import {
@@ -25,7 +24,10 @@ import {
 } from '../../src/lib/form-validation';
 import { emailMeseroDesdeNombre } from '../../src/lib/email-mesero';
 import { nombreUsuarioDisplay } from '../../src/lib/nombre-usuario-display';
-import { colors } from '../../src/lib/theme';
+import { useVisualTheme } from '../../src/context/VisualThemeContext';
+import { useThemedStyles } from '../../src/hooks/useThemedStyles';
+import { useFormStyles } from '../../src/lib/form-layout';
+import type { AppColors } from '../../src/lib/theme';
 
 type UsuarioRow = {
   id: number;
@@ -47,8 +49,49 @@ async function confirmSiNo(title: string, message: string): Promise<boolean> {
   return confirmAppDialog(title, message);
 }
 
+function createStyles(c: AppColors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: c.background },
+    pad: { paddingTop: 16 },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, backgroundColor: c.background },
+    denied: { textAlign: 'center', color: c.textMuted, marginBottom: 16, fontSize: 16 },
+    intro: { color: c.textMuted, fontSize: 13, marginBottom: 12, lineHeight: 18 },
+    card: {
+      backgroundColor: c.surface,
+      borderRadius: 16,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    sectionTitle: { fontWeight: '800', color: c.text, marginBottom: 8 },
+    emailPreview: {
+      color: c.primary,
+      fontSize: 13,
+      fontWeight: '700',
+      marginBottom: 10,
+      marginTop: -4,
+      textAlign: 'center',
+    },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: 12,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: c.borderLight,
+    },
+    rowMain: { flex: 1, paddingRight: 8 },
+    rowName: { fontWeight: '700', color: c.text },
+    rowEmail: { color: c.textMuted, marginTop: 2, fontSize: 13 },
+    rowMeta: { color: c.textMuted, marginTop: 4, fontSize: 12 },
+  });
+}
+
 export default function UsuariosAdminScreen() {
   const { token, user } = useAuth();
+  const { colors } = useVisualTheme();
+  const styles = useThemedStyles(createStyles);
+  const formStyles = useFormStyles();
   const router = useRouter();
   const r = useResponsive();
   const [rows, setRows] = useState<UsuarioRow[]>([]);
@@ -322,39 +365,3 @@ export default function UsuariosAdminScreen() {
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  pad: { paddingTop: 16 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, backgroundColor: colors.background },
-  denied: { textAlign: 'center', color: colors.textMuted, marginBottom: 16, fontSize: 16 },
-  intro: { color: colors.textMuted, fontSize: 13, marginBottom: 12, lineHeight: 18 },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  sectionTitle: { fontWeight: '800', color: colors.text, marginBottom: 8 },
-  emailPreview: {
-    color: colors.primary,
-    fontSize: 13,
-    fontWeight: '700',
-    marginBottom: 10,
-    marginTop: -4,
-    textAlign: 'center',
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.borderLight,
-  },
-  rowMain: { flex: 1, paddingRight: 8 },
-  rowName: { fontWeight: '700', color: colors.text },
-  rowEmail: { color: colors.textMuted, marginTop: 2, fontSize: 13 },
-  rowMeta: { color: colors.textMuted, marginTop: 4, fontSize: 12 },
-});

@@ -2,7 +2,7 @@ import { deleteOfflineCache } from './offline-cache';
 import { invalidateMenuTodayCache } from './menu-cache';
 import { notifyMesasInvalidated } from './mesas-sync';
 
-export type ConfigScope = 'menu' | 'mesas' | 'categorias';
+export type ConfigScope = 'menu' | 'mesas' | 'categorias' | 'visual';
 
 export type ConfigUpdatedPayload = {
   scope: ConfigScope;

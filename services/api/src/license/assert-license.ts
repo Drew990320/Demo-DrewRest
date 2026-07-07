@@ -38,7 +38,7 @@ function printBlocked(message: string, machineId: string): never {
   const display = formatMachineIdDisplay(machineId);
   console.error('');
   console.error('╔══════════════════════════════════════════════════════════════╗');
-  console.error('║  LA RESERVA — LICENCIA NO VÁLIDA                             ║');
+  console.error('║  LICENCIA NO VÁLIDA                                          ║');
   console.error('╚══════════════════════════════════════════════════════════════╝');
   console.error('');
   console.error(`  ${message}`);
@@ -50,7 +50,7 @@ function printBlocked(message: string, machineId: string): never {
   console.error('    1. En este PC ejecuta:  bin\\mostrar-id-maquina.bat');
   console.error('    2. Envía el ID al proveedor del software.');
   console.error('    3. Coloca el archivo license.key en la carpeta api\\');
-  console.error('    4. Vuelve a iniciar La Reserva.');
+  console.error('    4. Vuelve a iniciar el servidor.');
   console.error('');
   console.error('  La licencia queda anclada a este equipo. No funciona si se');
   console.error('  copia la carpeta a otro PC o se altera el archivo license.key.');

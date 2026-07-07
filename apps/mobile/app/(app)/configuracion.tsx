@@ -9,49 +9,29 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { ActionIconBar } from '../../src/components/ActionIconBar';
 import { MoneyTextInput } from '../../src/components/MoneyTextInput';
 import { ScreenLoading } from '../../src/components/ScreenLoading';
 import { ScreenScroll } from '../../src/components/ScreenScroll';
 import { useAuth } from '../../src/context/AuthContext';
+import { useVisualTheme } from '../../src/context/VisualThemeContext';
+import { useThemedStyles } from '../../src/hooks/useThemedStyles';
+import type { AppColors } from '../../src/lib/theme';
 import { AccionIcon } from '../../src/lib/app-icons';
 import { api } from '../../src/lib/api';
 import { deleteOfflineCache } from '../../src/lib/offline-cache';
 import { digitsFromMonto, parseCOPDigits } from '../../src/lib/cop-input';
 import { formatCOP } from '../../src/lib/format';
-import { formStyles } from '../../src/lib/form-layout';
+import { useFormStyles, textInputPlaceholderColor } from '../../src/lib/form-layout';
 import {
   avisarSiMontoCOPInvalido,
 } from '../../src/lib/form-validation';
 import { showNotice } from '../../src/lib/app-dialog';
 import { manejarErrorAccion, manejarErrorOperacion } from '../../src/lib/recurso-disponible';
-import { colors } from '../../src/lib/theme';
 import { useFormFieldStyle } from '../../src/hooks/useFormFieldStyle';
 import { invalidateConfigOperativaMemCache } from '../../src/hooks/useConfigOperativa';
-import {
-  MULEROS_MIN_PLATOS_PRINCIPALES_DEFAULT,
-  SOPAS_MIN_UNIDADES_DEFAULT,
-  UMBRAL_SUBTOTAL_OTROS_COP,
-} from '../../src/lib/descuentos-pedido';
-import { ReglasPromocionPanel } from '../../src/components/ReglasPromocionPanel';
-import { QtyStepper } from '../../src/components/QtyStepper';
-import {
-  parseReglasPromocion,
-  type ReglaPromocionPorCategoria,
-} from '../../src/lib/promociones-pedido';
-
-type ConfigDescuentos = {
-  sopas_activo: boolean;
-  sopas_monto_por_unidad: number;
-  sopas_min_unidades: number;
-  muleros_activo: boolean;
-  muleros_monto_por_plato_principal: number;
-  muleros_min_platos_principales: number;
-  umbral_subtotal_otros: number;
-  reglas_promocion?: ReglaPromocionPorCategoria[];
-};
-
-type CategoriaPick = { id_categoria: number; nombre: string };
+import { invalidarCacheModulosRestaurante } from '../../src/hooks/useModulosRestaurante';
 
 type ConfigOperativa = {
   precio_empaque_para_llevar: number;
@@ -70,6 +50,25 @@ type ConfigOperativa = {
   soda_almuerzo_descontar_stock: boolean;
 };
 
+type ConfigRestaurante = {
+  nombre_comercial: string;
+  telefono: string | null;
+  direccion: string | null;
+  dominio_email_interno: string;
+  logo_archivo: string | null;
+  tiene_logo: boolean;
+  texto_gracias_ticket: string;
+  texto_propina_ticket: string;
+  texto_aviso_no_dian: string;
+  texto_pie_correo: string | null;
+  prefijo_asunto_correo: string | null;
+  mostrar_credito_drewtech: boolean;
+  modulo_inventario_activo: boolean;
+  modulo_meseros_operativos_activo: boolean;
+  modulo_envio_correo_activo: boolean;
+  modulo_resumen_diario_activo: boolean;
+};
+
 type ProductoPick = {
   id_producto: number;
   nombre: string;
@@ -78,26 +77,19 @@ type ProductoPick = {
 };
 
 export default function ConfiguracionScreen() {
+  const { colors } = useVisualTheme();
+  const inputPlaceholder = textInputPlaceholderColor(colors);
+  const styles = useThemedStyles(createStyles);
+  const formStyles = useFormStyles();
   const { token, user } = useAuth();
+  const router = useRouter();
   const moneyField = useFormFieldStyle('money');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
 
-  const [descSopaOn, setDescSopaOn] = useState(false);
-  const [descMulerosOn, setDescMulerosOn] = useState(false);
-  const [descSopaDigits, setDescSopaDigits] = useState('');
-  const [descMulerosDigits, setDescMulerosDigits] = useState('');
-  const [umbralDigits, setUmbralDigits] = useState('');
-  const [sopasMinUnidades, setSopasMinUnidades] = useState(
-    SOPAS_MIN_UNIDADES_DEFAULT,
-  );
-  const [mulerosMinPlatos, setMulerosMinPlatos] = useState(
-    MULEROS_MIN_PLATOS_PRINCIPALES_DEFAULT,
-  );
-
   const [precioEmpaqueDigits, setPrecioEmpaqueDigits] = useState('');
-  const [mazorcaActiva, setMazorcaActiva] = useState(true);
+  const [mazorcaActiva, setMazorcaActiva] = useState(false);
   const [idProductoMazorca, setIdProductoMazorca] = useState<number | null>(
     null,
   );
@@ -112,42 +104,51 @@ export default function ConfiguracionScreen() {
   const [sodaAlmuerzoActiva, setSodaAlmuerzoActiva] = useState(false);
   const [idProductoSoda, setIdProductoSoda] = useState<number | null>(null);
   const [sodaDescontarStock, setSodaDescontarStock] = useState(true);
-  const [reglasPromocion, setReglasPromocion] = useState<
-    ReglaPromocionPorCategoria[]
-  >([]);
-  const [categorias, setCategorias] = useState<CategoriaPick[]>([]);
+
+  const [nombreComercial, setNombreComercial] = useState('Restaurante');
+  const [telefono, setTelefono] = useState('');
+  const [direccion, setDireccion] = useState('');
+  const [dominioEmail, setDominioEmail] = useState('restaurant.local');
+  const [textoGracias, setTextoGracias] = useState('Gracias por su visita');
+  const [textoPropina, setTextoPropina] = useState('*** PROPINA VOLUNTARIA ***');
+  const [textoAvisoDian, setTextoAvisoDian] = useState(
+    'No constituye factura electrónica DIAN',
+  );
+  const [textoPieCorreo, setTextoPieCorreo] = useState('');
+  const [prefijoAsuntoCorreo, setPrefijoAsuntoCorreo] = useState('');
+  const [mostrarCreditoDrewTech, setMostrarCreditoDrewTech] = useState(true);
+  const [moduloInventario, setModuloInventario] = useState(false);
+  const [moduloMeserosOp, setModuloMeserosOp] = useState(true);
+  const [moduloEnvioCorreo, setModuloEnvioCorreo] = useState(false);
+  const [moduloResumenDiario, setModuloResumenDiario] = useState(true);
+
+  function aplicarRestaurante(r: ConfigRestaurante) {
+    setNombreComercial(r.nombre_comercial);
+    setTelefono(r.telefono ?? '');
+    setDireccion(r.direccion ?? '');
+    setDominioEmail(r.dominio_email_interno);
+    setTextoGracias(r.texto_gracias_ticket);
+    setTextoPropina(r.texto_propina_ticket);
+    setTextoAvisoDian(r.texto_aviso_no_dian);
+    setTextoPieCorreo(r.texto_pie_correo ?? '');
+    setPrefijoAsuntoCorreo(r.prefijo_asunto_correo ?? '');
+    setMostrarCreditoDrewTech(r.mostrar_credito_drewtech);
+    setModuloInventario(r.modulo_inventario_activo);
+    setModuloMeserosOp(r.modulo_meseros_operativos_activo);
+    setModuloEnvioCorreo(r.modulo_envio_correo_activo);
+    setModuloResumenDiario(r.modulo_resumen_diario_activo);
+  }
 
   const load = useCallback(async () => {
-    const [desc, op, prods, cats] = await Promise.all([
-      api<ConfigDescuentos>('/pedidos/config-descuentos', {
-        token,
-        cacheKey: 'config_descuentos',
-      }),
+    const [rest, op, prods] = await Promise.all([
+      api<ConfigRestaurante>('/restaurante/config', { token }),
       api<ConfigOperativa>('/pedidos/config-operativa', {
         token,
         cacheKey: 'config_operativa',
       }),
       api<ProductoPick[]>('/productos?incluir_inactivos=true', { token }),
-      api<CategoriaPick[]>('/categorias/admin', { token }),
     ]);
-    setDescSopaOn(desc.sopas_activo);
-    setDescMulerosOn(desc.muleros_activo);
-    setDescSopaDigits(digitsFromMonto(desc.sopas_monto_por_unidad));
-    setDescMulerosDigits(
-      digitsFromMonto(desc.muleros_monto_por_plato_principal),
-    );
-    setUmbralDigits(
-      digitsFromMonto(
-        desc.umbral_subtotal_otros ?? UMBRAL_SUBTOTAL_OTROS_COP,
-      ),
-    );
-    setSopasMinUnidades(
-      desc.sopas_min_unidades ?? SOPAS_MIN_UNIDADES_DEFAULT,
-    );
-    setMulerosMinPlatos(
-      desc.muleros_min_platos_principales ??
-        MULEROS_MIN_PLATOS_PRINCIPALES_DEFAULT,
-    );
+    aplicarRestaurante(rest);
     setPrecioEmpaqueDigits(digitsFromMonto(op.precio_empaque_para_llevar));
     setMazorcaActiva(op.mazorca_activa);
     setIdProductoMazorca(op.id_producto_mazorca);
@@ -160,8 +161,6 @@ export default function ConfiguracionScreen() {
     setSodaAlmuerzoActiva(Boolean(op.beneficio_soda_almuerzo_activo));
     setIdProductoSoda(op.id_producto_soda_almuerzo);
     setSodaDescontarStock(op.soda_almuerzo_descontar_stock !== false);
-    setReglasPromocion(parseReglasPromocion(desc.reglas_promocion ?? []));
-    setCategorias(cats);
     setProductos(prods);
     setDirty(false);
   }, [token]);
@@ -176,53 +175,7 @@ export default function ConfiguracionScreen() {
       setLoading(true);
       (async () => {
         try {
-          const [desc, op, prods, cats] = await Promise.all([
-            api<ConfigDescuentos>('/pedidos/config-descuentos', {
-              token,
-              cacheKey: 'config_descuentos',
-            }),
-            api<ConfigOperativa>('/pedidos/config-operativa', {
-              token,
-              cacheKey: 'config_operativa',
-            }),
-            api<ProductoPick[]>('/productos?incluir_inactivos=true', { token }),
-            api<CategoriaPick[]>('/categorias/admin', { token }),
-          ]);
-          if (!active) return;
-          setDescSopaOn(desc.sopas_activo);
-          setDescMulerosOn(desc.muleros_activo);
-          setDescSopaDigits(digitsFromMonto(desc.sopas_monto_por_unidad));
-          setDescMulerosDigits(
-            digitsFromMonto(desc.muleros_monto_por_plato_principal),
-          );
-          setUmbralDigits(
-            digitsFromMonto(
-              desc.umbral_subtotal_otros ?? UMBRAL_SUBTOTAL_OTROS_COP,
-            ),
-          );
-          setSopasMinUnidades(
-            desc.sopas_min_unidades ?? SOPAS_MIN_UNIDADES_DEFAULT,
-          );
-          setMulerosMinPlatos(
-            desc.muleros_min_platos_principales ??
-              MULEROS_MIN_PLATOS_PRINCIPALES_DEFAULT,
-          );
-          setPrecioEmpaqueDigits(digitsFromMonto(op.precio_empaque_para_llevar));
-          setMazorcaActiva(op.mazorca_activa);
-          setIdProductoMazorca(op.id_producto_mazorca);
-          setNumeroParaLlevar(String(op.numero_mesa_para_llevar ?? 98));
-          setNumeroMostrador(String(op.numero_mesa_mostrador ?? 99));
-          setEtiquetaParaLlevar(op.etiqueta_para_llevar ?? 'Pedidos para llevar');
-          setEtiquetaMostrador(op.etiqueta_mostrador ?? 'Mostrador');
-          setMostradorActivo(op.mostrador_activo !== false);
-          setParaLlevarActivo(op.para_llevar_activo !== false);
-          setSodaAlmuerzoActiva(Boolean(op.beneficio_soda_almuerzo_activo));
-          setIdProductoSoda(op.id_producto_soda_almuerzo);
-          setSodaDescontarStock(op.soda_almuerzo_descontar_stock !== false);
-          setReglasPromocion(parseReglasPromocion(desc.reglas_promocion ?? []));
-          setCategorias(cats);
-          setProductos(prods);
-          setDirty(false);
+          await load();
         } catch (e) {
           if (!active) return;
           await manejarErrorAccion(e, 'cargar la configuración');
@@ -237,35 +190,6 @@ export default function ConfiguracionScreen() {
   );
 
   async function guardar() {
-    if (
-      descSopaOn &&
-      (await avisarSiMontoCOPInvalido(
-        'Monto descuento por sopa',
-        descSopaDigits,
-        showNotice,
-      ))
-    ) {
-      return;
-    }
-    if (
-      descMulerosOn &&
-      (await avisarSiMontoCOPInvalido(
-        'Monto descuento camionero',
-        descMulerosDigits,
-        showNotice,
-      ))
-    ) {
-      return;
-    }
-    if (
-      await avisarSiMontoCOPInvalido(
-        'Umbral subtotal otros ítems',
-        umbralDigits,
-        showNotice,
-      )
-    ) {
-      return;
-    }
     if (
       await avisarSiMontoCOPInvalido(
         'Precio empaque para llevar',
@@ -310,21 +234,36 @@ export default function ConfiguracionScreen() {
       return;
     }
 
+    if (!nombreComercial.trim()) {
+      await showNotice(
+        'Nombre requerido',
+        'Indica el nombre comercial del restaurante.',
+        'warning',
+      );
+      return;
+    }
+
     setSaving(true);
     try {
       await Promise.all([
-        api<ConfigDescuentos>('/pedidos/config-descuentos', {
+        api<ConfigRestaurante>('/restaurante/config', {
           method: 'PUT',
           token,
           body: JSON.stringify({
-            sopas_activo: descSopaOn,
-            sopas_monto_por_unidad: parseCOPDigits(descSopaDigits),
-            sopas_min_unidades: sopasMinUnidades,
-            muleros_activo: descMulerosOn,
-            muleros_monto_por_plato_principal: parseCOPDigits(descMulerosDigits),
-            muleros_min_platos_principales: mulerosMinPlatos,
-            umbral_subtotal_otros: parseCOPDigits(umbralDigits),
-            reglas_promocion: reglasPromocion,
+            nombre_comercial: nombreComercial.trim(),
+            telefono: telefono.trim() || null,
+            direccion: direccion.trim() || null,
+            dominio_email_interno: dominioEmail.trim(),
+            texto_gracias_ticket: textoGracias.trim(),
+            texto_propina_ticket: textoPropina.trim(),
+            texto_aviso_no_dian: textoAvisoDian.trim(),
+            texto_pie_correo: textoPieCorreo.trim() || null,
+            prefijo_asunto_correo: prefijoAsuntoCorreo.trim() || null,
+            mostrar_credito_drewtech: mostrarCreditoDrewTech,
+            modulo_inventario_activo: moduloInventario,
+            modulo_meseros_operativos_activo: moduloMeserosOp,
+            modulo_envio_correo_activo: moduloEnvioCorreo,
+            modulo_resumen_diario_activo: moduloResumenDiario,
           }),
         }),
         api<ConfigOperativa>('/pedidos/config-operativa', {
@@ -346,9 +285,9 @@ export default function ConfiguracionScreen() {
           }),
         }),
       ]);
-      await deleteOfflineCache('config_descuentos');
       await deleteOfflineCache('config_operativa');
       invalidateConfigOperativaMemCache();
+      invalidarCacheModulosRestaurante();
       await load();
       setDirty(false);
       await showNotice(
@@ -400,138 +339,206 @@ export default function ConfiguracionScreen() {
   return (
     <ScreenScroll contentContainerStyle={styles.content}>
       <Text style={[styles.intro, formStyles.adminIntro]}>
-        Reglas globales del restaurante: descuentos, empaque y línea de mazorca
-        en mesas.
+        Identidad del restaurante, reglas de negocio y módulos activos. El
+        catálogo, mesas y permisos se gestionan en sus pantallas dedicadas.
       </Text>
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Descuentos — Sopas</Text>
-        <Text style={styles.hint}>
-          Se aplica si hay al menos la cantidad mínima de sopas y el subtotal de
-          otros ítems supera el umbral configurado.
-        </Text>
-        <View style={styles.switchRow}>
-          <Text style={styles.switchLabel}>Descuento sopas activo</Text>
-          <Switch
-            value={descSopaOn}
-            onValueChange={(v) => {
-              setDescSopaOn(v);
-              marcarDirty();
-            }}
-            trackColor={{ false: colors.borderInput, true: colors.successBorder }}
-            thumbColor={descSopaOn ? colors.primary : colors.borderLight}
-          />
+        <Text style={styles.sectionTitle}>Accesos rápidos</Text>
+        <View style={styles.linkRow}>
+          <Pressable style={styles.linkChip} onPress={() => router.push('/(app)/mesas-admin')}>
+            <Text style={styles.linkChipText}>Mesas</Text>
+          </Pressable>
+          <Pressable style={styles.linkChip} onPress={() => router.push('/(app)/menu-admin')}>
+            <Text style={styles.linkChipText}>Menú / catálogo</Text>
+          </Pressable>
+          <Pressable style={styles.linkChip} onPress={() => router.push('/(app)/categorias-admin')}>
+            <Text style={styles.linkChipText}>Categorías</Text>
+          </Pressable>
+          <Pressable style={styles.linkChip} onPress={() => router.push('/(app)/permisos')}>
+            <Text style={styles.linkChipText}>Permisos</Text>
+          </Pressable>
+          <Pressable
+            style={styles.linkChip}
+            onPress={() => router.push('/(app)/personalizacion-visual')}
+          >
+            <Text style={styles.linkChipText}>Personalización visual</Text>
+          </Pressable>
         </View>
-        {descSopaOn ? (
-          <>
-            <Text style={styles.fieldLabel}>Monto por unidad de sopa</Text>
-            <MoneyTextInput
-              style={[styles.input, moneyField]}
-              placeholderAmount={2000}
-              digits={descSopaDigits}
-              onChangeDigits={(t) => {
-                setDescSopaDigits(t);
-                marcarDirty();
-              }}
-            />
-          </>
-        ) : null}
-        <Text style={[styles.fieldLabel, styles.fieldGap]}>
-          Mínimo de unidades de sopa
-        </Text>
-        <QtyStepper
-          value={sopasMinUnidades}
-          min={1}
-          max={99}
-          onChange={(n) => {
-            setSopasMinUnidades(n);
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>Restaurante</Text>
+        <Text style={styles.fieldLabel}>Nombre comercial</Text>
+        <TextInput
+          placeholderTextColor={inputPlaceholder}
+          style={styles.input}
+          value={nombreComercial}
+          onChangeText={(t) => {
+            setNombreComercial(t);
             marcarDirty();
           }}
         />
-        <Text style={styles.hintSmall}>
-          Hoy: se requieren al menos {sopasMinUnidades} unidad
-          {sopasMinUnidades === 1 ? '' : 'es'} de sopa para activar el descuento.
-        </Text>
-        <Text style={[styles.fieldLabel, styles.fieldGap]}>
-          Umbral subtotal otros ítems
-        </Text>
-        <MoneyTextInput
-          style={[styles.input, moneyField]}
-          placeholderAmount={UMBRAL_SUBTOTAL_OTROS_COP}
-          digits={umbralDigits}
-          onChangeDigits={(t) => {
-            setUmbralDigits(t);
+        <Text style={styles.fieldLabel}>Teléfono (tickets)</Text>
+        <TextInput
+          placeholderTextColor={inputPlaceholder}
+          style={styles.input}
+          value={telefono}
+          onChangeText={(t) => {
+            setTelefono(t);
             marcarDirty();
           }}
         />
+        <Text style={styles.fieldLabel}>Dirección</Text>
+        <TextInput
+          placeholderTextColor={inputPlaceholder}
+          style={styles.input}
+          value={direccion}
+          onChangeText={(t) => {
+            setDireccion(t);
+            marcarDirty();
+          }}
+        />
+        <Text style={styles.fieldLabel}>Dominio correos internos</Text>
+        <TextInput
+          placeholderTextColor={inputPlaceholder}
+          style={styles.input}
+          autoCapitalize="none"
+          value={dominioEmail}
+          onChangeText={(t) => {
+            setDominioEmail(t);
+            marcarDirty();
+          }}
+          placeholder="restaurant.local"
+        />
         <Text style={styles.hintSmall}>
-          Hoy: otros ítems deben sumar más de{' '}
-          {formatCOP(parseCOPDigits(umbralDigits) || UMBRAL_SUBTOTAL_OTROS_COP)}{' '}
-          para activar el descuento de sopas.
+          Los meseros nuevos reciben correo como nombre@{dominioEmail || 'restaurant.local'}
+        </Text>
+        <Text style={styles.hintSmall}>
+          Logos, colores e iconos del menú se configuran en Personalización visual.
         </Text>
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Descuentos — Clientes camioneros</Text>
-        <Text style={styles.hint}>
-          Al cobrar, el mesero marca el pedido como camionero; se rebaja el monto
-          por cada plato principal si se alcanza la cantidad mínima.
-        </Text>
+        <Text style={styles.sectionTitle}>Textos de ticket y correo</Text>
+        <Text style={styles.fieldLabel}>Mensaje de agradecimiento</Text>
+        <TextInput
+          placeholderTextColor={inputPlaceholder}
+          style={styles.input}
+          value={textoGracias}
+          onChangeText={(t) => {
+            setTextoGracias(t);
+            marcarDirty();
+          }}
+        />
+        <Text style={styles.fieldLabel}>Línea de propina</Text>
+        <TextInput
+          placeholderTextColor={inputPlaceholder}
+          style={styles.input}
+          value={textoPropina}
+          onChangeText={(t) => {
+            setTextoPropina(t);
+            marcarDirty();
+          }}
+        />
+        <Text style={styles.fieldLabel}>Aviso legal (no DIAN)</Text>
+        <TextInput
+          placeholderTextColor={inputPlaceholder}
+          style={styles.input}
+          value={textoAvisoDian}
+          onChangeText={(t) => {
+            setTextoAvisoDian(t);
+            marcarDirty();
+          }}
+        />
+        <Text style={styles.fieldLabel}>Pie adicional del correo</Text>
+        <TextInput
+          placeholderTextColor={inputPlaceholder}
+          style={[styles.input, styles.inputMultiline]}
+          multiline
+          value={textoPieCorreo}
+          onChangeText={(t) => {
+            setTextoPieCorreo(t);
+            marcarDirty();
+          }}
+        />
+        <Text style={styles.fieldLabel}>Prefijo asunto correo (opcional)</Text>
+        <TextInput
+          placeholderTextColor={inputPlaceholder}
+          style={styles.input}
+          value={prefijoAsuntoCorreo}
+          onChangeText={(t) => {
+            setPrefijoAsuntoCorreo(t);
+            marcarDirty();
+          }}
+          placeholder="Vacío = nombre del restaurante"
+        />
         <View style={styles.switchRow}>
-          <Text style={styles.switchLabel}>Descuento camioneros activo</Text>
+          <Text style={styles.switchLabel}>
+            Mostrar crédito DrewTech POS en tickets
+          </Text>
           <Switch
-            value={descMulerosOn}
+            value={mostrarCreditoDrewTech}
             onValueChange={(v) => {
-              setDescMulerosOn(v);
+              setMostrarCreditoDrewTech(v);
               marcarDirty();
             }}
             trackColor={{ false: colors.borderInput, true: colors.successBorder }}
-            thumbColor={descMulerosOn ? colors.primary : colors.borderLight}
+            thumbColor={mostrarCreditoDrewTech ? colors.primary : colors.borderLight}
           />
         </View>
-        {descMulerosOn ? (
-          <>
-            <Text style={styles.fieldLabel}>Monto por plato principal</Text>
-            <MoneyTextInput
-              style={[styles.input, moneyField]}
-              placeholderAmount={10000}
-              digits={descMulerosDigits}
-              onChangeDigits={(t) => {
-                setDescMulerosDigits(t);
-                marcarDirty();
-              }}
-            />
-          </>
-        ) : null}
-        <Text style={[styles.fieldLabel, styles.fieldGap]}>
-          Mínimo de platos principales
-        </Text>
-        <QtyStepper
-          value={mulerosMinPlatos}
-          min={1}
-          max={99}
-          onChange={(n) => {
-            setMulerosMinPlatos(n);
-            marcarDirty();
-          }}
-        />
-        <Text style={styles.hintSmall}>
-          Hoy: se requieren al menos {mulerosMinPlatos} plato
-          {mulerosMinPlatos === 1 ? '' : 's'} principal
-          {mulerosMinPlatos === 1 ? '' : 'es'} para activar el descuento.
-        </Text>
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Promociones por categoría</Text>
-        <ReglasPromocionPanel
-          reglas={reglasPromocion}
-          categorias={categorias}
-          onChange={(r) => {
-            setReglasPromocion(r);
-            marcarDirty();
-          }}
-        />
+        <Text style={styles.sectionTitle}>Módulos del sistema</Text>
+        <View style={styles.switchRow}>
+          <Text style={styles.switchLabel}>Resumen diario</Text>
+          <Switch
+            value={moduloResumenDiario}
+            onValueChange={(v) => {
+              setModuloResumenDiario(v);
+              marcarDirty();
+            }}
+            trackColor={{ false: colors.borderInput, true: colors.successBorder }}
+            thumbColor={moduloResumenDiario ? colors.primary : colors.borderLight}
+          />
+        </View>
+        <View style={styles.switchRow}>
+          <Text style={styles.switchLabel}>Meseros operativos / beneficios</Text>
+          <Switch
+            value={moduloMeserosOp}
+            onValueChange={(v) => {
+              setModuloMeserosOp(v);
+              marcarDirty();
+            }}
+            trackColor={{ false: colors.borderInput, true: colors.successBorder }}
+            thumbColor={moduloMeserosOp ? colors.primary : colors.borderLight}
+          />
+        </View>
+        <View style={styles.switchRow}>
+          <Text style={styles.switchLabel}>Envío de factura por correo</Text>
+          <Switch
+            value={moduloEnvioCorreo}
+            onValueChange={(v) => {
+              setModuloEnvioCorreo(v);
+              marcarDirty();
+            }}
+            trackColor={{ false: colors.borderInput, true: colors.successBorder }}
+            thumbColor={moduloEnvioCorreo ? colors.primary : colors.borderLight}
+          />
+        </View>
+        <View style={styles.switchRow}>
+          <Text style={styles.switchLabel}>Inventario</Text>
+          <Switch
+            value={moduloInventario}
+            onValueChange={(v) => {
+              setModuloInventario(v);
+              marcarDirty();
+            }}
+            trackColor={{ false: colors.borderInput, true: colors.successBorder }}
+            thumbColor={moduloInventario ? colors.primary : colors.borderLight}
+          />
+        </View>
       </View>
 
       <View style={styles.card}>
@@ -574,6 +581,7 @@ export default function ConfiguracionScreen() {
           <>
             <Text style={[styles.fieldLabel, styles.fieldGap]}>Número mesa mostrador</Text>
             <TextInput
+              placeholderTextColor={inputPlaceholder}
               style={styles.input}
               value={numeroMostrador}
               onChangeText={(t) => {
@@ -585,6 +593,7 @@ export default function ConfiguracionScreen() {
             />
             <Text style={styles.fieldLabel}>Etiqueta en la app</Text>
             <TextInput
+              placeholderTextColor={inputPlaceholder}
               style={styles.input}
               value={etiquetaMostrador}
               onChangeText={(t) => {
@@ -613,6 +622,7 @@ export default function ConfiguracionScreen() {
               Número mesa para llevar
             </Text>
             <TextInput
+              placeholderTextColor={inputPlaceholder}
               style={styles.input}
               value={numeroParaLlevar}
               onChangeText={(t) => {
@@ -624,6 +634,7 @@ export default function ConfiguracionScreen() {
             />
             <Text style={styles.fieldLabel}>Etiqueta en la app</Text>
             <TextInput
+              placeholderTextColor={inputPlaceholder}
               style={styles.input}
               value={etiquetaParaLlevar}
               onChangeText={(t) => {
@@ -637,13 +648,14 @@ export default function ConfiguracionScreen() {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Cocina — Mazorca</Text>
+        <Text style={styles.sectionTitle}>Acompañamiento opcional por comensal</Text>
         <Text style={styles.hint}>
-          En mesas normales, el sistema crea una línea de acompañamiento por
-          comensal. Puedes desactivarla o elegir el producto en Menú (admin).
+          Opcional: en mesas normales puedes agregar una línea automática por
+          comensal. Si no eliges producto, el pedido se abre igual; activa esto
+          solo cuando quieras usar la función.
         </Text>
         <View style={styles.switchRow}>
-          <Text style={styles.switchLabel}>Línea de mazorca activa</Text>
+          <Text style={styles.switchLabel}>Acompañamiento automático activo</Text>
           <Switch
             value={mazorcaActiva}
             onValueChange={(v) => {
@@ -683,7 +695,7 @@ export default function ConfiguracionScreen() {
           ))}
         </ScrollView>
         <Text style={styles.hintSmall}>
-          Marca un producto como «acompañamiento mazorca» en Editar menú, o
+          Marca un producto como «acompañamiento por comensal» en Editar menú, o
           elígelo aquí.
         </Text>
       </View>
@@ -766,28 +778,29 @@ export default function ConfiguracionScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
+function createStyles(c: AppColors) {
+  return StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
   content: {},
   intro: { marginBottom: 12 },
   card: {
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderRadius: 12,
     padding: 14,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: c.border,
   },
   sectionTitle: {
     fontWeight: '800',
     fontSize: 16,
-    color: colors.text,
+    color: c.text,
     marginBottom: 6,
     textAlign: 'center',
   },
-  hint: { color: colors.textMuted, fontSize: 13, marginBottom: 10, textAlign: 'center' },
+  hint: { color: c.textMuted, fontSize: 13, marginBottom: 10, textAlign: 'center' },
   hintSmall: {
-    color: colors.textMuted,
+    color: c.textMuted,
     fontSize: 12,
     marginTop: 8,
     textAlign: 'center',
@@ -798,41 +811,59 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
   },
-  switchLabel: { flex: 1, fontWeight: '600', color: colors.text },
+  switchLabel: { flex: 1, fontWeight: '600', color: c.text },
   fieldLabel: {
     fontWeight: '600',
-    color: colors.text,
+    color: c.text,
     marginBottom: 6,
     marginTop: 4,
     textAlign: 'center',
   },
   fieldGap: { marginTop: 12 },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.borderInput,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: colors.surface,
+    input: {
+      borderWidth: 1,
+      borderColor: c.borderInput,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      backgroundColor: c.surface,
+      color: c.text,
+    },
+  inputMultiline: { minHeight: 72, textAlignVertical: 'top' },
+  linkRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    justifyContent: 'center',
   },
+  linkChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: c.primary,
+    backgroundColor: c.primarySoft,
+  },
+  linkChipText: { color: c.primary, fontWeight: '700', fontSize: 13 },
   chip: {
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: c.border,
     marginRight: 8,
     maxWidth: 160,
   },
-  chipOn: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipText: { color: colors.text, fontWeight: '600', fontSize: 13 },
-  chipTextOn: { color: colors.onPrimary },
+  chipOn: { backgroundColor: c.primary, borderColor: c.primary },
+  chipText: { color: c.text, fontWeight: '600', fontSize: 13 },
+  chipTextOn: { color: c.onPrimary },
   saveBar: { marginTop: 4 },
   deniedWrap: {
     flex: 1,
     justifyContent: 'center',
     padding: 24,
-    backgroundColor: colors.background,
+    backgroundColor: c.background,
   },
-  denied: { textAlign: 'center', color: colors.textMuted, fontWeight: '600' },
+  denied: { textAlign: 'center', color: c.textMuted, fontWeight: '600' },
 });
+}

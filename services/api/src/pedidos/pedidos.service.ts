@@ -28,6 +28,7 @@ import { OmitirCuotaPlanDto } from './dto/omitir-cuota-plan.dto';
 import { DetalleCobroDto } from './dto/detalle-cobro.dto';
 import { ImprimirPrecuentaDto } from './dto/imprimir-precuenta.dto';
 import { UpsertCajaDiariaDto } from './dto/caja-diaria.dto';
+import { UpsertCajaDiariaCierreDto } from './dto/caja-diaria-cierre.dto';
 import { CrearMovimientoCajaDto } from './dto/crear-movimiento-caja.dto';
 import { TransferirPedidoDto } from './dto/transferir.dto';
 import { CerrarAnulandoPendienteDto } from './dto/cerrar-anulando-pendiente.dto';
@@ -77,6 +78,11 @@ import {
   precioEmpaqueParaLlevarDecimal,
   productoCobraEmpaqueParaLlevarPorPlatoFuerte,
 } from './empaque-para-llevar';
+import {
+  empaqueFaltanteEnDetallePadre,
+  nuevaCantidadEmpaqueTrasCambioPadre,
+} from '@la-reserva/shared-domain/empaque-para-llevar';
+import type { DetalleEmpaqueResumen } from '@la-reserva/shared-domain/empaque-para-llevar';
 import { ComandaPrinterService, type ResultadoImpresion } from './comanda-printer.service';
 import { FacturaEmailService } from './factura-email.service';
 import {
@@ -101,13 +107,19 @@ import {
   repartoMixtoConDevolucion,
   resumenCobrosPedidoTotal,
 } from './factura-mixto';
-import type { CierreCajaTicket } from './cierre-caja-ticket';
+import { calcularDetalleExcesoCobro, parseDetalleExcesoCobro } from '@la-reserva/shared-domain/factura-vuelto';
+import type { CierreCajaTicket, MovimientoCajaTicket } from './cierre-caja-ticket';
 import {
   calcularDescuentosPedido,
+  resolverConfigPromociones,
   type ConfigDescuentoCalc,
   type LineaDescuento,
 } from './descuentos-pedido';
-import { parseReglasPromocion } from '@la-reserva/shared-domain/promociones-pedido';
+import {
+  ETIQUETA_LEGACY_MULERO,
+  parseEtiquetasPedido,
+  parseReglasPromocion,
+} from '@la-reserva/shared-domain/promociones-pedido';
 import { asignarCantidadesParaSubtotal } from '@la-reserva/shared-domain/asignar-cobro-por-monto';
 import { importesProporcionalesMixto } from '@la-reserva/shared-domain/cobro-invariantes';
 import { repartirMontoEnCop } from '@la-reserva/shared-domain/repartir-monto-cop';
@@ -127,6 +139,7 @@ import {
   type SaldoPoolRef,
 } from '@la-reserva/shared-domain/saldo-restante';
 import { UpsertConfigDescuentosDto } from './dto/upsert-config-descuentos.dto';
+import { PatchEtiquetasPromocionDto } from './dto/patch-etiquetas-promocion.dto';
 import { UpsertConfigOperativaDto } from './dto/upsert-config-operativa.dto';
 import { VaciarResumenDiarioDto } from './dto/vaciar-resumen-diario.dto';
 import { CancelarReabiertosDto } from './dto/cancelar-reabiertos.dto';
@@ -562,6 +575,10 @@ export class PedidosService {
     return {
       fecha: base.toFormat('yyyy-LL-dd'),
       monto_base_efectivo: row ? Number(row.montoBaseEfectivo) : 0,
+      monto_base_cierre_efectivo:
+        row?.montoBaseCierreEfectivo != null
+          ? Number(row.montoBaseCierreEfectivo)
+          : null,
     };
   }
 
@@ -596,6 +613,41 @@ export class PedidosService {
     };
   }
 
+  async upsertCajaDiariaCierre(dto: UpsertCajaDiariaCierreDto) {
+    const base = DateTime.fromISO(dto.fecha, { zone: 'America/Bogota' });
+    if (!base.isValid) {
+      throw new BadRequestException('fecha inválida, usa formato YYYY-MM-DD');
+    }
+    const fechaOnly = this.fechaCalendarioBogota(base);
+    const resumen = await this.resumenDiario(dto.fecha);
+    const row = await this.prisma.cajaDiaria.upsert({
+      where: { fecha: fechaOnly },
+      create: {
+        fecha: fechaOnly,
+        montoBaseEfectivo: resumen.monto_base_efectivo,
+        montoBaseCierreEfectivo: dto.monto_base_cierre_efectivo,
+      },
+      update: {
+        montoBaseCierreEfectivo: dto.monto_base_cierre_efectivo,
+      },
+    });
+    const fechaStr = base.toFormat('yyyy-LL-dd');
+    const montoCierre = Number(row.montoBaseCierreEfectivo ?? 0);
+    const impresion = await this.comandaPrinter.imprimirBaseCajaCierre({
+      fecha: fechaStr,
+      monto_base_cierre_efectivo: montoCierre,
+      efectivo_esperado_en_caja: resumen.efectivo_esperado_en_caja,
+      emitida_en: new Date().toISOString(),
+    });
+    this.emitirAlertaImpresora(impresion, 'cierre');
+    return {
+      fecha: fechaStr,
+      monto_base_cierre_efectivo: montoCierre,
+      efectivo_esperado_en_caja: resumen.efectivo_esperado_en_caja,
+      impresion_cierre: impresion,
+    };
+  }
+
   async registrarMovimientoCajaManual(
     actor: { idUsuario: number; rol: { nombre: string } },
     dto: CrearMovimientoCajaDto,
@@ -620,9 +672,69 @@ export class PedidosService {
         usuario: { select: { nombre: true, apellido: true } },
       },
     });
+    const fechaStr = base.toFormat('yyyy-LL-dd');
+    const impresion = await this.comandaPrinter.imprimirMovimientoCaja(
+      this.ticketMovimientoCajaDesdeRow(row, fechaStr),
+    );
+    this.emitirAlertaImpresora(impresion, 'cierre');
     return {
-      fecha: base.toFormat('yyyy-LL-dd'),
+      fecha: fechaStr,
       movimiento: this.mapMovimientoCajaRow({ ...row, pedido: null }),
+      impresion_movimiento: impresion,
+    };
+  }
+
+  async imprimirMovimientoCajaManual(
+    actor: { idUsuario: number; rol: { nombre: string } },
+    idMovimiento: number,
+  ) {
+    if (actor.rol.nombre !== 'admin') {
+      throw new ForbiddenException('Solo admin');
+    }
+    const row = await this.prisma.movimientoCaja.findUnique({
+      where: { idMovimientoCaja: idMovimiento },
+      include: {
+        usuario: { select: { nombre: true, apellido: true } },
+      },
+    });
+    if (!row) {
+      throw new NotFoundException('Movimiento no encontrado');
+    }
+    if (row.tipo !== 'entrada_manual' && row.tipo !== 'salida_manual') {
+      throw new BadRequestException(
+        'Solo se pueden imprimir entradas o salidas manuales',
+      );
+    }
+    const fechaStr = DateTime.fromJSDate(row.fecha, {
+      zone: 'America/Bogota',
+    }).toFormat('yyyy-LL-dd');
+    const impresion = await this.comandaPrinter.imprimirMovimientoCaja(
+      this.ticketMovimientoCajaDesdeRow(row, fechaStr),
+    );
+    this.emitirAlertaImpresora(impresion, 'cierre');
+    return { ok: true, impresion_movimiento: impresion };
+  }
+
+  private ticketMovimientoCajaDesdeRow(
+    row: {
+      idMovimientoCaja: number;
+      tipo: string;
+      monto: Prisma.Decimal;
+      motivo: string | null;
+      creadoEn: Date;
+      usuario: { nombre: string; apellido: string };
+    },
+    fecha: string,
+  ): MovimientoCajaTicket {
+    return {
+      id_movimiento: row.idMovimientoCaja,
+      tipo: row.tipo as 'entrada_manual' | 'salida_manual',
+      fecha,
+      monto: Math.round(Number(row.monto)),
+      motivo: row.motivo?.trim() || '-',
+      registrado_por: `${row.usuario.nombre} ${row.usuario.apellido}`.trim(),
+      creado_en: row.creadoEn.toISOString(),
+      emitida_en: new Date().toISOString(),
     };
   }
 
@@ -662,8 +774,9 @@ export class PedidosService {
     mulerosMinPlatosPrincipales: number;
     umbralSubtotalOtros: Prisma.Decimal;
     reglasPromocion?: Prisma.JsonValue;
+    etiquetasPedido?: Prisma.JsonValue;
   }) {
-    return {
+    const resolved = resolverConfigPromociones({
       sopas_activo: row.sopasActivo,
       sopas_monto_por_unidad: Math.round(Number(row.sopasMontoPorUnidad)),
       sopas_min_unidades: Math.max(1, Math.round(row.sopasMinUnidades)),
@@ -677,6 +790,11 @@ export class PedidosService {
       ),
       umbral_subtotal_otros: Math.round(Number(row.umbralSubtotalOtros)),
       reglas_promocion: parseReglasPromocion(row.reglasPromocion ?? []),
+      etiquetas_pedido: parseEtiquetasPedido(row.etiquetasPedido ?? []),
+    });
+    return {
+      reglas_promocion: resolved.reglas_promocion,
+      etiquetas_pedido: resolved.etiquetas_pedido,
     };
   }
 
@@ -711,70 +829,21 @@ export class PedidosService {
   }
 
   async upsertConfigDescuentos(dto: UpsertConfigDescuentosDto) {
-    const existing = await this.ensureConfigDescuentos();
     const row = await this.prisma.configDescuento.update({
       where: { id: 1 },
       data: {
-        ...(dto.sopas_activo != null ? { sopasActivo: dto.sopas_activo } : {}),
-        ...(dto.sopas_monto_por_unidad != null
-          ? { sopasMontoPorUnidad: Math.round(dto.sopas_monto_por_unidad) }
-          : {}),
-        ...(dto.sopas_min_unidades != null
-          ? {
-              sopasMinUnidades: Math.max(
-                1,
-                Math.round(dto.sopas_min_unidades),
-              ),
-            }
-          : {}),
-        ...(dto.muleros_activo != null ? { mulerosActivo: dto.muleros_activo } : {}),
-        ...(dto.muleros_monto_por_plato_principal != null
-          ? {
-              mulerosMontoPorUnidad: Math.round(
-                dto.muleros_monto_por_plato_principal,
-              ),
-            }
-          : {}),
-        ...(dto.muleros_min_platos_principales != null
-          ? {
-              mulerosMinPlatosPrincipales: Math.max(
-                1,
-                Math.round(dto.muleros_min_platos_principales),
-              ),
-            }
-          : {}),
-        ...(dto.umbral_subtotal_otros != null
-          ? {
-              umbralSubtotalOtros: Math.round(dto.umbral_subtotal_otros),
-            }
-          : {}),
         ...(dto.reglas_promocion != null
           ? {
               reglasPromocion: parseReglasPromocion(dto.reglas_promocion),
+              sopasActivo: false,
+              mulerosActivo: false,
             }
+          : {}),
+        ...(dto.etiquetas_pedido != null
+          ? { etiquetasPedido: parseEtiquetasPedido(dto.etiquetas_pedido) }
           : {}),
       },
     });
-    if (
-      dto.sopas_activo &&
-      Math.round(Number(row.sopasMontoPorUnidad)) <= 0 &&
-      dto.sopas_monto_por_unidad == null &&
-      Number(existing.sopasMontoPorUnidad) <= 0
-    ) {
-      throw new BadRequestException(
-        'Indica el monto por unidad de sopa al activar el descuento',
-      );
-    }
-    if (
-      dto.muleros_activo &&
-      Math.round(Number(row.mulerosMontoPorUnidad)) <= 0 &&
-      dto.muleros_monto_por_plato_principal == null &&
-      Number(existing.mulerosMontoPorUnidad) <= 0
-    ) {
-      throw new BadRequestException(
-        'Indica el monto por plato principal al activar el descuento de camioneros',
-      );
-    }
     this.invalidateConfigDescuentosCache();
     return this.mapConfigDescuentos(row);
   }
@@ -863,7 +932,7 @@ export class PedidosService {
         where: { idProducto: dto.id_producto_mazorca },
       });
       if (!prod) {
-        throw new BadRequestException('Producto de mazorca no encontrado');
+        throw new BadRequestException('Producto de acompañamiento por comensal no encontrado');
       }
       await this.prisma.producto.updateMany({
         where: {
@@ -1057,12 +1126,23 @@ export class PedidosService {
     }));
   }
 
+  private etiquetasPromocionPedido(p: {
+    etiquetasPromocion?: Prisma.JsonValue;
+    clienteMulero: boolean;
+  }): string[] {
+    const raw = Array.isArray(p.etiquetasPromocion) ? p.etiquetasPromocion : [];
+    return raw.filter((x): x is string => typeof x === 'string');
+  }
+
   private descuentosDesdeConfig(
     lineas: LineaDescuento[],
     config: ConfigDescuentoCalc,
-    clienteMulero: boolean,
+    pedido: { etiquetasPromocion?: Prisma.JsonValue; clienteMulero: boolean },
   ) {
-    return calcularDescuentosPedido(lineas, config, clienteMulero);
+    return calcularDescuentosPedido(lineas, config, {
+      etiquetas_promocion: this.etiquetasPromocionPedido(pedido),
+      cliente_mulero: pedido.clienteMulero,
+    });
   }
 
   private mapFacturaSerial(f: {
@@ -1080,6 +1160,7 @@ export class PedidosService {
     planCombinadoSobreSeleccion?: boolean;
     planSeleccionReferencia?: Prisma.JsonValue | null;
     cobroMixtoGrupo?: number | null;
+    detalleExcesoCobro?: Prisma.JsonValue | null;
   }) {
     return {
       id_factura: f.idFactura,
@@ -1097,6 +1178,7 @@ export class PedidosService {
       plan_combinado_sobre_seleccion: f.planCombinadoSobreSeleccion ?? false,
       plan_seleccion_referencia: f.planSeleccionReferencia ?? null,
       cobro_mixto_grupo: f.cobroMixtoGrupo ?? null,
+      detalle_exceso_cobro: parseDetalleExcesoCobro(f.detalleExcesoCobro) ?? null,
     };
   }
 
@@ -1771,6 +1853,10 @@ export class PedidosService {
       where: { fecha: fechaOnly },
     });
     const montoBaseEfectivo = cajaRow ? Number(cajaRow.montoBaseEfectivo) : 0;
+    const montoBaseCierreEfectivo =
+      cajaRow?.montoBaseCierreEfectivo != null
+        ? Number(cajaRow.montoBaseCierreEfectivo)
+        : null;
 
     const totalesPorMetodo = {
       efectivo: 0,
@@ -1964,6 +2050,7 @@ export class PedidosService {
       mesas,
       pedidos_detalle: pedidosDetalle,
       monto_base_efectivo: montoBaseEfectivo,
+      monto_base_cierre_efectivo: montoBaseCierreEfectivo,
       totales_por_metodo: totalesPorMetodo,
       total_pagos_meseros,
       pagos_meseros,
@@ -3041,7 +3128,7 @@ export class PedidosService {
     });
 
     this.emit(pedido.idPedido, pedido.idMesa, pedido.idUsuario);
-    return this.obtenerPorId(pedido.idPedido);
+    return this.obtenerPorIdTrasEscritura(pedido.idPedido);
   }
 
   async listar(
@@ -3064,20 +3151,12 @@ export class PedidosService {
         : { creadoEn: orden };
     const rows = await this.prisma.pedido.findMany({
       where: { estado: { in: estados } },
-      include: {
-        mesa: true,
-        usuario: { include: { rol: true } },
-        detalles: {
-          include: detalleInclude,
-          orderBy: { idDetalle: 'asc' },
-        },
-        facturas: facturasInclude,
-      },
+      include: pedidoVistaOperativaInclude,
       orderBy: orderByPrisma,
       take: pagination?.limit,
       skip: pagination?.offset,
     });
-    const serializados = rows.map((p) => this.serializarPedido(p));
+    const serializados = rows.map((p) => serializarPedidoVistaOperativa(p));
     if (orden === 'prioridad_cocina') {
       return {
         pedidos: ordenarPedidosCocina(serializados),
@@ -3769,7 +3848,6 @@ export class PedidosService {
     if (!previo) {
       return null;
     }
-    await this.consolidarFragmentosPrecioPendientesPedido(previo.idPedido);
 
     const p = await this.prisma.pedido.findFirst({
       where: {
@@ -3795,19 +3873,6 @@ export class PedidosService {
 
   /** Todos los pedidos abiertos/en cocina de una mesa (p. ej. mostrador / para llevar). */
   async pedidosActivosPorMesa(idMesa: number) {
-    const ids = await this.prisma.pedido.findMany({
-      where: {
-        idMesa,
-        estado: { in: ABIERTOS },
-      },
-      select: { idPedido: true },
-      orderBy: { creadoEn: 'asc' },
-      take: OPERATIVE_PEDIDOS_MAX,
-    });
-    for (const { idPedido } of ids) {
-      await this.consolidarFragmentosPrecioPendientesPedido(idPedido);
-    }
-
     const rows = await this.prisma.pedido.findMany({
       where: {
         idMesa,
@@ -3901,8 +3966,34 @@ export class PedidosService {
   }
 
   async obtenerPorId(idPedido: number) {
-    const reparo = await this.consolidarFragmentosPrecioPendientesPedido(idPedido);
+    return this.obtenerPorIdCore(idPedido, false);
+  }
 
+  /** Lectura liviana para polling (menú, chips, cocina) sin facturas ni consolidación de precios. */
+  async obtenerPorIdVistaOperativa(idPedido: number) {
+    const p = await this.prisma.pedido.findUnique({
+      where: { idPedido },
+      include: {
+        ...pedidoVistaOperativaInclude,
+        facturas: { select: { idFactura: true } },
+      },
+    });
+    if (!p) {
+      throw new NotFoundException('Pedido no encontrado');
+    }
+    return {
+      ...serializarPedidoVistaOperativa(p),
+      facturas: p.facturas.map((f) => ({ id_factura: f.idFactura })),
+    };
+  }
+
+  /** Tras cobros, reversiones o ediciones que pueden dejar fragmentos de precio. */
+  async obtenerPorIdTrasEscritura(idPedido: number) {
+    const reparo = await this.consolidarFragmentosPrecioPendientesPedido(idPedido);
+    return this.obtenerPorIdCore(idPedido, reparo);
+  }
+
+  private async obtenerPorIdCore(idPedido: number, reparo: boolean) {
     let p = await this.prisma.pedido.findUnique({
       where: { idPedido },
       include: {
@@ -4025,7 +4116,7 @@ export class PedidosService {
       );
       const descPlatos =
         lineas.length > 0
-          ? this.descuentosDesdeConfig(lineas, config, p.clienteMulero)
+          ? this.descuentosDesdeConfig(lineas, config, p)
           : {
               descuento_sopas: 0,
               descuento_muleros: 0,
@@ -4055,10 +4146,44 @@ export class PedidosService {
     }
     await this.prisma.pedido.update({
       where: { idPedido },
-      data: { clienteMulero },
+      data: {
+        clienteMulero,
+        etiquetasPromocion: clienteMulero
+          ? [ETIQUETA_LEGACY_MULERO]
+          : [],
+      },
     });
     this.emit(idPedido, pedido.idMesa, pedido.idUsuario);
-    return this.obtenerPorId(idPedido);
+    return this.obtenerPorIdTrasEscritura(idPedido);
+  }
+
+  async setEtiquetasPromocion(
+    idPedido: number,
+    dto: PatchEtiquetasPromocionDto,
+  ) {
+    const pedido = await this.prisma.pedido.findUnique({
+      where: { idPedido },
+      include: { facturas: facturasInclude },
+    });
+    if (!pedido) {
+      throw new NotFoundException('Pedido no encontrado');
+    }
+    if (pedido.estado === 'facturado') {
+      throw new ConflictException('El pedido ya fue facturado');
+    }
+    if (!ABIERTOS.includes(pedido.estado)) {
+      throw new ConflictException('El pedido no admite cambios');
+    }
+    const etiquetas = [...new Set(dto.etiquetas_promocion.map((x) => x.trim()).filter(Boolean))];
+    const clienteMulero =
+      dto.cliente_mulero ??
+      etiquetas.includes(ETIQUETA_LEGACY_MULERO);
+    await this.prisma.pedido.update({
+      where: { idPedido },
+      data: { etiquetasPromocion: etiquetas, clienteMulero },
+    });
+    this.emit(idPedido, pedido.idMesa, pedido.idUsuario);
+    return this.obtenerPorIdTrasEscritura(idPedido);
   }
 
   async actualizarComensalesPedido(
@@ -4099,7 +4224,7 @@ export class PedidosService {
       });
     });
     this.emit(idPedido, pedido.idMesa, pedido.idUsuario);
-    return this.obtenerPorId(idPedido);
+    return this.obtenerPorIdTrasEscritura(idPedido);
   }
 
   async agregarDetalle(
@@ -4177,6 +4302,26 @@ export class PedidosService {
       );
     });
     if (fusion) {
+      const sinEmpaqueFusion = dto.sin_empaque_auto === true;
+      const debeAutoEmpaqueFusion =
+        pedido.modoServicio === 'para_llevar' &&
+        productoCobraEmpaqueParaLlevarPorPlatoFuerte({
+          esPlatoPrincipal: producto.esPlatoPrincipal,
+          esEmpacable: producto.esEmpacable,
+          categoria: producto.categoria,
+        }) &&
+        !sinEmpaqueFusion;
+      if (debeAutoEmpaqueFusion) {
+        const opFusion = await this.ctxOperativa();
+        await this.prisma.$transaction(async (tx) => {
+          await this.asegurarEmpaqueAutoParaDetallePadreTx(
+            tx,
+            fusion.idDetalle,
+            opFusion.precioEmpaque,
+            idUsuario,
+          );
+        });
+      }
       return this.actualizarCantidadDetalle(
         fusion.idDetalle,
         { cantidad: fusion.cantidad + dto.cantidad },
@@ -4297,19 +4442,18 @@ export class PedidosService {
     await this.notificarCompaneroModificoPedido(
       pedido,
       idUsuario,
-      lineasAgregadas.filter((l) => l.nombre_producto === producto.nombre),
+      lineasAgregadas,
       'agregado',
     );
 
     this.emit(idPedido, pedido.idMesa, pedido.idUsuario);
-    return this.obtenerPorId(idPedido);
+    return this.obtenerPorIdTrasEscritura(idPedido);
   }
 
   async eliminarDetalle(
     idDetalle: number,
     actor: { idUsuario: number; rol: { nombre: string } },
   ) {
-    await this.exigirPermisoMesero(actor, 'quitar_lineas');
     const idUsuario = actor.idUsuario;
     const det = await this.prisma.detallePedido.findUnique({
       where: { idDetalle },
@@ -4318,6 +4462,11 @@ export class PedidosService {
     if (!det) {
       throw new NotFoundException('Línea no encontrada');
     }
+    const permisoQuitar =
+      det.producto.esEmpacable && det.idDetallePadre != null
+        ? 'editar_cantidades'
+        : 'quitar_lineas';
+    await this.exigirPermisoMesero(actor, permisoQuitar);
     if (!ABIERTOS.includes(det.pedido.estado)) {
       throw new ConflictException('El pedido no admite cambios en las líneas');
     }
@@ -4366,7 +4515,7 @@ export class PedidosService {
       'quitado',
     );
     this.emit(pedidoId, mesaId, det.pedido.idUsuario);
-    return this.obtenerPorId(pedidoId);
+    return this.obtenerPorIdTrasEscritura(pedidoId);
   }
 
   async actualizarCantidadDetalle(
@@ -4396,8 +4545,50 @@ export class PedidosService {
     }
     const cantidad = dto.cantidad;
     if (det.cantidad === cantidad) {
-      return this.obtenerPorId(det.pedido.idPedido);
+      return this.obtenerPorIdTrasEscritura(det.pedido.idPedido);
     }
+
+    if (det.producto.esEmpacable && det.idDetallePadre != null) {
+      const padre = await this.prisma.detallePedido.findUnique({
+        where: { idDetalle: det.idDetallePadre },
+      });
+      if (!padre) {
+        throw new BadRequestException('Línea de plato padre no encontrada');
+      }
+      if (cantidad > padre.cantidad) {
+        throw new BadRequestException(
+          `El empaque no puede superar la cantidad del plato (${padre.cantidad})`,
+        );
+      }
+      if (cantidad < 1) {
+        throw new BadRequestException(
+          'Usa quitar línea para eliminar el empaque por completo',
+        );
+      }
+      await this.prisma.$transaction(async (tx) => {
+        await tx.detallePedido.update({
+          where: { idDetalle },
+          data: { cantidad },
+        });
+        await tx.pedidoHistorial.create({
+          data: {
+            idPedido: det.pedido.idPedido,
+            idUsuario,
+            tipo: 'cantidad_actualizada',
+            detalleJson: {
+              id_detalle: idDetalle,
+              nombre_producto: det.producto.nombre,
+              cantidad_anterior: det.cantidad,
+              cantidad_nueva: cantidad,
+              empaque_manual: true,
+            },
+          },
+        });
+      });
+      this.emit(det.pedido.idPedido, det.pedido.idMesa, det.pedido.idUsuario);
+      return this.obtenerPorIdTrasEscritura(det.pedido.idPedido);
+    }
+
     const marcarCocina = debeMarcarCocina(
       det.producto.categoria,
       det.producto.esEmpacable,
@@ -4468,7 +4659,7 @@ export class PedidosService {
         { nombre_producto: det.producto.nombre, cantidad: delta },
       ], 'agregado');
       this.emit(det.pedido.idPedido, det.pedido.idMesa, det.pedido.idUsuario);
-      return this.obtenerPorId(det.pedido.idPedido);
+      return this.obtenerPorIdTrasEscritura(det.pedido.idPedido);
     }
     if (cantidad > det.cantidad) {
       await this.notificarCompaneroModificoPedido(det.pedido, idUsuario, [
@@ -4504,12 +4695,22 @@ export class PedidosService {
       if (det.idDetallePadre == null) {
         const hijos = await tx.detallePedido.findMany({
           where: { idDetallePadre: idDetalle },
+          include: { producto: true },
         });
         for (const h of hijos) {
-          await tx.detallePedido.update({
-            where: { idDetalle: h.idDetalle },
-            data: { cantidad },
-          });
+          const nuevaCant = h.producto.esEmpacable
+            ? nuevaCantidadEmpaqueTrasCambioPadre(
+                h.cantidad,
+                det.cantidad,
+                cantidad,
+              )
+            : cantidad;
+          if (nuevaCant !== h.cantidad) {
+            await tx.detallePedido.update({
+              where: { idDetalle: h.idDetalle },
+              data: { cantidad: nuevaCant },
+            });
+          }
         }
       }
       await tx.pedidoHistorial.create({
@@ -4529,7 +4730,242 @@ export class PedidosService {
       });
     });
     this.emit(det.pedido.idPedido, det.pedido.idMesa, det.pedido.idUsuario);
-    return this.obtenerPorId(det.pedido.idPedido);
+    return this.obtenerPorIdTrasEscritura(det.pedido.idPedido);
+  }
+
+  private async asegurarEmpaqueAutoParaDetallePadreTx(
+    tx: Prisma.TransactionClient,
+    idDetallePadre: number,
+    precioEmpaque: number,
+    idUsuario: number,
+  ): Promise<{ creado: boolean; id_detalle_empaque?: number }> {
+    const padre = await tx.detallePedido.findUnique({
+      where: { idDetalle: idDetallePadre },
+      include: {
+        pedido: true,
+        producto: { include: { categoria: true } },
+      },
+    });
+    if (!padre || padre.pedido.modoServicio !== 'para_llevar') {
+      return { creado: false };
+    }
+    if (padre.idDetallePadre != null) {
+      throw new BadRequestException('Solo aplica a líneas de plato');
+    }
+    if (
+      !productoCobraEmpaqueParaLlevarPorPlatoFuerte({
+        esPlatoPrincipal: padre.producto.esPlatoPrincipal,
+        esEmpacable: padre.producto.esEmpacable,
+        categoria: padre.producto.categoria,
+      })
+    ) {
+      throw new BadRequestException('Este ítem no lleva empaque automático');
+    }
+
+    const hijos = await tx.detallePedido.findMany({
+      where: { idDetallePadre },
+      include: { producto: true },
+    });
+    const empHijo = hijos.find((h) => h.producto.esEmpacable);
+    if (empHijo) {
+      return { creado: false, id_detalle_empaque: empHijo.idDetalle };
+    }
+
+    const emp = await tx.producto.findFirst({
+      where: { esEmpacable: true, activo: true },
+      orderBy: { idProducto: 'asc' },
+    });
+    if (!emp) {
+      throw new BadRequestException(
+        'No hay producto empacable configurado en el catálogo',
+      );
+    }
+    const e = await tx.detallePedido.create({
+      data: {
+        idPedido: padre.idPedido,
+        idProducto: emp.idProducto,
+        cantidad: padre.cantidad,
+        precioUnitario: precioEmpaqueParaLlevarDecimal(precioEmpaque),
+        idDetallePadre: padre.idDetalle,
+      },
+    });
+    await tx.pedidoHistorial.create({
+      data: {
+        idPedido: padre.idPedido,
+        idUsuario,
+        tipo: 'detalle_agregado',
+        detalleJson: {
+          empaque_auto: true,
+          id_detalle_padre: padre.idDetalle,
+          id_detalle_empaque: e.idDetalle,
+          nombre_producto: padre.producto.nombre,
+          cantidad: padre.cantidad,
+        },
+      },
+    });
+    return { creado: true, id_detalle_empaque: e.idDetalle };
+  }
+
+  async agregarEmpaqueAutoDetalle(
+    idDetalle: number,
+    actor?: { idUsuario: number; rol: { nombre: string } },
+  ) {
+    await this.exigirPermisoMesero(actor, 'editar_cantidades');
+    const idUsuario = actor?.idUsuario ?? 0;
+    const det = await this.prisma.detallePedido.findUnique({
+      where: { idDetalle },
+      include: { pedido: true },
+    });
+    if (!det) {
+      throw new NotFoundException('Detalle no encontrado');
+    }
+    const op = await this.ctxOperativa();
+    let creado = false;
+    await this.prisma.$transaction(async (tx) => {
+      const r = await this.asegurarEmpaqueAutoParaDetallePadreTx(
+        tx,
+        idDetalle,
+        op.precioEmpaque,
+        idUsuario,
+      );
+      creado = r.creado;
+    });
+    this.emit(det.pedido.idPedido, det.pedido.idMesa, det.pedido.idUsuario);
+    return {
+      ok: true,
+      creado,
+      pedido: await this.obtenerPorIdTrasEscritura(det.pedido.idPedido),
+    };
+  }
+
+  async sincronizarEmpaquesParaLlevar(
+    idPedido: number,
+    actor?: { idUsuario: number; rol: { nombre: string } },
+  ) {
+    await this.exigirPermisoMesero(actor, 'editar_cantidades');
+    const idUsuario = actor?.idUsuario ?? 0;
+    const pedido = await this.prisma.pedido.findUnique({
+      where: { idPedido },
+      include: {
+        detalles: {
+          include: { producto: { include: { categoria: true } } },
+          orderBy: { idDetalle: 'asc' },
+        },
+      },
+    });
+    if (!pedido) {
+      throw new NotFoundException('Pedido no encontrado');
+    }
+    if (pedido.modoServicio !== 'para_llevar') {
+      throw new BadRequestException('Solo aplica a pedidos para llevar');
+    }
+    const op = await this.ctxOperativa();
+    let empaquesCreados = 0;
+    let unidadesAgregadas = 0;
+    const detallesResumen: DetalleEmpaqueResumen[] = pedido.detalles.map((d) => ({
+      id_detalle: d.idDetalle,
+      id_detalle_padre: d.idDetallePadre,
+      cantidad: d.cantidad,
+      es_empacable: d.producto.esEmpacable,
+      es_plato_principal: d.producto.esPlatoPrincipal,
+      categoria: d.producto.categoria,
+    }));
+    await this.prisma.$transaction(async (tx) => {
+      for (const p of pedido.detalles) {
+        if (p.idDetallePadre != null) continue;
+        if (
+          !productoCobraEmpaqueParaLlevarPorPlatoFuerte({
+            esPlatoPrincipal: p.producto.esPlatoPrincipal,
+            esEmpacable: p.producto.esEmpacable,
+            categoria: p.producto.categoria,
+          })
+        ) {
+          continue;
+        }
+        const faltante = empaqueFaltanteEnDetallePadre(
+          {
+            id_detalle: p.idDetalle,
+            id_detalle_padre: p.idDetallePadre,
+            cantidad: p.cantidad,
+            es_plato_principal: p.producto.esPlatoPrincipal,
+            categoria: p.producto.categoria,
+          },
+          detallesResumen,
+        );
+        if (faltante <= 0) continue;
+
+        const hijos = await tx.detallePedido.findMany({
+          where: { idDetallePadre: p.idDetalle },
+          include: { producto: true },
+        });
+        const empHijo = hijos.find((h) => h.producto.esEmpacable);
+        if (empHijo) {
+          await tx.detallePedido.update({
+            where: { idDetalle: empHijo.idDetalle },
+            data: { cantidad: empHijo.cantidad + faltante },
+          });
+          const idx = detallesResumen.findIndex(
+            (d) => d.id_detalle === empHijo.idDetalle,
+          );
+          if (idx >= 0) {
+            detallesResumen[idx]!.cantidad += faltante;
+          }
+          unidadesAgregadas += faltante;
+          continue;
+        }
+
+        const emp = await tx.producto.findFirst({
+          where: { esEmpacable: true, activo: true },
+          include: { categoria: true },
+          orderBy: { idProducto: 'asc' },
+        });
+        if (!emp) {
+          throw new BadRequestException(
+            'No hay producto empacable configurado en el catálogo',
+          );
+        }
+        const e = await tx.detallePedido.create({
+          data: {
+            idPedido: pedido.idPedido,
+            idProducto: emp.idProducto,
+            cantidad: faltante,
+            precioUnitario: precioEmpaqueParaLlevarDecimal(op.precioEmpaque),
+            idDetallePadre: p.idDetalle,
+          },
+        });
+        await tx.pedidoHistorial.create({
+          data: {
+            idPedido: pedido.idPedido,
+            idUsuario,
+            tipo: 'detalle_agregado',
+            detalleJson: {
+              empaque_auto: true,
+              id_detalle_padre: p.idDetalle,
+              id_detalle_empaque: e.idDetalle,
+              nombre_producto: p.producto.nombre,
+              cantidad: faltante,
+            },
+          },
+        });
+        empaquesCreados++;
+        unidadesAgregadas += faltante;
+        detallesResumen.push({
+          id_detalle: e.idDetalle,
+          id_detalle_padre: p.idDetalle,
+          cantidad: faltante,
+          es_empacable: true,
+          es_plato_principal: false,
+          categoria: emp.categoria,
+        });
+      }
+    });
+    this.emit(pedido.idPedido, pedido.idMesa, pedido.idUsuario);
+    return {
+      ok: true,
+      empaques_creados: empaquesCreados,
+      unidades_agregadas: unidadesAgregadas,
+      pedido: await this.obtenerPorIdTrasEscritura(idPedido),
+    };
   }
 
   async historialPedido(idPedido: number) {
@@ -4728,7 +5164,7 @@ export class PedidosService {
     actor: { idUsuario: number; rol: { nombre: string } },
   ) {
     await this.exigirPermisoMesero(actor, 'cobrar');
-    const completo = await this.obtenerPorId(idPedido);
+    const completo = await this.obtenerPorIdTrasEscritura(idPedido);
     const facturas = completo.facturas ?? [];
     if (facturas.length === 0) {
       throw new ConflictException(
@@ -4769,7 +5205,7 @@ export class PedidosService {
     actor: { idUsuario: number; rol: { nombre: string } },
   ) {
     await this.exigirPermisoMesero(actor, 'reimprimir_factura');
-    const completo = await this.obtenerPorId(idPedido);
+    const completo = await this.obtenerPorIdTrasEscritura(idPedido);
     const facturas = completo.facturas ?? [];
     if (facturas.length === 0) {
       throw new ConflictException('Este pedido no tiene facturas; no se puede reimprimir');
@@ -4798,7 +5234,7 @@ export class PedidosService {
 
   /** Reimprime el total consolidado del pedido (todos los ítems y cobros). */
   async reimprimirPedidoTotal(idPedido: number) {
-    const completo = await this.obtenerPorId(idPedido);
+    const completo = await this.obtenerPorIdTrasEscritura(idPedido);
     if (completo.estado !== 'facturado') {
       throw new BadRequestException(
         'El pedido aún no está pagado por completo',
@@ -4880,7 +5316,7 @@ export class PedidosService {
     const descuentos = this.descuentosDesdeConfig(
       lineas,
       config,
-      pedido.clienteMulero,
+      pedido,
     );
     const descTotal = new Prisma.Decimal(descuentos.descuento_sopas)
       .add(descuentos.descuento_muleros)
@@ -4892,7 +5328,7 @@ export class PedidosService {
     }
     const total = subtotal.sub(descTotal);
 
-    const completo = await this.obtenerPorId(idPedido);
+    const completo = await this.obtenerPorIdTrasEscritura(idPedido);
     const esTandaParcial = quedaPendienteTrasCobro(detallesSerial, solicitudes);
     const ticket = this.construirTicketPrecuenta(
       completo,
@@ -5129,6 +5565,7 @@ export class PedidosService {
     completo: Awaited<ReturnType<PedidosService['obtenerPorId']>>,
     idFactura: number,
     esReimpresion = false,
+    detalleExcesoOverride?: ReturnType<typeof calcularDetalleExcesoCobro> | null,
   ): FacturaTicket {
     const facturas = completo.facturas ?? [];
     const factura = facturas.find((f) => f.id_factura === idFactura);
@@ -5155,6 +5592,12 @@ export class PedidosService {
       0,
     );
     const total = facturasTicket.reduce((s, f) => s + f.total, 0);
+    const detalleExceso =
+      detalleExcesoOverride ??
+      facturasTicket
+        .map((f) => f.detalle_exceso_cobro)
+        .find((d) => d != null) ??
+      undefined;
     return {
       id_pedido: completo.id_pedido,
       id_factura: factura.id_factura,
@@ -5187,6 +5630,7 @@ export class PedidosService {
         !esCuotaPersonas && !esCuotaCombinado && factura.persona_plan_indice != null
           ? true
           : undefined,
+      detalle_exceso_cobro: detalleExceso ?? undefined,
     };
   }
 
@@ -6163,7 +6607,7 @@ export class PedidosService {
     const descuentos = this.descuentosDesdeConfig(
       lineas,
       config,
-      pedido.clienteMulero,
+      pedido,
     );
     const dS = new Prisma.Decimal(descuentos.descuento_sopas);
     const dM = new Prisma.Decimal(descuentos.descuento_muleros);
@@ -6185,6 +6629,17 @@ export class PedidosService {
             dto.devolucion_exceso_metodo,
           )
         : 0;
+
+    const detalleExcesoCobro = calcularDetalleExcesoCobro({
+      total: Number(total),
+      metodo: dto.metodo_pago,
+      monto_recibido_efectivo: dto.monto_recibido_efectivo,
+      monto_transferencia: dto.monto_transferencia,
+      devolucion_exceso_metodo: dto.devolucion_exceso_metodo,
+    });
+    const detalleExcesoJson = detalleExcesoCobro
+      ? (detalleExcesoCobro as Prisma.InputJsonValue)
+      : undefined;
 
     const enPlanSaldo =
       dto.plan_personas_sobre_total === true ||
@@ -6263,6 +6718,7 @@ export class PedidosService {
             personaPlanIndice: dto.persona_plan_indice ?? null,
             ...this.planFacturaDataFromDto(dto),
             cobroMixtoGrupo: dto.cobro_mixto_grupo ?? null,
+            detalleExcesoCobro: detalleExcesoJson,
           },
         });
         idFacturaCreada = factura.idFactura;
@@ -6351,11 +6807,12 @@ export class PedidosService {
 
     this.emit(idPedido, pedido.idMesa, pedido.idUsuario);
 
-    const completo = await this.obtenerPorId(idPedido);
+    const completo = await this.obtenerPorIdTrasEscritura(idPedido);
     const ticketFactura = this.construirTicketFactura(
       completo,
       idFacturaCreada,
       false,
+      detalleExcesoCobro,
     );
     const conCopia =
       dto.imprimir_factura !== false && dto.factura_con_copia === true;
@@ -6492,6 +6949,17 @@ export class PedidosService {
         `El efectivo recibido debe cubrir la parte en efectivo (${reparto.efectivoFactura} de ${totalNeto} COP; recibido: ${montoRecibidoEfectivo})`,
       );
     }
+
+    const detalleExcesoCobro = calcularDetalleExcesoCobro({
+      total: totalNeto,
+      metodo: 'mixto',
+      monto_recibido_efectivo: montoRecibidoEfectivo,
+      monto_transferencia: dto.monto_transferencia,
+      devolucion_exceso_metodo: dto.devolucion_exceso_metodo,
+    });
+    const detalleExcesoJson = detalleExcesoCobro
+      ? (detalleExcesoCobro as Prisma.InputJsonValue)
+      : undefined;
 
     const precios: Record<number, number> = {};
     const lineasPadre: {
@@ -6655,6 +7123,7 @@ export class PedidosService {
           personaPlanIndice: dto.persona_plan_indice ?? null,
           ...this.planFacturaDataFromDto(dto),
           cobroMixtoGrupo: grupo,
+          detalleExcesoCobro: detalleExcesoJson,
         },
       });
       const pedidoDet = await tx.pedido.findUnique({
@@ -6880,11 +7349,12 @@ export class PedidosService {
         ? Math.min(...idsFacturas)
         : idsFacturas[idsFacturas.length - 1]!;
 
-    const completo = await this.obtenerPorId(idPedido);
+    const completo = await this.obtenerPorIdTrasEscritura(idPedido);
     const ticketFactura = this.construirTicketFactura(
       completo,
       idFacturaImprimir,
       false,
+      detalleExcesoCobro,
     );
     const conCopia =
       dto.imprimir_factura !== false && dto.factura_con_copia === true;
@@ -6940,7 +7410,7 @@ export class PedidosService {
     const descuentos = this.descuentosDesdeConfig(
       lineas,
       config,
-      pedido.clienteMulero,
+      pedido,
     );
     const dS = new Prisma.Decimal(descuentos.descuento_sopas);
     const dM = new Prisma.Decimal(descuentos.descuento_muleros);
@@ -7064,7 +7534,7 @@ export class PedidosService {
     });
 
     this.emit(idPedido, idMesaPedido, pedido.idUsuario);
-    return this.obtenerPorId(idPedido);
+    return this.obtenerPorIdTrasEscritura(idPedido);
   }
 
   private async assertPuedeCerrarConAnulacion(actor: {
@@ -7136,7 +7606,7 @@ export class PedidosService {
 
     const saldo = this.findSaldoRestantePendiente(pedido.detalles);
     if (!saldo) {
-      return this.obtenerPorId(idPedido);
+      return this.obtenerPorIdTrasEscritura(idPedido);
     }
 
     const montoSaldo =
@@ -7173,7 +7643,7 @@ export class PedidosService {
         saldo.notaCocina,
       )
     ) {
-      return this.obtenerPorId(idPedido);
+      return this.obtenerPorIdTrasEscritura(idPedido);
     }
 
     await this.prisma.$transaction(async (tx) => {
@@ -7313,7 +7783,7 @@ export class PedidosService {
     });
 
     this.emit(idPedido, pedido.idMesa, pedido.idUsuario);
-    return this.obtenerPorId(idPedido);
+    return this.obtenerPorIdTrasEscritura(idPedido);
   }
 
   async omitirCuotaPlan(
@@ -7497,7 +7967,7 @@ export class PedidosService {
     });
 
     this.emit(idPedido, pedido.idMesa, pedido.idUsuario);
-    return this.obtenerPorId(idPedido);
+    return this.obtenerPorIdTrasEscritura(idPedido);
   }
 
   async cancelar(
@@ -7715,7 +8185,7 @@ export class PedidosService {
 
     this.emit(idPedido, mesaAnteriorId, pedido.idUsuario);
     this.emit(idPedido, mesaNueva.idMesa, pedido.idUsuario);
-    return this.obtenerPorId(idPedido);
+    return this.obtenerPorIdTrasEscritura(idPedido);
   }
 
   async cambiarEstado(idPedido: number, estado: EstadoPedido) {
@@ -7727,14 +8197,14 @@ export class PedidosService {
     }
     validarTransicionEstadoPedido(pedido.estado, estado);
     if (pedido.estado === estado) {
-      return this.obtenerPorId(idPedido);
+      return this.obtenerPorIdTrasEscritura(idPedido);
     }
     await this.prisma.pedido.update({
       where: { idPedido },
       data: { estado },
     });
     this.emit(idPedido, pedido.idMesa, pedido.idUsuario);
-    return this.obtenerPorId(idPedido);
+    return this.obtenerPorIdTrasEscritura(idPedido);
   }
 
   async setPrioridadCocina(
@@ -7761,7 +8231,7 @@ export class PedidosService {
       data,
     });
     this.emit(idPedido, pedido.idMesa, pedido.idUsuario);
-    return this.obtenerPorId(idPedido);
+    return this.obtenerPorIdTrasEscritura(idPedido);
   }
 
   private lineaFacturaDesdePedidoSerial(
@@ -7973,6 +8443,7 @@ export class PedidosService {
       prioridad_cocina_override:
         override === null ? null : override,
       cliente_mulero: p.clienteMulero,
+      etiquetas_promocion: this.etiquetasPromocionPedido(p),
       mesero: {
         id: p.usuario.idUsuario,
         nombre: p.usuario.nombre,

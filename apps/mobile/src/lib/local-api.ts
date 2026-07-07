@@ -19,16 +19,19 @@ import {
 import { ordenarPedidosCocinaPorLlegada } from './cocina-pedido-view';
 import {
   PRECIO_EMPAQUE_PARA_LLEVAR_COP,
+  empaqueFaltanteEnDetallePadre,
   flagsProductoMenuPorCategoria,
+  nuevaCantidadEmpaqueTrasCambioPadre,
   productoCobraEmpaqueParaLlevarPorPlatoFuerte,
 } from './empaque-para-llevar';
 import {
   calcularDescuentosPedido,
   MULEROS_MIN_PLATOS_PRINCIPALES_DEFAULT,
+  resolverConfigPromociones,
   SOPAS_MIN_UNIDADES_DEFAULT,
   UMBRAL_SUBTOTAL_OTROS_COP,
 } from './descuentos-pedido';
-import { parseReglasPromocion } from './promociones-pedido';
+import { ETIQUETA_LEGACY_MULERO, parseEtiquetasPedido, parseReglasPromocion } from './promociones-pedido';
 import {
   expandirDetallesParaCobro,
   expandirSolicitudesConEmpaques,
@@ -76,6 +79,10 @@ import {
   type TipoLineaCocinaCategoria,
 } from '@la-reserva/shared-domain/categoria-reglas';
 import {
+  inferirIconoCategoriaDesdeNombre,
+  normalizarIconoMenuGuardado,
+} from '@la-reserva/shared-domain/categoria-menu-icon';
+import {
   productoAgotado,
   productoVisibleEnMenu,
 } from '@la-reserva/shared-domain/stock-producto';
@@ -114,6 +121,7 @@ import {
   repartoMixtoConDevolucion,
 } from '@la-reserva/shared-domain/factura-mixto';
 import { importesProporcionalesMixto } from '@la-reserva/shared-domain/cobro-invariantes';
+import { calcularDetalleExcesoCobro } from '@la-reserva/shared-domain/factura-vuelto';
 import type { DetalleCobroCantidad } from '@la-reserva/shared-domain/cobro-parcial';
 
 type ApiOptions = RequestInit & { token?: string | null };
@@ -172,6 +180,7 @@ type Pedido = {
   creado_en: string;
   cerrado_en: string | null;
   cliente_mulero?: boolean;
+  etiquetas_promocion?: string[];
   /** null = automático según proteínas */
   prioridad_cocina_override?: 'alta' | 'baja' | null;
   detalles: PedidoDetalle[];
@@ -191,6 +200,14 @@ type Factura = {
   es_parcial?: boolean;
   persona_plan_indice?: number;
   cobro_mixto_grupo?: number;
+  detalle_exceso_cobro?: {
+    monto_recibido_efectivo?: number;
+    monto_transferencia_recibido?: number;
+    vuelto_cliente_efectivo: number;
+    vuelto_cliente_transferencia: number;
+    pago_domiciliario: number;
+    pago_mesero: number;
+  };
 };
 
 type PedidoHistorialRow = {
@@ -207,7 +224,11 @@ type PedidoHistorialRow = {
   creado_en: string;
 };
 
-type CajaDiaRow = { fecha: string; monto_base_efectivo: number };
+type CajaDiaRow = {
+  fecha: string;
+  monto_base_efectivo: number;
+  monto_base_cierre_efectivo?: number | null;
+};
 
 type MovimientoCajaRow = {
   id_movimiento: number;
@@ -231,6 +252,7 @@ type ConfigDescuentosRow = {
   muleros_min_platos_principales: number;
   umbral_subtotal_otros: number;
   reglas_promocion: ReturnType<typeof parseReglasPromocion>;
+  etiquetas_pedido: ReturnType<typeof parseEtiquetasPedido>;
 };
 
 type ConfigOperativaRow = {
@@ -484,13 +506,14 @@ function defaultConfigDescuentos(): ConfigDescuentosRow {
     muleros_min_platos_principales: MULEROS_MIN_PLATOS_PRINCIPALES_DEFAULT,
     umbral_subtotal_otros: UMBRAL_SUBTOTAL_OTROS_COP,
     reglas_promocion: [],
+    etiquetas_pedido: [],
   };
 }
 
 function defaultConfigOperativa(): ConfigOperativaRow {
   return {
     precio_empaque_para_llevar: PRECIO_EMPAQUE_PARA_LLEVAR_COP,
-    mazorca_activa: true,
+    mazorca_activa: false,
     id_producto_mazorca: null,
     id_producto_cuota_pendiente: null,
     numero_mesa_para_llevar: MESA_PARA_LLEVAR_NUMERO,
@@ -548,8 +571,18 @@ function findOpcionEnDb(db: Db, idOpcion: number) {
   return null;
 }
 
-function mapConfigDescuentosLocal(c: ConfigDescuentosRow) {
+function contextoDescuentosPedidoLocal(p: Pedido) {
+  const etiquetas = Array.isArray(p.etiquetas_promocion)
+    ? p.etiquetas_promocion.filter((x): x is string => typeof x === 'string')
+    : [];
   return {
+    etiquetas_promocion: etiquetas,
+    cliente_mulero: Boolean(p.cliente_mulero),
+  };
+}
+
+function mapConfigDescuentosLocal(c: ConfigDescuentosRow) {
+  return resolverConfigPromociones({
     sopas_activo: Boolean(c.sopas_activo),
     sopas_monto_por_unidad: Math.round(c.sopas_monto_por_unidad),
     sopas_min_unidades: Math.max(
@@ -570,8 +603,9 @@ function mapConfigDescuentosLocal(c: ConfigDescuentosRow) {
     umbral_subtotal_otros: Math.round(
       c.umbral_subtotal_otros ?? UMBRAL_SUBTOTAL_OTROS_COP,
     ),
-    reglas_promocion: parseReglasPromocion(c.reglas_promocion ?? []),
-  };
+    reglas_promocion: c.reglas_promocion ?? [],
+    etiquetas_pedido: c.etiquetas_pedido ?? [],
+  });
 }
 
 function mapConfigOperativaLocal(
@@ -638,7 +672,7 @@ function seedDb(): Db {
         id: 1,
         nombre: 'Mesero',
         apellido: 'Local',
-        email: 'mesero@lareserva.local',
+        email: 'mesero@restaurant.local',
         rol: 'mesero',
         password: 'mesero123',
         activo: true,
@@ -647,7 +681,7 @@ function seedDb(): Db {
         id: 2,
         nombre: 'Chef',
         apellido: 'Local',
-        email: 'chef@lareserva.local',
+        email: 'chef@restaurant.local',
         rol: 'chef',
         password: 'chef123',
         activo: true,
@@ -656,7 +690,7 @@ function seedDb(): Db {
         id: 3,
         nombre: 'Administrador',
         apellido: '',
-        email: 'admin@lareserva.local',
+        email: 'admin@restaurant.local',
         rol: 'admin',
         password: 'admin123',
         activo: true,
@@ -759,6 +793,9 @@ function normalizeDb(parsed: unknown): Db {
       ),
       reglas_promocion: parseReglasPromocion(
         (c as { reglas_promocion?: unknown }).reglas_promocion ?? [],
+      ),
+      etiquetas_pedido: parseEtiquetasPedido(
+        (c as { etiquetas_pedido?: unknown }).etiquetas_pedido ?? [],
       ),
     };
   }
@@ -883,6 +920,9 @@ function normalizeDb(parsed: unknown): Db {
     }
     if (p.cliente_mulero === undefined) {
       p.cliente_mulero = false;
+    }
+    if (!Array.isArray(p.etiquetas_promocion)) {
+      p.etiquetas_promocion = p.cliente_mulero ? [ETIQUETA_LEGACY_MULERO] : [];
     }
     for (const d of p.detalles ?? []) {
       if (d.id_detalle_padre === undefined) {
@@ -1047,14 +1087,60 @@ function diasCategoriaTodos(): Pick<
 }
 
 function categoriaDisponibleHoyLocal(c: CategoriaLocal): boolean {
+  if (c.activo === false) return false;
   return categoriaDisponibleEnDiaSnake(c, weekdayLocal());
 }
 
-function mapCategoriaAdminLocal(c: CategoriaLocal) {
+function contarUsosProductoLocal(db: Db, idProducto: number): number {
+  let total = 0;
+  for (const ped of db.pedidos) {
+    for (const d of ped.detalles) {
+      if (d.id_producto === idProducto) total += 1;
+    }
+  }
+  return total;
+}
+
+function contarStatsCategoriaLocal(
+  db: Db,
+  idCategoria: number,
+): { total_productos: number; total_usos_pedido: number } {
+  const productos = db.productos.filter((p) => p.id_categoria === idCategoria);
+  let total_usos_pedido = 0;
+  for (const p of productos) {
+    total_usos_pedido += contarUsosProductoLocal(db, p.id_producto);
+  }
+  return { total_productos: productos.length, total_usos_pedido };
+}
+
+function productoEnConfigSistemaLocal(db: Db, idProducto: number): boolean {
+  const c = db.configOperativa;
+  return (
+    c.id_producto_mazorca === idProducto ||
+    c.id_producto_soda_almuerzo === idProducto ||
+    c.id_producto_cuota_pendiente === idProducto
+  );
+}
+
+function normalizeIconoMenuLocal(
+  raw: unknown,
+  nombreFallback?: string,
+): string | null {
+  if (raw === undefined && nombreFallback) {
+    return inferirIconoCategoriaDesdeNombre(nombreFallback);
+  }
+  if (raw == null || raw === '') return null;
+  return normalizarIconoMenuGuardado(String(raw), nombreFallback);
+}
+
+function mapCategoriaAdminLocal(db: Db, c: CategoriaLocal) {
   const fallback = inferirReglasCategoriaDesdeNombre(c.nombre);
+  const stats = contarStatsCategoriaLocal(db, c.id_categoria);
   return {
     id_categoria: c.id_categoria,
     nombre: c.nombre,
+    icono_menu: normalizarIconoMenuGuardado(c.icono_menu, c.nombre),
+    activo: c.activo !== false,
     disponible_lunes: c.disponible_lunes,
     disponible_martes: c.disponible_martes,
     disponible_miercoles: c.disponible_miercoles,
@@ -1074,6 +1160,8 @@ function mapCategoriaAdminLocal(c: CategoriaLocal) {
       c.tipo_linea_cocina_default ?? fallback.tipo_linea_cocina_default,
     es_plato_principal_default:
       c.es_plato_principal_default ?? fallback.es_plato_principal_default,
+    total_productos: stats.total_productos,
+    total_usos_pedido: stats.total_usos_pedido,
   };
 }
 
@@ -1106,6 +1194,148 @@ function detalleMarcaCocina(db: Db, d: PedidoDetalle): boolean {
     categoriaDeProducto(db, prod),
     Boolean(prod.es_empacable),
   );
+}
+
+function empaqueHijoDeDetalle(
+  db: Db,
+  p: Pedido,
+  idDetallePadre: number,
+): PedidoDetalle | undefined {
+  return p.detalles.find((h) => {
+    if (h.id_detalle_padre !== idDetallePadre) return false;
+    const pr = db.productos.find((x) => x.id_producto === h.id_producto);
+    return Boolean(pr?.es_empacable);
+  });
+}
+
+/** Crea o alinea empaque automático para una línea de plato en para llevar. */
+function asegurarEmpaqueAutoDetalleLocal(
+  db: Db,
+  p: Pedido,
+  idDetallePadre: number,
+  actorId: number,
+): { creado: boolean } {
+  if (p.modo_servicio !== 'para_llevar') return { creado: false };
+  const padre = p.detalles.find((d) => d.id_detalle === idDetallePadre);
+  if (!padre || padre.id_detalle_padre != null) {
+    badRequest('Solo aplica a líneas de plato');
+  }
+  const prod = db.productos.find((x) => x.id_producto === padre.id_producto);
+  if (!prod) badRequest('Producto no encontrado');
+  if (
+    !productoCobraEmpaqueParaLlevarPorPlatoFuerte({
+      es_plato_principal: prod.es_plato_principal,
+      es_empacable: prod.es_empacable,
+      categoria: categoriaDeProducto(db, prod),
+    })
+  ) {
+    badRequest('Este ítem no lleva empaque automático');
+  }
+  const empHijo = empaqueHijoDeDetalle(db, p, idDetallePadre);
+  if (empHijo) {
+    return { creado: false };
+  }
+  const emp = db.productos.find((x) => x.es_empacable);
+  if (!emp) badRequest('No hay producto empacable configurado');
+  const eDet = db.seq.detalle++;
+  p.detalles.push({
+    id_detalle: eDet,
+    id_producto: emp.id_producto,
+    id_detalle_padre: idDetallePadre,
+    cantidad: padre.cantidad,
+    precio_unitario: db.configOperativa.precio_empaque_para_llevar,
+    nota_cocina: null,
+    opcion_ids: [],
+    listo_cocina: false,
+    listo_para_recoger: false,
+    enviado_cocina: false,
+  });
+  pushHistorialLocal(db, p.id_pedido, actorId, 'detalle_agregado', {
+    empaque_auto: true,
+    id_detalle_padre: idDetallePadre,
+    id_detalle_empaque: eDet,
+    nombre_producto: prod.nombre,
+    cantidad: padre.cantidad,
+  });
+  return { creado: true };
+}
+
+function sincronizarEmpaquesParaLlevarLocal(
+  db: Db,
+  p: Pedido,
+  actorId: number,
+): number {
+  if (p.modo_servicio !== 'para_llevar') {
+    badRequest('Solo aplica a pedidos para llevar');
+  }
+  let unidadesAgregadas = 0;
+  const detallesResumen = p.detalles.map((d) => {
+    const prod = db.productos.find((x) => x.id_producto === d.id_producto);
+    return {
+      id_detalle: d.id_detalle,
+      id_detalle_padre: d.id_detalle_padre,
+      cantidad: d.cantidad,
+      es_empacable: Boolean(prod?.es_empacable),
+      es_plato_principal: Boolean(prod?.es_plato_principal),
+      categoria_nombre: prod?.categoria_nombre,
+    };
+  });
+  for (const d of p.detalles) {
+    if (d.id_detalle_padre != null) continue;
+    const prod = db.productos.find((x) => x.id_producto === d.id_producto);
+    if (!prod) continue;
+    if (
+      !productoCobraEmpaqueParaLlevarPorPlatoFuerte({
+        es_plato_principal: prod.es_plato_principal,
+        es_empacable: prod.es_empacable,
+        categoria: categoriaDeProducto(db, prod),
+      })
+    ) {
+      continue;
+    }
+    const faltante = empaqueFaltanteEnDetallePadre(
+      {
+        id_detalle: d.id_detalle,
+        id_detalle_padre: d.id_detalle_padre,
+        cantidad: d.cantidad,
+        es_plato_principal: prod.es_plato_principal,
+        categoria_nombre: prod.categoria_nombre,
+      },
+      detallesResumen,
+    );
+    if (faltante <= 0) continue;
+
+    const empHijo = empaqueHijoDeDetalle(db, p, d.id_detalle);
+    if (empHijo) {
+      empHijo.cantidad += faltante;
+      const idx = detallesResumen.findIndex(
+        (x) => x.id_detalle === empHijo.id_detalle,
+      );
+      if (idx >= 0) {
+        detallesResumen[idx]!.cantidad += faltante;
+      }
+      unidadesAgregadas += faltante;
+      continue;
+    }
+
+    const r = asegurarEmpaqueAutoDetalleLocal(db, p, d.id_detalle, actorId);
+    if (r.creado) {
+      const nuevo = empaqueHijoDeDetalle(db, p, d.id_detalle);
+      if (nuevo) {
+        nuevo.cantidad = faltante;
+        detallesResumen.push({
+          id_detalle: nuevo.id_detalle,
+          id_detalle_padre: d.id_detalle,
+          cantidad: faltante,
+          es_empacable: true,
+          es_plato_principal: false,
+          categoria_nombre: 'Empaque',
+        });
+        unidadesAgregadas += faltante;
+      }
+    }
+  }
+  return unidadesAgregadas;
 }
 
 function diasCategoriaPorNombre(nombre: string): Pick<
@@ -1169,6 +1399,7 @@ function groupMenu(db: Db) {
     {
       id_categoria: number;
       nombre: string;
+      icono_menu: string | null;
       es_bebida: boolean;
       visible_en_mostrador: boolean;
       productos: Producto[];
@@ -1191,6 +1422,7 @@ function groupMenu(db: Db) {
     const curr = byCat.get(p.id_categoria) ?? {
       id_categoria: p.id_categoria,
       nombre: cat.nombre,
+      icono_menu: normalizarIconoMenuGuardado(cat.icono_menu, cat.nombre),
       es_bebida: cat.es_bebida ?? fallback.es_bebida,
       visible_en_mostrador:
         cat.visible_en_mostrador ?? fallback.visible_en_mostrador,
@@ -1215,7 +1447,7 @@ function categoriasLocalesAdmin(db: Db) {
     .sort((a, b) => a.nombre.localeCompare(b.nombre));
 }
 
-function serializeProductoAdmin(p: Producto) {
+function serializeProductoAdmin(db: Db, p: Producto, incluirStats = false) {
   return {
     id_producto: p.id_producto,
     id_categoria: p.id_categoria,
@@ -1232,6 +1464,9 @@ function serializeProductoAdmin(p: Producto) {
     stock_disponible: p.stock_disponible ?? 0,
     ocultar_sin_stock: p.ocultar_sin_stock !== false,
     es_bebida: /bebida/i.test(p.categoria_nombre),
+    ...(incluirStats
+      ? { total_usos_pedido: contarUsosProductoLocal(db, p.id_producto) }
+      : {}),
   };
 }
 
@@ -1301,6 +1536,7 @@ function serializePedido(db: Db, p: Pedido) {
     metodo_pago: f.metodo_pago,
     emitida_en: f.emitida_en,
     es_parcial: Boolean(f.es_parcial),
+    detalle_exceso_cobro: f.detalle_exceso_cobro ?? null,
   }));
   const ultimaFactura = facturas.length ? facturas[facturas.length - 1] : null;
   const pendientesComida = detalles.filter(
@@ -1341,6 +1577,9 @@ function serializePedido(db: Db, p: Pedido) {
     prioridad_cocina_auto: prioridadAuto,
     prioridad_cocina_override: override,
     cliente_mulero: Boolean(p.cliente_mulero),
+    etiquetas_promocion: Array.isArray(p.etiquetas_promocion)
+      ? p.etiquetas_promocion.filter((x): x is string => typeof x === 'string')
+      : [],
     mesero: {
       id: mesero.id,
       nombre: mesero.nombre,
@@ -1373,7 +1612,7 @@ function serializePedido(db: Db, p: Pedido) {
       descuentos_estimados: calcularDescuentosPedido(
         lineas,
         config,
-        Boolean(p.cliente_mulero),
+        contextoDescuentosPedidoLocal(p),
       ),
     };
   }
@@ -1491,7 +1730,7 @@ export async function localApi<T = unknown>(
 
   if (pathKey === '/categorias/admin' && method === 'GET') {
     if (actor.rol !== 'admin') unauthorized();
-    return db.categorias.map(mapCategoriaAdminLocal) as T;
+    return db.categorias.map((c) => mapCategoriaAdminLocal(db, c)) as T;
   }
 
   if (pathKey === '/categorias/admin' && method === 'POST') {
@@ -1534,12 +1773,14 @@ export async function localApi<T = unknown>(
         body.es_plato_principal_default,
         inferred.es_plato_principal_default,
       ),
+      icono_menu: normalizeIconoMenuLocal(body.icono_menu, nombre),
+      activo: true,
     };
     db.categorias.push(nuevo);
     await writeDb(db);
     await deleteOfflineCache('menu_today').catch(() => undefined);
     notifyConfigUpdated('categorias');
-    return mapCategoriaAdminLocal(nuevo) as T;
+    return mapCategoriaAdminLocal(db, nuevo) as T;
   }
 
   {
@@ -1549,6 +1790,21 @@ export async function localApi<T = unknown>(
       const idCategoria = Number(m[1]);
       const cat = db.categorias.find((x) => x.id_categoria === idCategoria);
       if (!cat) badRequest('Categoría no encontrada');
+      if (body.nombre != null) {
+        const nombre = String(body.nombre).trim();
+        if (!nombre) badRequest('El nombre es obligatorio');
+        const dup = db.categorias.find(
+          (x) =>
+            x.id_categoria !== idCategoria &&
+            x.nombre.trim().toLowerCase() === nombre.toLowerCase(),
+        );
+        if (dup) badRequest('Ya existe una categoría con ese nombre');
+        cat.nombre = nombre;
+        for (const p of db.productos) {
+          if (p.id_categoria === idCategoria) p.categoria_nombre = nombre;
+        }
+      }
+      if (body.activo !== undefined) cat.activo = Boolean(body.activo);
       if (body.disponible_lunes !== undefined) {
         cat.disponible_lunes = Boolean(body.disponible_lunes);
       }
@@ -1590,10 +1846,37 @@ export async function localApi<T = unknown>(
         const tipo = tipoLineaCocinaBody(body.tipo_linea_cocina_default);
         if (tipo) cat.tipo_linea_cocina_default = tipo;
       }
+      if (body.icono_menu !== undefined) {
+        cat.icono_menu = normalizeIconoMenuLocal(body.icono_menu);
+      }
       await writeDb(db);
       await deleteOfflineCache('menu_today').catch(() => undefined);
       notifyConfigUpdated('categorias');
-      return mapCategoriaAdminLocal(cat) as T;
+      return mapCategoriaAdminLocal(db, cat) as T;
+    }
+    if (m && method === 'DELETE') {
+      if (actor.rol !== 'admin') unauthorized();
+      const idCategoria = Number(m[1]);
+      const cat = db.categorias.find((x) => x.id_categoria === idCategoria);
+      if (!cat) badRequest('Categoría no encontrada');
+      if (cat.es_linea_empaque) {
+        badRequest('La categoría de empaque es del sistema y no se puede eliminar');
+      }
+      const stats = contarStatsCategoriaLocal(db, idCategoria);
+      if (stats.total_usos_pedido > 0) {
+        badRequest('Tiene productos con historial de pedidos — no se puede eliminar');
+      }
+      const productosCat = db.productos.filter((p) => p.id_categoria === idCategoria);
+      if (productosCat.some((p) => productoEnConfigSistemaLocal(db, p.id_producto))) {
+        badRequest('Hay productos de esta categoría usados en la configuración del sistema');
+      }
+      db.productos = db.productos.filter((p) => p.id_categoria !== idCategoria);
+      db.categorias = db.categorias.filter((x) => x.id_categoria !== idCategoria);
+      await writeDb(db);
+      await deleteOfflineCache('menu_today').catch(() => undefined);
+      notifyConfigUpdated('categorias');
+      notifyConfigUpdated('menu');
+      return { ok: true, id_categoria: idCategoria } as T;
     }
   }
 
@@ -1604,7 +1887,7 @@ export async function localApi<T = unknown>(
     const rows = incluir
       ? db.productos
       : db.productos.filter((p) => p.activo !== false);
-    return rows.map(serializeProductoAdmin) as T;
+    return rows.map((p) => serializeProductoAdmin(db, p, incluir)) as T;
   }
 
   if (pathKey === '/productos' && method === 'POST') {
@@ -1667,7 +1950,7 @@ export async function localApi<T = unknown>(
     await writeDb(db);
     await deleteOfflineCache('menu_today').catch(() => undefined);
     notifyConfigUpdated('menu');
-    return serializeProductoAdmin(nuevo) as T;
+    return serializeProductoAdmin(db, nuevo) as T;
   }
 
   {
@@ -1689,7 +1972,7 @@ export async function localApi<T = unknown>(
       const p = db.productos.find((x) => x.id_producto === id);
       if (!p) badRequest('Producto no encontrado');
       if (p.es_acompanamiento_mazorca) {
-        badRequest('La línea de mazorca no admite personalizaciones');
+        badRequest('La línea de acompañamiento por comensal no admite personalizaciones');
       }
       const tipo = String(body.tipo ?? '').trim();
       if (tipo !== 'omitir_ingrediente' && tipo !== 'aderezo') {
@@ -1836,18 +2119,31 @@ export async function localApi<T = unknown>(
       await writeDb(db);
       await deleteOfflineCache('menu_today').catch(() => undefined);
       notifyConfigUpdated('menu');
-      return serializeProductoAdmin(p) as T;
+      return serializeProductoAdmin(db, p) as T;
     }
     if (m && method === 'DELETE') {
       if (actor.rol !== 'admin') unauthorized();
       const id = Number(m[1]);
-      const p = db.productos.find((x) => x.id_producto === id);
-      if (!p) badRequest('Producto no encontrado');
-      p.activo = false;
+      const idx = db.productos.findIndex((x) => x.id_producto === id);
+      if (idx < 0) badRequest('Producto no encontrado');
+      const p = db.productos[idx]!;
+      const usos = contarUsosProductoLocal(db, id);
+      if (usos > 0) {
+        badRequest(
+          'Tiene historial de pedidos — no se puede eliminar; solo ocultar del menú',
+        );
+      }
+      if (productoEnConfigSistemaLocal(db, id)) {
+        badRequest('El producto está referenciado en la configuración del sistema');
+      }
+      if (p.es_acompanamiento_mazorca && db.configOperativa.id_producto_mazorca === id) {
+        db.configOperativa.id_producto_mazorca = null;
+      }
+      db.productos.splice(idx, 1);
       await writeDb(db);
       await deleteOfflineCache('menu_today').catch(() => undefined);
       notifyConfigUpdated('menu');
-      return serializeProductoAdmin(p) as T;
+      return { ok: true, id_producto: id } as T;
     }
   }
 
@@ -2214,7 +2510,7 @@ export async function localApi<T = unknown>(
     if (!prod || prod.activo === false) badRequest('Producto no disponible');
     if (prod.es_acompanamiento_mazorca) {
       badRequest(
-        'Las mazorcas de acompañamiento se ajustan con el número de comensales',
+        'El acompañamiento por comensal se ajusta con el número de comensales',
       );
     }
     const cat = db.categorias.find((x) => x.id_categoria === prod.id_categoria);
@@ -2243,6 +2539,17 @@ export async function localApi<T = unknown>(
       );
     });
     if (fusion) {
+      const debeAutoEmpaqueFusion =
+        p.modo_servicio === 'para_llevar' &&
+        productoCobraEmpaqueParaLlevarPorPlatoFuerte({
+          es_plato_principal: prod.es_plato_principal,
+          es_empacable: prod.es_empacable,
+          categoria: categoriaDeProducto(db, prod),
+        }) &&
+        !sinEmpaque;
+      if (debeAutoEmpaqueFusion) {
+        asegurarEmpaqueAutoDetalleLocal(db, p, fusion.id_detalle, actor.id);
+      }
       const cantidadAnterior = fusion.cantidad;
       fusion.cantidad += cantidad;
       if (fusion.id_detalle_padre == null) {
@@ -2337,6 +2644,44 @@ export async function localApi<T = unknown>(
     return serializePedido(db, p) as T;
   }
 
+  if (path.startsWith('/pedidos/') && path.endsWith('/sincronizar-empaques') && method === 'POST') {
+    rechazarChefTomaPedidos(actor);
+    const idPedido = Number(path.split('/')[2]);
+    const p = db.pedidos.find((x) => x.id_pedido === idPedido);
+    if (!p) badRequest('Pedido no encontrado');
+    const empaquesCreados = sincronizarEmpaquesParaLlevarLocal(db, p, actor.id);
+    await writeDb(db);
+    return {
+      ok: true,
+      empaques_creados: empaquesCreados,
+      pedido: serializePedido(db, p),
+    } as T;
+  }
+
+  {
+    const empaqueAuto = /^\/pedidos\/detalles\/(\d+)\/empaque-auto$/.exec(path);
+    if (empaqueAuto && method === 'POST') {
+      rechazarChefTomaPedidos(actor);
+      const idDetalle = Number(empaqueAuto[1]);
+      const p = db.pedidos.find((ped) =>
+        ped.detalles.some((d) => d.id_detalle === idDetalle),
+      );
+      if (!p) badRequest('Detalle no encontrado');
+      const creado = asegurarEmpaqueAutoDetalleLocal(
+        db,
+        p,
+        idDetalle,
+        actor.id,
+      ).creado;
+      await writeDb(db);
+      return {
+        ok: true,
+        creado,
+        pedido: serializePedido(db, p),
+      } as T;
+    }
+  }
+
   if (path.startsWith('/pedidos/') && path.endsWith('/pasar-cocina') && method === 'POST') {
     rechazarChefTomaPedidos(actor);
     const idPedido = Number(path.split('/')[2]);
@@ -2396,7 +2741,30 @@ export async function localApi<T = unknown>(
         }
         const prod = db.productos.find((x) => x.id_producto === det.id_producto)!;
         if (prod.es_acompanamiento_mazorca) {
-          badRequest('La cantidad de mazorcas se ajusta con el número de comensales');
+          badRequest('La cantidad del acompañamiento por comensal se ajusta con el número de comensales');
+        }
+        if (prod.es_empacable && det.id_detalle_padre != null) {
+          const padre = p.detalles.find((x) => x.id_detalle === det.id_detalle_padre);
+          if (!padre) badRequest('Línea de plato padre no encontrada');
+          if (cantidad > padre.cantidad) {
+            badRequest(
+              `El empaque no puede superar la cantidad del plato (${padre.cantidad})`,
+            );
+          }
+          if (cantidad < 1) {
+            badRequest('Usa quitar línea para eliminar el empaque por completo');
+          }
+          const cantidadAnterior = det.cantidad;
+          det.cantidad = cantidad;
+          pushHistorialLocal(db, p.id_pedido, actor.id, 'cantidad_actualizada', {
+            id_detalle: idDetalle,
+            nombre_producto: prod.nombre,
+            cantidad_anterior: cantidadAnterior,
+            cantidad_nueva: cantidad,
+            empaque_manual: true,
+          });
+          await writeDb(db);
+          return serializePedido(db, p) as T;
         }
         const marcarCocina = debeMarcarCocina(
           categoriaDeProducto(db, prod),
@@ -2466,9 +2834,15 @@ export async function localApi<T = unknown>(
         det.cantidad = cantidad;
         if (det.id_detalle_padre == null) {
           for (const h of p.detalles) {
-            if (h.id_detalle_padre === idDetalle) {
-              h.cantidad = cantidad;
-            }
+            if (h.id_detalle_padre !== idDetalle) continue;
+            const hProd = db.productos.find((x) => x.id_producto === h.id_producto);
+            h.cantidad = hProd?.es_empacable
+              ? nuevaCantidadEmpaqueTrasCambioPadre(
+                  h.cantidad,
+                  cantidadAnterior,
+                  cantidad,
+                )
+              : cantidad;
           }
         }
         pushHistorialLocal(db, p.id_pedido, actor.id, 'cantidad_actualizada', {
@@ -2524,7 +2898,7 @@ export async function localApi<T = unknown>(
         if (p.estado === 'facturado') badRequest('El pedido no admite cambios');
         const prod = db.productos.find((x) => x.id_producto === det.id_producto)!;
         if (prod.es_acompanamiento_mazorca) {
-          badRequest('La línea de mazorca se ajusta con el número de comensales');
+          badRequest('La línea de acompañamiento por comensal se ajusta con el número de comensales');
         }
         const hijos =
           det.id_detalle_padre == null
@@ -2574,6 +2948,41 @@ export async function localApi<T = unknown>(
       if (!p) badRequest('Pedido no encontrado');
       if (p.estado === 'facturado') badRequest('El pedido ya fue facturado');
       p.cliente_mulero = Boolean(body.cliente_mulero);
+      const etiquetas = new Set(p.etiquetas_promocion ?? []);
+      if (p.cliente_mulero) {
+        etiquetas.add(ETIQUETA_LEGACY_MULERO);
+      } else {
+        etiquetas.delete(ETIQUETA_LEGACY_MULERO);
+      }
+      p.etiquetas_promocion = [...etiquetas];
+      await writeDb(db);
+      return serializePedido(db, p) as T;
+    }
+  }
+
+  {
+    const ep = /^\/pedidos\/(\d+)\/etiquetas-promocion$/.exec(path);
+    if (ep && method === 'PATCH') {
+      rechazarChefTomaPedidos(actor);
+      const idPedido = Number(ep[1]);
+      const p = db.pedidos.find((x) => x.id_pedido === idPedido);
+      if (!p) badRequest('Pedido no encontrado');
+      if (p.estado === 'facturado') badRequest('El pedido ya fue facturado');
+      if (!ABIERTOS_LOCAL.includes(p.estado)) {
+        badRequest('El pedido no admite cambios');
+      }
+      const etiquetas = [
+        ...new Set(
+          (Array.isArray(body.etiquetas_promocion) ? body.etiquetas_promocion : [])
+            .map((x: unknown) => String(x).trim())
+            .filter(Boolean),
+        ),
+      ];
+      p.etiquetas_promocion = etiquetas;
+      p.cliente_mulero =
+        body.cliente_mulero != null
+          ? Boolean(body.cliente_mulero)
+          : etiquetas.includes(ETIQUETA_LEGACY_MULERO);
       await writeDb(db);
       return serializePedido(db, p) as T;
     }
@@ -2668,14 +3077,9 @@ export async function localApi<T = unknown>(
     const descuentos = calcularDescuentosPedido(
       lineas,
       config,
-      Boolean(p.cliente_mulero),
+      contextoDescuentosPedidoLocal(p),
     );
-    if (
-      descuentos.descuento_sopas +
-        descuentos.descuento_muleros +
-        descuentos.descuento_promociones >
-      subtotal
-    ) {
+    if (descuentos.descuento_promociones > subtotal) {
       badRequest('Los descuentos no pueden superar el subtotal de esta cuenta');
     }
 
@@ -2783,21 +3187,13 @@ export async function localApi<T = unknown>(
     const descuentos = calcularDescuentosPedido(
       lineas,
       config,
-      Boolean(p.cliente_mulero),
+      contextoDescuentosPedidoLocal(p),
     );
-    if (
-      descuentos.descuento_sopas +
-        descuentos.descuento_muleros +
-        descuentos.descuento_promociones >
-      subtotal
-    ) {
+    if (descuentos.descuento_promociones > subtotal) {
       badRequest('Los descuentos no pueden superar el subtotal de esta cuenta');
     }
     const total =
-      subtotal -
-      descuentos.descuento_sopas -
-      descuentos.descuento_muleros -
-      descuentos.descuento_promociones;
+      subtotal - descuentos.descuento_promociones;
     const rawMp = String(body.metodo_pago ?? 'efectivo').toLowerCase();
     if (rawMp !== 'efectivo' && rawMp !== 'transferencia') {
       badRequest('Método de pago no válido (solo efectivo o transferencia).');
@@ -2824,6 +3220,22 @@ export async function localApi<T = unknown>(
       }
     }
     const quedanPendientes = quedaPendienteTrasCobro(detallesSerial, solicitudes);
+    const montoRecibidoEfectivo =
+      body.monto_recibido_efectivo != null
+        ? Math.round(Number(body.monto_recibido_efectivo))
+        : undefined;
+    const detalleExcesoCobro = calcularDetalleExcesoCobro({
+      total: totalNeto,
+      metodo: metodoPago,
+      monto_recibido_efectivo: montoRecibidoEfectivo,
+      monto_transferencia: montoTransferencia,
+      devolucion_exceso_metodo: body.devolucion_exceso_metodo as
+        | 'efectivo'
+        | 'transferencia'
+        | 'domicilio'
+        | 'mesero'
+        | undefined,
+    });
     const idFactura = db.seq.factura++;
     const factura: Factura = {
       id_factura: idFactura,
@@ -2837,6 +3249,7 @@ export async function localApi<T = unknown>(
       metodo_pago: metodoPago,
       emitida_en: todayIso(),
       es_parcial: quedanPendientes,
+      detalle_exceso_cobro: detalleExcesoCobro ?? undefined,
     };
     db.facturas.push(factura);
 
@@ -3339,12 +3752,9 @@ export async function localApi<T = unknown>(
       const descuentos = calcularDescuentosPedido(
         lineas,
         config,
-        Boolean(p!.cliente_mulero),
+        contextoDescuentosPedidoLocal(p!),
       );
-      const descTotal =
-        descuentos.descuento_sopas +
-        descuentos.descuento_muleros +
-        descuentos.descuento_promociones;
+      const descTotal = descuentos.descuento_promociones;
       if (descTotal > subtotal) {
         badRequest('Los descuentos no pueden superar el subtotal de esta cuenta');
       }
@@ -3387,6 +3797,14 @@ export async function localApi<T = unknown>(
     if (reparto.efectivoFactura > 0 && recibidoEf < reparto.efectivoFactura) {
       badRequest('El efectivo recibido debe cubrir la parte en efectivo');
     }
+
+    const detalleExcesoCobro = calcularDetalleExcesoCobro({
+      total: totalNeto,
+      metodo: 'mixto',
+      monto_recibido_efectivo: recibidoEf,
+      monto_transferencia: montoTransferencia,
+      devolucion_exceso_metodo: metodoDev,
+    });
 
     const precios: Record<number, number> = {};
     const lineasPadre: {
@@ -3559,6 +3977,7 @@ export async function localApi<T = unknown>(
             ? Number(body.persona_plan_indice)
             : undefined,
         cobro_mixto_grupo: grupo ?? undefined,
+        detalle_exceso_cobro: detalleExcesoCobro ?? undefined,
       };
       db.facturas.push(factura);
       idsFacturas.push(idFactura);
@@ -4272,6 +4691,54 @@ export async function localApi<T = unknown>(
     return {
       fecha,
       monto_base_efectivo: row?.monto_base_efectivo ?? 0,
+      monto_base_cierre_efectivo: row?.monto_base_cierre_efectivo ?? null,
+    } as T;
+  }
+
+  if (path === '/pedidos/caja-diaria/cierre' && method === 'PUT') {
+    if (actor.rol !== 'admin') unauthorized();
+    const fecha = String(body.fecha ?? '').trim().slice(0, 10);
+    const monto = Number(body.monto_base_cierre_efectivo);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) badRequest('Fecha inválida');
+    if (!Number.isFinite(monto) || monto < 0) badRequest('Monto inválido');
+    const idx = db.cajaDiaria.findIndex((c) => c.fecha === fecha);
+    const baseRow = idx >= 0 ? db.cajaDiaria[idx] : null;
+    const montoBaseEfectivo = baseRow?.monto_base_efectivo ?? 0;
+    const target = fecha;
+    const facturas = db.facturas.filter((f) => toDateKey(f.emitida_en) === target);
+    const totalesPorMetodo = { efectivo: 0, transferencia: 0 };
+    for (const f of facturas) {
+      if (f.metodo_pago === 'efectivo') totalesPorMetodo.efectivo += f.total;
+      else totalesPorMetodo.transferencia += f.total;
+    }
+    const movimientosDia = db.movimientosCaja
+      .filter((m) => m.fecha === target)
+      .map((m) => mapMovimientoCajaLocal(db, m));
+    const cuadre = calcularEfectivoEsperadoEnCaja({
+      monto_base_efectivo: montoBaseEfectivo,
+      ventas_efectivo: totalesPorMetodo.efectivo,
+      total_pagos_meseros: 0,
+      movimientos: movimientosDia.map((m) => ({
+        tipo: m.tipo,
+        monto: m.monto,
+        metodo_devolucion: m.metodo_devolucion,
+      })),
+    });
+    if (idx >= 0) {
+      db.cajaDiaria[idx].monto_base_cierre_efectivo = monto;
+    } else {
+      db.cajaDiaria.push({
+        fecha,
+        monto_base_efectivo: montoBaseEfectivo,
+        monto_base_cierre_efectivo: monto,
+      });
+    }
+    await writeDb(db);
+    return {
+      fecha,
+      monto_base_cierre_efectivo: monto,
+      efectivo_esperado_en_caja: cuadre.efectivo_esperado_en_caja,
+      impresion_cierre: { impreso: false, en_cola: true },
     } as T;
   }
 
@@ -4321,7 +4788,25 @@ export async function localApi<T = unknown>(
     return {
       fecha,
       movimiento: mapMovimientoCajaLocal(db, row),
+      impresion_movimiento: { impreso: false, en_cola: true },
     } as T;
+  }
+
+  {
+    const mMovPrint = /^\/pedidos\/movimientos-caja\/(\d+)\/imprimir$/.exec(path);
+    if (mMovPrint && method === 'POST') {
+      if (actor.rol !== 'admin') unauthorized();
+      const idMov = Number(mMovPrint[1]);
+      const row = db.movimientosCaja.find((x) => x.id_movimiento === idMov);
+      if (!row) badRequest('Movimiento no encontrado');
+      if (row.tipo !== 'entrada_manual' && row.tipo !== 'salida_manual') {
+        badRequest('Solo se pueden imprimir entradas o salidas manuales');
+      }
+      return {
+        ok: true,
+        impresion_movimiento: { impreso: false, en_cola: true },
+      } as T;
+    }
   }
 
   {
@@ -4350,7 +4835,11 @@ export async function localApi<T = unknown>(
     const prev = db.configDescuentos;
     const next: ConfigDescuentosRow = {
       sopas_activo:
-        body.sopas_activo != null ? Boolean(body.sopas_activo) : prev.sopas_activo,
+        body.reglas_promocion != null || body.etiquetas_pedido != null
+          ? false
+          : body.sopas_activo != null
+            ? Boolean(body.sopas_activo)
+            : prev.sopas_activo,
       sopas_monto_por_unidad:
         body.sopas_monto_por_unidad != null
           ? Math.round(Number(body.sopas_monto_por_unidad))
@@ -4360,9 +4849,11 @@ export async function localApi<T = unknown>(
           ? Math.max(1, Math.round(Number(body.sopas_min_unidades)))
           : prev.sopas_min_unidades,
       muleros_activo:
-        body.muleros_activo != null
-          ? Boolean(body.muleros_activo)
-          : prev.muleros_activo,
+        body.reglas_promocion != null || body.etiquetas_pedido != null
+          ? false
+          : body.muleros_activo != null
+            ? Boolean(body.muleros_activo)
+            : prev.muleros_activo,
       muleros_monto_por_plato_principal:
         body.muleros_monto_por_plato_principal != null
           ? Math.round(Number(body.muleros_monto_por_plato_principal))
@@ -4379,13 +4870,17 @@ export async function localApi<T = unknown>(
         body.reglas_promocion != null
           ? parseReglasPromocion(body.reglas_promocion)
           : prev.reglas_promocion,
+      etiquetas_pedido:
+        body.etiquetas_pedido != null
+          ? parseEtiquetasPedido(body.etiquetas_pedido)
+          : prev.etiquetas_pedido ?? [],
     };
     if (next.sopas_activo && next.sopas_monto_por_unidad <= 0) {
-      badRequest('Indica el monto por unidad de sopa al activar el descuento');
+      badRequest('Indica el monto por unidad al activar la promoción legacy');
     }
     if (next.muleros_activo && next.muleros_monto_por_plato_principal <= 0) {
       badRequest(
-        'Indica el monto por plato principal al activar el descuento de camioneros',
+        'Indica el monto por plato principal al activar la promoción legacy',
       );
     }
     db.configDescuentos = next;
@@ -4739,6 +5234,9 @@ export async function localApi<T = unknown>(
     const facturas = db.facturas.filter((f) => toDateKey(f.emitida_en) === target);
     const montoBaseEfectivo =
       db.cajaDiaria.find((c) => c.fecha === target)?.monto_base_efectivo ?? 0;
+    const montoBaseCierreEfectivo =
+      db.cajaDiaria.find((c) => c.fecha === target)?.monto_base_cierre_efectivo ??
+      null;
     const totalesPorMetodo = { efectivo: 0, transferencia: 0 };
     const byMesa = new Map<number, { pedidos: number; total: number }>();
     for (const f of facturas) {
@@ -4838,6 +5336,7 @@ export async function localApi<T = unknown>(
       mesas,
       pedidos_detalle: pedidosDetalle,
       monto_base_efectivo: montoBaseEfectivo,
+      monto_base_cierre_efectivo: montoBaseCierreEfectivo,
       totales_por_metodo: totalesPorMetodo,
       total_pagos_meseros: 0,
       pagos_meseros: [],

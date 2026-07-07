@@ -10,6 +10,19 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const THEME = path.join(ROOT, 'src/lib/theme.ts');
 
 const HEX_MAP = {
+  '#EDF3FA': 'colors.background',
+  '#edf3fa': 'colors.background',
+  '#E4ECF5': 'colors.backgroundAlt',
+  '#82B5D6': 'colors.primary',
+  '#5E96B8': 'colors.primaryDark',
+  '#F0F6FA': 'colors.primaryLight',
+  '#DCEAF4': 'colors.primaryMuted',
+  '#A3C9E3': 'colors.secondary',
+  '#F1F7FB': 'colors.secondaryLight',
+  '#97C2DE': 'colors.cocina',
+  '#3D4F63': 'colors.text',
+  '#6B7D91': 'colors.textMuted',
+  '#CDD9E8': 'colors.border',
   '#FAF6F0': 'colors.background',
   '#faf6f0': 'colors.background',
   '#F3EDE4': 'colors.backgroundAlt',
