@@ -161,6 +161,18 @@ async function main() {
     await ensureSuperadminUsuario(prisma);
     console.log('[cloud-db] Superadmin DrewTech verificado');
 
+    const { ensureDemoMenu, ensureDemoMesas } = require('./ensure-demo-menu');
+    await ensureDemoMesas(prisma);
+
+    const { categoriasCreadas, productosCreados } = await ensureDemoMenu(prisma);
+    if (categoriasCreadas > 0 || productosCreados > 0) {
+      console.log(
+        `[cloud-db] Menú demo: +${categoriasCreadas} categorías, +${productosCreados} productos.`,
+      );
+    } else {
+      console.log('[cloud-db] Menú demo ya estaba completo.');
+    }
+
     const userCount = await prisma.usuario.count();
     const forceSeed =
       process.env.DEMO_FORCE_SEED === 'true' ||
