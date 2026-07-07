@@ -45,7 +45,8 @@ import { api } from '../../../../src/lib/api';
 import { AccionIcon, PedidoIcon } from '../../../../src/lib/app-icons';
 import { alertarSiSinPapel } from '../../../../src/lib/alarma-impresora';
 import { notificarResultadoImpresion, mensajeImpresionFallidaTrasAccion } from '../../../../src/lib/impresion-resultado';
-import { notificarVistaPreviaDemo } from '../../../../src/lib/ticket-preview';
+import { mostrarVistaPreviaTicket } from '../../../../src/lib/ticket-preview';
+import { esErrorImpresionNoDisponible } from '@la-reserva/shared-domain/impresion-soporte';
 import { showAppDialog, showNotice, confirmAppDialog } from '../../../../src/lib/app-dialog';
 import {
   digitsFromMonto,
@@ -1954,19 +1955,17 @@ export default function FacturaScreen() {
         return;
       }
 
-      await showNotice(
-        debeQuedarEnFactura ? 'Cobro parcial registrado' : 'Cobro registrado',
-        msgExito,
-        'success',
-      );
-      if (imp?.preview_html) {
-        await notificarVistaPreviaDemo(imp.preview_html, 'Vista previa de la factura');
-      } else if (imp?.error) {
+      if (imp?.preview_html || esErrorImpresionNoDisponible(imp)) {
+        await mostrarVistaPreviaTicket(imp?.preview_html, 'Vista previa de la factura');
+      } else {
         await showNotice(
-          'Factura sin imprimir',
-          imp.error,
-          'warning',
+          debeQuedarEnFactura ? 'Cobro parcial registrado' : 'Cobro registrado',
+          msgExito,
+          'success',
         );
+        if (imp?.error) {
+          await showNotice('Factura sin imprimir', imp.error, 'warning');
+        }
       }
       setRecibeDigits('');
       setMixtoTransferenciaEstandarDigits('');
@@ -2694,13 +2693,8 @@ export default function FacturaScreen() {
           'success',
         );
       } else if (imp?.error) {
-        if (imp.preview_html) {
-          await showNotice(
-            quedaPendiente ? 'Cobro parcial registrado' : 'Cobro registrado',
-            'El pago quedó guardado.',
-            'success',
-          );
-          await notificarVistaPreviaDemo(imp.preview_html, 'Vista previa de la factura');
+        if (imp.preview_html || esErrorImpresionNoDisponible(imp)) {
+          await mostrarVistaPreviaTicket(imp.preview_html, 'Vista previa de la factura');
           await continuarTrasCobro();
           return;
         }

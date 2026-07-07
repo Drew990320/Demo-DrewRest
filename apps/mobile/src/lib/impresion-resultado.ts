@@ -1,10 +1,7 @@
-import {
-  esErrorImpresionNoDisponible,
-  mensajeImpresionRequiereDrewTech,
-} from '@la-reserva/shared-domain/impresion-soporte';
+import { esErrorImpresionNoDisponible } from '@la-reserva/shared-domain/impresion-soporte';
 import { showNotice } from './app-dialog';
 import { alertarSiSinPapel } from './alarma-impresora';
-import { notificarVistaPreviaDemo } from './ticket-preview';
+import { mostrarVistaPreviaTicket } from './ticket-preview';
 
 export type ResultadoImpresionUi = {
   impreso?: boolean;
@@ -30,14 +27,9 @@ export async function notificarResultadoImpresion(
   }
 
   if (esErrorImpresionNoDisponible(imp)) {
-    if (imp.preview_html) {
-      await notificarVistaPreviaDemo(imp.preview_html, 'Vista previa del ticket POS');
-      return;
-    }
-    await showNotice(
-      'Impresión no disponible',
-      mensajeImpresionRequiereDrewTech(),
-      'warning',
+    await mostrarVistaPreviaTicket(
+      imp.preview_html,
+      exito.titulo || 'Vista previa del ticket POS',
     );
     return;
   }
@@ -63,10 +55,7 @@ export function mensajeImpresionFallidaTrasAccion(
   prefijo: string,
 ): string {
   if (esErrorImpresionNoDisponible(imp)) {
-    if (imp?.preview_html) {
-      return `${prefijo}\n\nSe abrirá la vista previa del ticket POS (demo sin impresora).`;
-    }
-    return `${prefijo}\n\n${mensajeImpresionRequiereDrewTech()}`;
+    return prefijo;
   }
   return `${prefijo}\n\nImpresora: ${imp?.error ?? 'No se pudo imprimir.'}`;
 }

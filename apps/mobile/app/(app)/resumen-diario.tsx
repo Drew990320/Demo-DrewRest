@@ -40,7 +40,8 @@ import {
   mensajeImpresionFallidaTrasAccion,
   notificarResultadoImpresion,
 } from '../../src/lib/impresion-resultado';
-import { esErrorImpresionNoDisponible, mensajeImpresionRequiereDrewTech } from '@la-reserva/shared-domain/impresion-soporte';
+import { mostrarVistaPreviaTicket } from '../../src/lib/ticket-preview';
+import { esErrorImpresionNoDisponible } from '@la-reserva/shared-domain/impresion-soporte';
 import { manejarErrorAccion, manejarErrorOperacion } from '../../src/lib/recurso-disponible';
 import { digitsFromMonto, parseCOPDigits } from '../../src/lib/cop-input';
 import {
@@ -756,11 +757,18 @@ export default function ResumenDiarioScreen() {
           'success',
         );
       } else if (imp?.error) {
-        await showNotice(
-          'Cierre guardado',
-          mensajeImpresionFallidaTrasAccion(imp, 'Base registrada, pero no se imprimió.'),
-          'warning',
-        );
+        if (esErrorImpresionNoDisponible(imp)) {
+          await mostrarVistaPreviaTicket(
+            imp.preview_html,
+            'Vista previa — arqueo de cierre',
+          );
+        } else {
+          await showNotice(
+            'Cierre guardado',
+            mensajeImpresionFallidaTrasAccion(imp, 'Base registrada, pero no se imprimió.'),
+            'warning',
+          );
+        }
       }
       setModalCajaCierre(false);
     } catch (e) {
@@ -886,10 +894,13 @@ export default function ResumenDiarioScreen() {
       return;
     }
     if (imp?.error) {
-      const titulo =
-        contexto === 'registrar' ? `${etiqueta} registrada` : 'Impresión no disponible';
       if (esErrorImpresionNoDisponible(imp)) {
-        await showNotice(titulo, mensajeImpresionRequiereDrewTech(), 'warning');
+        await mostrarVistaPreviaTicket(
+          imp.preview_html,
+          contexto === 'registrar'
+            ? `Vista previa — ${etiqueta}`
+            : 'Vista previa del comprobante',
+        );
         return;
       }
       await showNotice(
@@ -985,11 +996,15 @@ export default function ResumenDiarioScreen() {
           'success',
         );
       } else if (imp?.error) {
-        await showNotice(
-          'Caja guardada',
-          mensajeImpresionFallidaTrasAccion(imp, 'Base registrada, pero no se imprimió.'),
-          'warning',
-        );
+        if (esErrorImpresionNoDisponible(imp)) {
+          await mostrarVistaPreviaTicket(imp.preview_html, 'Vista previa — base de caja');
+        } else {
+          await showNotice(
+            'Caja guardada',
+            mensajeImpresionFallidaTrasAccion(imp, 'Base registrada, pero no se imprimió.'),
+            'warning',
+          );
+        }
       }
       setModalCaja(false);
     } catch (e) {
@@ -1065,11 +1080,7 @@ export default function ResumenDiarioScreen() {
         (res.errores.length === 0 ||
           esErrorImpresionNoDisponible({ error: res.errores[0] }))
       ) {
-        await showNotice(
-          'Impresión no disponible',
-          mensajeImpresionRequiereDrewTech(),
-          'warning',
-        );
+        await mostrarVistaPreviaTicket(undefined, 'Impresión del día');
         return;
       }
       const msg = [
@@ -1521,11 +1532,7 @@ export default function ResumenDiarioScreen() {
         (res.errores.length === 0 ||
           esErrorImpresionNoDisponible({ error: res.errores[0] }))
       ) {
-        await showNotice(
-          'Impresión no disponible',
-          mensajeImpresionRequiereDrewTech(),
-          'warning',
-        );
+        await mostrarVistaPreviaTicket(undefined, 'Impresión del día');
         return;
       }
       const msg = [

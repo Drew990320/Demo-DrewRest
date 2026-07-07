@@ -6,6 +6,7 @@ import { MotionProvider } from '../src/context/MotionContext';
 import { AuthProvider } from '../src/context/AuthContext';
 import { VisualThemeProvider } from '../src/context/VisualThemeContext';
 import { DialogProvider } from '../src/context/DialogProvider';
+import { TicketPreviewProvider } from '../src/components/TicketPreviewModal';
 import { NetworkProvider } from '../src/context/NetworkContext';
 import { RouteRecoveryScreen } from '../src/components/RouteRecoveryScreen';
 import { ThemedStatusBar } from '../src/components/ThemedStatusBar';
@@ -64,6 +65,7 @@ export default function RootLayout() {
         <VisualThemeProvider>
         <AuthProvider>
           <DialogProvider>
+            <TicketPreviewProvider>
             <GlobalApiErrorHandler />
             <ThemedStatusBar />
             <Stack screenOptions={{ headerShown: false }}>
@@ -72,6 +74,7 @@ export default function RootLayout() {
               <Stack.Screen name="(auth)" />
               <Stack.Screen name="+not-found" />
             </Stack>
+            </TicketPreviewProvider>
           </DialogProvider>
         </AuthProvider>
         </VisualThemeProvider>

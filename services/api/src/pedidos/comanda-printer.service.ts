@@ -16,6 +16,10 @@ import { mensajeImpresionRequiereDrewTech } from '@la-reserva/shared-domain/impr
 import {
   buildComandaPreviewHtml,
   buildFacturaPreviewHtml,
+  buildBaseCajaPreviewHtml,
+  buildBaseCajaCierrePreviewHtml,
+  buildMovimientoCajaPreviewHtml,
+  buildCierreCajaPreviewHtml,
 } from './ticket-preview.builder';
 
 const DEFAULT_CHARS = 32;
@@ -59,6 +63,15 @@ export class ComandaPrinterService {
   private enabled(): boolean {
     const v = this.config.get<string>('PRINTER_ENABLED');
     return v === '1' || v === 'true' || v === 'yes';
+  }
+
+  private resultadoVistaPreviaDemo(preview_html: string): ResultadoImpresion {
+    return {
+      impreso: false,
+      codigo_error: 'no_disponible',
+      error: 'Vista previa demo',
+      preview_html,
+    };
   }
 
   private charWidth(): number {
@@ -160,12 +173,7 @@ export class ComandaPrinterService {
   /** Imprime comanda ESC/POS 58 mm. Prueba varios destinos hasta que uno funcione. */
   async imprimirComanda(ticket: ComandaTicket): Promise<ResultadoImpresion> {
     if (!this.enabled()) {
-      return {
-        impreso: false,
-        codigo_error: 'no_disponible',
-        error: 'Vista previa demo (sin impresora POS)',
-        preview_html: buildComandaPreviewHtml(ticket),
-      };
+      return this.resultadoVistaPreviaDemo(buildComandaPreviewHtml(ticket));
     }
     let buffer: Buffer;
     try {
@@ -181,12 +189,7 @@ export class ComandaPrinterService {
   /** Imprime cuenta/factura con detalle y precios. */
   async imprimirFactura(ticket: FacturaTicket): Promise<ResultadoImpresion> {
     if (!this.enabled()) {
-      return {
-        impreso: false,
-        codigo_error: 'no_disponible',
-        error: 'Vista previa demo (sin impresora POS)',
-        preview_html: buildFacturaPreviewHtml(ticket),
-      };
+      return this.resultadoVistaPreviaDemo(buildFacturaPreviewHtml(ticket));
     }
     let buffer: Buffer;
     try {
@@ -201,6 +204,9 @@ export class ComandaPrinterService {
 
   /** Ticket de cierre diario (solo totales). */
   async imprimirCierreCaja(ticket: CierreCajaTicket): Promise<ResultadoImpresion> {
+    if (!this.enabled()) {
+      return this.resultadoVistaPreviaDemo(buildCierreCajaPreviewHtml(ticket));
+    }
     let buffer: Buffer;
     try {
       buffer = await buildCierreCajaEscPos(ticket, this.charWidth());
@@ -229,6 +235,9 @@ export class ComandaPrinterService {
 
   /** Comprobante de base de caja al abrir el día. */
   async imprimirBaseCaja(ticket: BaseCajaTicket): Promise<ResultadoImpresion> {
+    if (!this.enabled()) {
+      return this.resultadoVistaPreviaDemo(buildBaseCajaPreviewHtml(ticket));
+    }
     let buffer: Buffer;
     try {
       buffer = await buildBaseCajaEscPos(ticket, this.charWidth());
@@ -244,6 +253,9 @@ export class ComandaPrinterService {
   async imprimirBaseCajaCierre(
     ticket: BaseCajaCierreTicket,
   ): Promise<ResultadoImpresion> {
+    if (!this.enabled()) {
+      return this.resultadoVistaPreviaDemo(buildBaseCajaCierrePreviewHtml(ticket));
+    }
     let buffer: Buffer;
     try {
       buffer = await buildBaseCajaCierreEscPos(ticket, this.charWidth());
@@ -259,6 +271,9 @@ export class ComandaPrinterService {
   async imprimirMovimientoCaja(
     ticket: MovimientoCajaTicket,
   ): Promise<ResultadoImpresion> {
+    if (!this.enabled()) {
+      return this.resultadoVistaPreviaDemo(buildMovimientoCajaPreviewHtml(ticket));
+    }
     let buffer: Buffer;
     try {
       buffer = await buildMovimientoCajaEscPos(ticket, this.charWidth());

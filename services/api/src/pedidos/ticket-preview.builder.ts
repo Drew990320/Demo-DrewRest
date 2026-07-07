@@ -15,6 +15,13 @@ import {
   restaurantTextoPropinaTicket,
 } from '../common/restaurant-branding';
 import { lineasTicketExcesoCobro } from '@la-reserva/shared-domain/factura-vuelto';
+import { DREWTECH_SOPORTE_TELEFONO_LABEL } from '@la-reserva/shared-domain/impresion-soporte';
+import type {
+  BaseCajaCierreTicket,
+  BaseCajaTicket,
+  CierreCajaTicket,
+  MovimientoCajaTicket,
+} from './cierre-caja-ticket';
 
 function formatCop(n: number): string {
   return new Intl.NumberFormat('es-CO', {
@@ -40,6 +47,15 @@ function fechaTicket(iso: string): string {
     dateStyle: 'medium',
     timeStyle: 'short',
   });
+}
+
+function bloqueDemoDrewTech(): string {
+  return `<div class="demo-info center muted">
+<div class="bold">DEMO SIN IMPRESORA POS</div>
+<div>Para activar impresión térmica en tu restaurante,</div>
+<div>contacta a DrewTech</div>
+<div class="bold">Tel: ${escapeHtml(DREWTECH_SOPORTE_TELEFONO_LABEL)}</div>
+</div>`;
 }
 
 function wrapThermalPreviewHtml(titulo: string, cuerpo: string): string {
@@ -114,16 +130,91 @@ function wrapThermalPreviewHtml(titulo: string, cuerpo: string): string {
       font-weight: bold;
       margin: 4px 0;
     }
+    .demo-info {
+      font-size: 10px;
+      line-height: 1.4;
+      margin: 4px 0;
+    }
   </style>
 </head>
 <body>
   <div class="no-print">
     <button type="button" onclick="window.print()">Guardar como PDF / Imprimir</button>
-    <p>Vista previa demo — ticket POS 58 mm (sin impresora térmica)</p>
+    <p>Vista previa demo — ticket POS 58 mm</p>
   </div>
-  <div class="ticket">${cuerpo}</div>
+  <div class="ticket">
+    ${bloqueDemoDrewTech()}
+    <div class="sep"></div>
+    ${cuerpo}
+    <div class="sep"></div>
+    ${bloqueDemoDrewTech()}
+  </div>
 </body>
 </html>`;
+}
+
+/** Vista previa genérica con líneas de texto (cierre, movimientos de caja, etc.). */
+export function buildTextoLineasPreviewHtml(
+  titulo: string,
+  lineas: string[],
+): string {
+  const cuerpo = [
+    `<div class="center bold">${escapeHtml(titulo)}</div>`,
+    '<div class="sep"></div>',
+    ...lineas.map((l) => `<div>${escapeHtml(l)}</div>`),
+  ].join('');
+  return wrapThermalPreviewHtml(titulo, cuerpo);
+}
+
+export function buildBaseCajaPreviewHtml(ticket: BaseCajaTicket): string {
+  return buildTextoLineasPreviewHtml('BASE DE CAJA', [
+    `Fecha: ${ticket.fecha}`,
+    `Base efectivo: ${formatCop(ticket.monto_base_efectivo)}`,
+    `Registrado: ${fechaTicket(ticket.emitida_en)}`,
+  ]);
+}
+
+export function buildBaseCajaCierrePreviewHtml(
+  ticket: BaseCajaCierreTicket,
+): string {
+  const lineas = [
+    `Fecha: ${ticket.fecha}`,
+    `Cierre efectivo contado: ${formatCop(ticket.monto_base_cierre_efectivo)}`,
+  ];
+  if (ticket.efectivo_esperado_en_caja != null) {
+    lineas.push(
+      `Efectivo esperado en caja: ${formatCop(ticket.efectivo_esperado_en_caja)}`,
+    );
+  }
+  lineas.push(`Registrado: ${fechaTicket(ticket.emitida_en)}`);
+  return buildTextoLineasPreviewHtml('ARQUEO DE CIERRE', lineas);
+}
+
+export function buildMovimientoCajaPreviewHtml(
+  ticket: MovimientoCajaTicket,
+): string {
+  const etiqueta =
+    ticket.tipo === 'entrada_manual' ? 'ENTRADA DE CAJA' : 'SALIDA DE CAJA';
+  return buildTextoLineasPreviewHtml(etiqueta, [
+    `Fecha: ${ticket.fecha}`,
+    `Monto: ${formatCop(ticket.monto)}`,
+    `Motivo: ${ticket.motivo}`,
+    `Registrado por: ${ticket.registrado_por}`,
+    `Impreso: ${fechaTicket(ticket.emitida_en)}`,
+  ]);
+}
+
+export function buildCierreCajaPreviewHtml(ticket: CierreCajaTicket): string {
+  return buildTextoLineasPreviewHtml('CIERRE DE CAJA', [
+    `Fecha: ${ticket.fecha}`,
+    `Total facturado: ${formatCop(ticket.total_facturado)}`,
+    `Facturas: ${ticket.total_facturas}`,
+    `Base efectivo: ${formatCop(ticket.monto_base_efectivo)}`,
+    `Ventas efectivo: ${formatCop(ticket.totales_por_metodo.efectivo)}`,
+    `Ventas transferencia: ${formatCop(ticket.totales_por_metodo.transferencia)}`,
+    `Efectivo esperado en caja: ${formatCop(ticket.efectivo_esperado_en_caja)}`,
+    `Impreso: ${fechaTicket(ticket.emitida_en)}`,
+  ]);
 }
 
 /** HTML estilo ticket térmico para comanda de cocina. */
