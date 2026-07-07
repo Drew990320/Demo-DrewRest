@@ -1,6 +1,7 @@
 import { api } from './api';
 import { alertarSiSinPapel } from './alarma-impresora';
 import { showAppDialog, showNotice } from './app-dialog';
+import { mensajeImpresionFallidaTrasAccion } from './impresion-resultado';
 import { manejarErrorAccion } from './recurso-disponible';
 
 export type PasarCocinaPedidoResponse = {
@@ -31,7 +32,13 @@ function esSinPlatosNuevosCocina(error: unknown): boolean {
   return /no hay platos nuevos/i.test(msg);
 }
 
-/** Envía platos pendientes a cocina e imprime comanda si aplica. */
+function mensajeExitoCocina(esAdicional?: boolean): string {
+  return esAdicional
+    ? 'Platos adicionales enviados a cocina (solo los nuevos en la comanda).'
+    : 'Platos enviados a cocina.';
+}
+
+/** Envía platos pendientes a cocina. En demo no llama a la impresora POS. */
 export async function pasarCocinaPedido(
   idPedido: number,
   token: string | null,
@@ -94,9 +101,15 @@ export async function pasarCocinaPedido(
         'success',
       );
     } else if (res.error_impresion) {
-      const msg = res.es_adicional
-        ? `Los platos adicionales ya están en cocina.\n\nImpresora: ${res.error_impresion}`
-        : `Los platos ya están en cocina.\n\nImpresora: ${res.error_impresion}`;
+      const msg = mensajeImpresionFallidaTrasAccion(
+        {
+          error: res.error_impresion,
+          codigo_error: res.codigo_error_impresion,
+        },
+        res.es_adicional
+          ? 'Los platos adicionales ya están en cocina.'
+          : 'Los platos ya están en cocina.',
+      );
       await showAppDialog({
         title: res.es_adicional
           ? 'Adicional en cocina (sin imprimir)'
@@ -116,6 +129,8 @@ export async function pasarCocinaPedido(
             : []),
         ],
       });
+    } else {
+      await showNotice('Cocina', mensajeExitoCocina(res.es_adicional), 'success');
     }
 
     return { enviado: true, response: res };

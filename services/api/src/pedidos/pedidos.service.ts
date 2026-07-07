@@ -382,6 +382,37 @@ export class PedidosService {
     }, 'factura', idPedido);
   }
 
+  /** En producción encola; en demo devuelve vista previa HTML de inmediato. */
+  private async imprimirFacturaEnRespuesta(
+    ticket: FacturaTicket,
+    idPedido: number,
+    conCopia = false,
+  ): Promise<ResultadoImpresion> {
+    if (this.comandaPrinter.isEnabled()) {
+      return this.encolarImpresionFactura(ticket, idPedido, conCopia);
+    }
+    const negocio = await this.comandaPrinter.imprimirFactura({
+      ...ticket,
+      copia_destinatario: conCopia ? 'negocio' : undefined,
+    });
+    if (!conCopia) {
+      this.emitirAlertaImpresora(negocio, 'factura', idPedido);
+      return negocio;
+    }
+    const cliente = await this.comandaPrinter.imprimirFactura({
+      ...ticket,
+      copia_destinatario: 'cliente',
+    });
+    const imp = cliente.preview_html
+      ? {
+          ...cliente,
+          error: 'Vista previa demo (copia cliente; negocio también disponible)',
+        }
+      : negocio;
+    this.emitirAlertaImpresora(imp, 'factura', idPedido);
+    return imp;
+  }
+
   estadoImpresora() {
     return this.comandaPrinter.consultarEstadoPapel();
   }
@@ -5082,7 +5113,9 @@ export class PedidosService {
     const pedidoSerializado = this.serializarPedido(pedido);
 
     this.emit(idPedido, pedido.idMesa, pedido.idUsuario);
-    const impresion = this.encolarImpresionComanda(comanda, idPedido);
+    const impresion = this.comandaPrinter.isEnabled()
+      ? this.encolarImpresionComanda(comanda, idPedido)
+      : { impreso: false, omitido: true };
 
     return {
       ok: true,
@@ -5345,7 +5378,7 @@ export class PedidosService {
     );
 
     const conCopia = dto.factura_con_copia === true;
-    const impresion = this.encolarImpresionFactura(
+    const impresion = await this.imprimirFacturaEnRespuesta(
       ticket,
       idPedido,
       conCopia,
@@ -6820,7 +6853,7 @@ export class PedidosService {
     const impresionFactura =
       dto.imprimir_factura === false
         ? { impreso: false, omitido: true }
-        : this.encolarImpresionFactura(ticketFactura, idPedido, conCopia);
+        : await this.imprimirFacturaEnRespuesta(ticketFactura, idPedido, conCopia);
 
     return {
       ...completo,
@@ -7362,7 +7395,7 @@ export class PedidosService {
     const impresionFactura =
       dto.imprimir_factura === false
         ? { impreso: false, omitido: true }
-        : this.encolarImpresionFactura(ticketFactura, idPedido, conCopia);
+        : await this.imprimirFacturaEnRespuesta(ticketFactura, idPedido, conCopia);
 
     return {
       ...completo,

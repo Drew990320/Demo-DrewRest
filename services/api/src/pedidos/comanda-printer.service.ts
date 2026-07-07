@@ -13,6 +13,10 @@ import { loadSerialPortClass } from './serialport-loader';
 import { printRawWindows } from './windows-raw-print';
 import { consultarPapelWindows } from './windows-printer-status';
 import { mensajeImpresionRequiereDrewTech } from '@la-reserva/shared-domain/impresion-soporte';
+import {
+  buildComandaPreviewHtml,
+  buildFacturaPreviewHtml,
+} from './ticket-preview.builder';
 
 const DEFAULT_CHARS = 32;
 
@@ -32,6 +36,8 @@ export type ResultadoImpresion = {
   omitido?: boolean;
   /** Ticket encolado; la impresión continúa en segundo plano. */
   en_cola?: boolean;
+  /** Vista previa HTML del ticket POS (demo sin impresora). */
+  preview_html?: string;
 };
 
 @Injectable()
@@ -44,6 +50,11 @@ export class ComandaPrinterService {
   private impresionRapida = false;
 
   constructor(private readonly config: ConfigService) {}
+
+  /** Indica si la impresora térmica está activa en este servidor. */
+  isEnabled(): boolean {
+    return this.enabled();
+  }
 
   private enabled(): boolean {
     const v = this.config.get<string>('PRINTER_ENABLED');
@@ -148,6 +159,14 @@ export class ComandaPrinterService {
 
   /** Imprime comanda ESC/POS 58 mm. Prueba varios destinos hasta que uno funcione. */
   async imprimirComanda(ticket: ComandaTicket): Promise<ResultadoImpresion> {
+    if (!this.enabled()) {
+      return {
+        impreso: false,
+        codigo_error: 'no_disponible',
+        error: 'Vista previa demo (sin impresora POS)',
+        preview_html: buildComandaPreviewHtml(ticket),
+      };
+    }
     let buffer: Buffer;
     try {
       buffer = await buildComandaEscPos(ticket, this.charWidth());
@@ -161,6 +180,14 @@ export class ComandaPrinterService {
 
   /** Imprime cuenta/factura con detalle y precios. */
   async imprimirFactura(ticket: FacturaTicket): Promise<ResultadoImpresion> {
+    if (!this.enabled()) {
+      return {
+        impreso: false,
+        codigo_error: 'no_disponible',
+        error: 'Vista previa demo (sin impresora POS)',
+        preview_html: buildFacturaPreviewHtml(ticket),
+      };
+    }
     let buffer: Buffer;
     try {
       buffer = await buildFacturaEscPos(ticket, this.charWidth());

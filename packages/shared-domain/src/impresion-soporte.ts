@@ -19,6 +19,7 @@ export function esErrorImpresionNoDisponible(res: {
   return (
     err.includes('deshabilitada') ||
     err.includes('printer_enabled') ||
-    err.includes('no está disponible en esta demo')
+    err.includes('no está disponible en esta demo') ||
+    err.includes('vista previa demo')
   );
 }

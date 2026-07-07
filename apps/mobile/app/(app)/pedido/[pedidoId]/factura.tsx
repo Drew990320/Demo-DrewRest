@@ -45,6 +45,7 @@ import { api } from '../../../../src/lib/api';
 import { AccionIcon, PedidoIcon } from '../../../../src/lib/app-icons';
 import { alertarSiSinPapel } from '../../../../src/lib/alarma-impresora';
 import { notificarResultadoImpresion, mensajeImpresionFallidaTrasAccion } from '../../../../src/lib/impresion-resultado';
+import { notificarVistaPreviaDemo } from '../../../../src/lib/ticket-preview';
 import { showAppDialog, showNotice, confirmAppDialog } from '../../../../src/lib/app-dialog';
 import {
   digitsFromMonto,
@@ -1955,9 +1956,18 @@ export default function FacturaScreen() {
 
       await showNotice(
         debeQuedarEnFactura ? 'Cobro parcial registrado' : 'Cobro registrado',
-        imp?.error ? `${msgExito}\n\nFactura: ${imp.error}` : msgExito,
-        imp?.error ? 'warning' : 'success',
+        msgExito,
+        'success',
       );
+      if (imp?.preview_html) {
+        await notificarVistaPreviaDemo(imp.preview_html, 'Vista previa de la factura');
+      } else if (imp?.error) {
+        await showNotice(
+          'Factura sin imprimir',
+          imp.error,
+          'warning',
+        );
+      }
       setRecibeDigits('');
       setMixtoTransferenciaEstandarDigits('');
       setMixtoTransferenciaDigits('');
@@ -2684,6 +2694,16 @@ export default function FacturaScreen() {
           'success',
         );
       } else if (imp?.error) {
+        if (imp.preview_html) {
+          await showNotice(
+            quedaPendiente ? 'Cobro parcial registrado' : 'Cobro registrado',
+            'El pago quedó guardado.',
+            'success',
+          );
+          await notificarVistaPreviaDemo(imp.preview_html, 'Vista previa de la factura');
+          await continuarTrasCobro();
+          return;
+        }
         await showAppDialog({
           title: quedaPendiente ? 'Cobro parcial (sin imprimir)' : 'Cobro registrado (sin imprimir)',
           message: mensajeImpresionFallidaTrasAccion(
