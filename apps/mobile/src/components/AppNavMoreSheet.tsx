@@ -52,7 +52,7 @@ export function AppNavMoreSheet({
       label: 'Descuentos y promociones',
       href: '/(app)/descuentos-promociones',
     },
-    { key: 'creditos', label: 'Créditos / fiados', href: '/(app)/creditos' },
+    { key: 'creditos', label: 'Créditos', href: '/(app)/creditos' },
     { key: 'personalizacion', label: 'Personalización visual', href: '/(app)/personalizacion-visual' },
     { key: 'configuracion', label: 'Configuración', href: '/(app)/configuracion' },
     { key: 'conexion', label: 'Conexión móvil', href: '/(app)/conexion-movil' },

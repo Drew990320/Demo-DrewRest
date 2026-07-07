@@ -133,7 +133,7 @@ const NAV_LABELS: Record<NavIconKey, string> = {
   categorias: 'Categorías',
   mesas_admin: 'Gestionar mesas',
   descuentos_promociones: 'Descuentos y promociones',
-  creditos: 'Créditos / fiados',
+  creditos: 'Créditos',
   configuracion: 'Configuración',
   conexion: 'Conexión móvil',
   permisos: 'Permisos',

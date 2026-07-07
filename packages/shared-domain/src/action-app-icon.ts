@@ -45,6 +45,7 @@ export const ACTION_ICON_KEYS = [
   'pago_efectivo',
   'pago_transferencia',
   'pago_mixto',
+  'pago_credito',
 ] as const;
 
 export type ActionIconKey = (typeof ACTION_ICON_KEYS)[number];
@@ -93,6 +94,7 @@ export const ACTION_ICON_DEFAULTS: Record<ActionIconKey, NavAppIconId> = {
   pago_efectivo: 'wallet-outline',
   pago_transferencia: 'swap-horizontal-outline',
   pago_mixto: 'layers-outline',
+  pago_credito: 'card-outline',
 };
 
 export const ACTION_ICON_SECCIONES: {
@@ -161,7 +163,7 @@ export const ACTION_ICON_SECCIONES: {
   },
   {
     titulo: 'Métodos de pago',
-    keys: ['pago_efectivo', 'pago_transferencia', 'pago_mixto'],
+    keys: ['pago_efectivo', 'pago_transferencia', 'pago_mixto', 'pago_credito'],
   },
 ];
 
@@ -209,6 +211,7 @@ export const ACTION_ICON_LABELS: Record<ActionIconKey, string> = {
   pago_efectivo: 'Pago efectivo',
   pago_transferencia: 'Pago transferencia',
   pago_mixto: 'Pago mixto',
+  pago_credito: 'Pago crédito',
 };
 
 export function resolverIconoAccion(

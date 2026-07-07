@@ -6559,6 +6559,19 @@ export class PedidosService {
     if (pedido.detalles.length === 0) {
       throw new BadRequestException('No hay ítems en el pedido');
     }
+    if (dto.metodo_pago === 'credito') {
+      const nombre = dto.nombre_cliente_credito?.trim();
+      if (!nombre) {
+        throw new BadRequestException(
+          'Indica el nombre del cliente para registrar el crédito',
+        );
+      }
+      if (dto.cobro_mixto_grupo != null) {
+        throw new BadRequestException(
+          'El crédito no se combina con pago mixto en la misma factura',
+        );
+      }
+    }
 
     let solicitudes = this.prepararSolicitudesCobro(pedido, dto);
     let pedidoParaCobro = pedido;
@@ -6755,6 +6768,21 @@ export class PedidosService {
           },
         });
         idFacturaCreada = factura.idFactura;
+
+        if (dto.metodo_pago === 'credito') {
+          await tx.cuentaCredito.create({
+            data: {
+              idPedido,
+              idFactura: factura.idFactura,
+              nombreCliente: dto.nombre_cliente_credito!.trim(),
+              telefono: dto.telefono_credito?.trim() || null,
+              montoTotal: total,
+              saldoPendiente: total,
+              notas: dto.notas_credito?.trim() || null,
+              idUsuario,
+            },
+          });
+        }
 
         for (const s of solicitudes) {
           const det = detallesPorId.get(s.id_detalle);

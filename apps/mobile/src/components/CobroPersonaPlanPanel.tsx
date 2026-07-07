@@ -214,6 +214,7 @@ export function CobroPersonaPlanPanel({
       <MetodoPagoSelector
         metodo={metodo}
         onMetodoChange={onMetodoChange}
+        opciones={['efectivo', 'transferencia', 'mixto']}
         disabled={busy}
         pendiente={sinMetodo}
       />

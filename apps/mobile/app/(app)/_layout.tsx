@@ -135,7 +135,7 @@ export default function AppGroupLayout() {
         name="descuentos-promociones"
         options={{ title: 'Descuentos y promociones' }}
       />
-      <Stack.Screen name="creditos" options={{ title: 'Créditos / fiados' }} />
+      <Stack.Screen name="creditos" options={{ title: 'Créditos' }} />
       <Stack.Screen
         name="configuracion"
         options={{ title: 'Configuración' }}

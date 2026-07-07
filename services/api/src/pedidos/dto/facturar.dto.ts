@@ -1,10 +1,10 @@
-import { IsBoolean, IsIn, IsInt, IsOptional, IsArray, Max, Min, ValidateNested } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsOptional, IsArray, IsString, Max, Min, MinLength, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { DetalleCobroDto } from './detalle-cobro.dto';
 
 export class FacturarDto {
-  @IsIn(['efectivo', 'transferencia'])
-  metodo_pago!: 'efectivo' | 'transferencia';
+  @IsIn(['efectivo', 'transferencia', 'credito'])
+  metodo_pago!: 'efectivo' | 'transferencia' | 'credito';
 
   /** Si es false, registra el cobro pero no imprime ticket en la POS. */
   @IsOptional()
@@ -92,4 +92,18 @@ export class FacturarDto {
   @IsOptional()
   @IsIn(['efectivo', 'transferencia', 'domicilio', 'mesero'])
   devolucion_exceso_metodo?: 'efectivo' | 'transferencia' | 'domicilio' | 'mesero';
+
+  /** Cliente que queda debiendo (solo metodo_pago = credito). */
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  nombre_cliente_credito?: string;
+
+  @IsOptional()
+  @IsString()
+  telefono_credito?: string;
+
+  @IsOptional()
+  @IsString()
+  notas_credito?: string;
 }

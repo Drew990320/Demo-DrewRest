@@ -24,6 +24,7 @@ const LABEL_CORTA: Record<MetodoPagoUi, string> = {
   efectivo: 'Efectivo',
   transferencia: 'Transf.',
   mixto: 'Mixto',
+  credito: 'Crédito',
 };
 
 export function MetodoPagoSelector({

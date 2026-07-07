@@ -120,8 +120,8 @@ export default function CreditosScreen() {
       contentContainerStyle={[styles.pad, { paddingBottom: listBottomPad }]}
     >
       <Text style={styles.intro}>
-        Cuentas por cobrar de clientes que quedaron debiendo. Registra abonos cuando
-        paguen. (Desde factura podrás crear un crédito en la siguiente iteración.)
+        Cuentas por cobrar de clientes. Al cobrar una factura con método Crédito se
+        crea automáticamente una cuenta aquí. Registra abonos cuando paguen.
       </Text>
 
       {cuentas.length === 0 ? (

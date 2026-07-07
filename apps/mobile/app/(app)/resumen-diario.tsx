@@ -247,6 +247,7 @@ function metodoPagoLabel(m: string): string {
   if (m === 'efectivo') return 'Efectivo';
   if (m === 'transferencia') return 'Transferencia';
   if (m === 'mixto') return 'Pago mixto';
+  if (m === 'credito') return 'Crédito';
   return m;
 }
 

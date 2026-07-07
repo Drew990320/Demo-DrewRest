@@ -21,7 +21,7 @@ export type FacturaTicket = {
   descuento_promociones: number;
   promociones_desglose?: { etiqueta: string; monto: number }[];
   total: number;
-  metodo_pago?: 'efectivo' | 'transferencia' | 'tarjeta' | 'mixto';
+  metodo_pago?: 'efectivo' | 'transferencia' | 'tarjeta' | 'mixto' | 'credito';
   emitida_en: string;
   /** Marca visual en el ticket impreso (no altera datos de la factura). */
   es_reimpresion?: boolean;
@@ -67,6 +67,7 @@ export function labelMetodoPago(
   if (mp === 'efectivo') return 'Efectivo';
   if (mp === 'transferencia') return 'Transferencia';
   if (mp === 'tarjeta') return 'Tarjeta';
+  if (mp === 'credito') return 'Crédito';
   if (mp === 'mixto') return 'Pago mixto';
   return mp;
 }

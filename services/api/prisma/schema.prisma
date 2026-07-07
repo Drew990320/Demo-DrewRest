@@ -28,6 +28,7 @@ enum MetodoPago {
   efectivo
   tarjeta
   transferencia
+  credito
 }
 
 enum MetodoDevolucionExceso {

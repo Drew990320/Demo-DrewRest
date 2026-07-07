@@ -117,6 +117,7 @@ import {
 } from '../../../../src/lib/factura-cobro-plan';
 import {
   METODO_PAGO_LABEL,
+  METODOS_PAGO,
   type MetodoPagoUi,
 } from '../../../../src/lib/metodo-pago-ui';
 import { RouteRecoveryScreen } from '../../../../src/components/RouteRecoveryScreen';
@@ -359,6 +360,9 @@ export default function FacturaScreen() {
   const [facturaConCopia, setFacturaConCopia] = useState(false);
   const [enviarPorCorreo, setEnviarPorCorreo] = useState(false);
   const [emailCliente, setEmailCliente] = useState('');
+  const [creditoNombreCliente, setCreditoNombreCliente] = useState('');
+  const [creditoTelefono, setCreditoTelefono] = useState('');
+  const [creditoNotas, setCreditoNotas] = useState('');
   const { online } = useNetwork();
   const [showCierreAnulacionModal, setShowCierreAnulacionModal] = useState(false);
   const [revertirTandaIdFactura, setRevertirTandaIdFactura] = useState<number | null>(
@@ -1513,7 +1517,8 @@ export default function FacturaScreen() {
         totalCobrar,
         montoTransferenciaSolo,
         devolucionExcesoMetodo,
-      ));
+      )) ||
+    (metodo === 'credito' && !creditoNombreCliente.trim());
   const deshabilitarCobro =
     bloqueaCobroEstandar || (Boolean(metodo) && cobroEstandarIncompleto);
   // Combinado: con plan congelado ya no se piden ítems; solo la cuota de la persona.
@@ -2577,6 +2582,16 @@ export default function FacturaScreen() {
       );
       return;
     }
+    if (metodo === 'credito') {
+      if (
+        await avisarSiFaltanObligatorios(
+          [{ etiqueta: 'Nombre del cliente', valor: creditoNombreCliente }],
+          showNotice,
+        )
+      ) {
+        return;
+      }
+    }
     setBusy(true);
     try {
       const pFresh = await loadPedidoFresh();
@@ -2609,6 +2624,12 @@ export default function FacturaScreen() {
         );
       } else if (metodo === 'efectivo') {
         anexarCobroEfectivoRecibido(body, recibeDigits);
+      } else if (metodo === 'credito') {
+        body.nombre_cliente_credito = creditoNombreCliente.trim();
+        const tel = creditoTelefono.trim();
+        const notas = creditoNotas.trim();
+        if (tel) body.telefono_credito = tel;
+        if (notas) body.notas_credito = notas;
       }
       const res = await api<{
         cobro_completo?: boolean;
@@ -2634,6 +2655,8 @@ export default function FacturaScreen() {
       );
       const imp = res.impresion_factura;
       const quedaPendiente = res.cobro_completo === false;
+      const sufijoCredito =
+        metodo === 'credito' ? ' El crédito quedó registrado en Cuentas por cobrar.' : '';
 
       const continuarTrasCobro = async () => {
       if (quedaPendiente) {
@@ -2674,13 +2697,13 @@ export default function FacturaScreen() {
       if (imp?.omitido || !imprimirFactura) {
         await showNotice(
           quedaPendiente ? 'Cobro parcial registrado' : 'Cobro registrado',
-          'El pago quedó guardado sin imprimir factura.',
+          `El pago quedó guardado sin imprimir factura.${sufijoCredito}`,
           'success',
         );
       } else if (imp?.en_cola) {
         await showNotice(
           quedaPendiente ? 'Cobro parcial registrado' : 'Cobro registrado',
-          'El pago quedó guardado. La factura se imprime en cola.',
+          `El pago quedó guardado. La factura se imprime en cola.${sufijoCredito}`,
           'success',
         );
       } else if (imp?.impreso) {
@@ -2689,7 +2712,7 @@ export default function FacturaScreen() {
           : '';
         await showNotice(
           quedaPendiente ? 'Cobro parcial registrado' : 'Cobro registrado',
-          `Factura impresa${copiaMsg} (${imp.destino ?? 'impresora'}).`,
+          `Factura impresa${copiaMsg} (${imp.destino ?? 'impresora'}).${sufijoCredito}`,
           'success',
         );
       } else if (imp?.error) {
@@ -2726,7 +2749,7 @@ export default function FacturaScreen() {
       } else {
         await showNotice(
           quedaPendiente ? 'Cobro parcial registrado' : 'Cobro registrado',
-          'El pago quedó guardado correctamente.',
+          `El pago quedó guardado correctamente.${sufijoCredito}`,
           'success',
         );
       }
@@ -3441,12 +3464,16 @@ export default function FacturaScreen() {
           >
             <MetodoPagoSelector
               metodo={metodo}
+              opciones={METODOS_PAGO}
               onMetodoChange={(m) => {
                 setMetodo(m);
                 setRecibeDigits('');
                 setMixtoTransferenciaEstandarDigits('');
                 setTransferenciaSoloDigits('');
                 setDevolucionExcesoMetodo(null);
+                setCreditoNombreCliente('');
+                setCreditoTelefono('');
+                setCreditoNotas('');
               }}
               disabled={busy}
               pendiente={!metodo}
@@ -3482,6 +3509,47 @@ export default function FacturaScreen() {
                 fieldLabelStyle={styles.cobroFieldLabel}
                 inputStyle={styles.input}
               />
+            ) : null}
+
+            {metodo === 'credito' ? (
+              <View style={styles.efectivoBox}>
+                <Text style={styles.cobroFieldHint}>
+                  El total queda como deuda del cliente. Podrás registrar abonos en
+                  Créditos.
+                </Text>
+                <Text style={styles.cobroFieldLabel}>Nombre del cliente *</Text>
+                <TextInput
+                  style={[styles.input, formStyles.input]}
+                  value={creditoNombreCliente}
+                  onChangeText={setCreditoNombreCliente}
+                  placeholder="Nombre completo"
+                  placeholderTextColor={colors.textMuted}
+                  editable={!busy}
+                  maxLength={120}
+                />
+                <Text style={styles.cobroFieldLabel}>Teléfono (opcional)</Text>
+                <TextInput
+                  style={[styles.input, formStyles.input]}
+                  value={creditoTelefono}
+                  onChangeText={setCreditoTelefono}
+                  placeholder="300 123 4567"
+                  placeholderTextColor={colors.textMuted}
+                  keyboardType="phone-pad"
+                  editable={!busy}
+                  maxLength={30}
+                />
+                <Text style={styles.cobroFieldLabel}>Notas (opcional)</Text>
+                <TextInput
+                  style={[styles.input, formStyles.input]}
+                  value={creditoNotas}
+                  onChangeText={setCreditoNotas}
+                  placeholder="Referencia o acuerdo"
+                  placeholderTextColor={colors.textMuted}
+                  editable={!busy}
+                  multiline
+                  maxLength={300}
+                />
+              </View>
             ) : null}
 
             {metodo === 'efectivo' ? (
