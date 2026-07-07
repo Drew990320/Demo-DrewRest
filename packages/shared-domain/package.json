@@ -78,6 +78,10 @@
       "types": "./dist/email-mesero.d.ts",
       "default": "./dist/email-mesero.js"
     },
+    "./impresion-soporte": {
+      "types": "./dist/impresion-soporte.d.ts",
+      "default": "./dist/impresion-soporte.js"
+    },
     "./orden-lineas-pedido": {
       "types": "./dist/orden-lineas-pedido.d.ts",
       "default": "./dist/orden-lineas-pedido.js"

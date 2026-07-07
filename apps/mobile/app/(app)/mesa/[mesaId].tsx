@@ -25,6 +25,7 @@ import { IconTooltipButton } from '../../../src/components/IconTooltipButton';
 import { api } from '../../../src/lib/api';
 import { deleteOfflineCache } from '../../../src/lib/offline-cache';
 import { alertarSiSinPapel } from '../../../src/lib/alarma-impresora';
+import { notificarResultadoImpresion, mensajeImpresionFallidaTrasAccion } from '../../../src/lib/impresion-resultado';
 import {
   confirmAppDialog,
   showAppDialog,
@@ -365,20 +366,14 @@ export default function MesaDetailScreen() {
       if (alertarSiSinPapel(res)) {
         return;
       }
-      const imp = res.impresion_comanda;
-      if (imp?.impreso) {
-        await showNotice(
-          'Comanda reimpresa',
-          `Ticket impreso (${imp.destino ?? 'impresora'}). Marca REIMPRESIÓN en el papel.`,
-          'success',
-        );
-      } else {
-        await showNotice(
-          'Sin imprimir',
-          imp?.error ?? 'No se pudo reimprimir la comanda de cocina.',
-          'error',
-        );
-      }
+      await notificarResultadoImpresion(
+        res.impresion_comanda,
+        {
+          titulo: 'Comanda reimpresa',
+          mensaje: `Ticket impreso (${res.impresion_comanda?.destino ?? 'impresora'}). Marca REIMPRESIÓN en el papel.`,
+        },
+        { titulo: 'Sin imprimir' },
+      );
     } catch (e) {
       await manejarErrorAccion(e, 'reimprimir la comanda');
     } finally {
@@ -445,9 +440,16 @@ export default function MesaDetailScreen() {
           'success',
         );
       } else if (res.error_impresion) {
-        const msg = res.es_adicional
-          ? `Los platos adicionales ya están en cocina.\n\nImpresora: ${res.error_impresion}`
-          : `Los platos ya están en cocina.\n\nImpresora: ${res.error_impresion}`;
+        const prefijo = res.es_adicional
+          ? 'Los platos adicionales ya están en cocina.'
+          : 'Los platos ya están en cocina.';
+        const msg = mensajeImpresionFallidaTrasAccion(
+          {
+            error: res.error_impresion,
+            codigo_error: res.codigo_error_impresion,
+          },
+          prefijo,
+        );
         await showAppDialog({
           title: res.es_adicional
             ? 'Adicional en cocina (sin imprimir)'

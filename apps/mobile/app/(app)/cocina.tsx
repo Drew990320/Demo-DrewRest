@@ -19,6 +19,7 @@ import { ScreenLoading } from '../../src/components/ScreenLoading';
 import { api } from '../../src/lib/api';
 import { PedidoIcon, AdminIcon } from '../../src/lib/app-icons';
 import { alertarSiSinPapel } from '../../src/lib/alarma-impresora';
+import { notificarResultadoImpresion } from '../../src/lib/impresion-resultado';
 import { showBriefNotice, showNotice } from '../../src/lib/app-dialog';
 import { manejarErrorAccion, manejarErrorOperacion } from '../../src/lib/recurso-disponible';
 import { tituloLugarMesa } from '../../src/lib/mesa-label';
@@ -247,13 +248,13 @@ export default function CocinaScreen() {
       if (alertarSiSinPapel(res)) {
         return;
       }
-      const imp = res.impresion_comanda;
-      await showNotice(
-        imp?.impreso ? 'Comanda reimpresa' : 'Sin imprimir',
-        imp?.impreso
-          ? `Ticket impreso (${imp.destino ?? 'impresora'}).`
-          : imp?.error ?? 'No se pudo imprimir la comanda.',
-        imp?.impreso ? 'success' : 'error',
+      await notificarResultadoImpresion(
+        res.impresion_comanda,
+        {
+          titulo: 'Comanda reimpresa',
+          mensaje: `Ticket impreso (${res.impresion_comanda?.destino ?? 'impresora'}).`,
+        },
+        { titulo: 'Sin imprimir' },
       );
     } catch (e) {
       await manejarErrorAccion(e, 'reimprimir la comanda');

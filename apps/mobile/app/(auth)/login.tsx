@@ -17,6 +17,7 @@ import { useFormShell } from '../../src/hooks/useFormShell';
 import { useResponsive } from '../../src/hooks/useResponsive';
 import { useThemedStyles } from '../../src/hooks/useThemedStyles';
 import { AdminIcon } from '../../src/lib/app-icons';
+import { DREWTECH_SOPORTE_TELEFONO_LABEL } from '@la-reserva/shared-domain/impresion-soporte';
 import { showNotice } from '../../src/lib/app-dialog';
 import { avisarSiFaltanObligatorios } from '../../src/lib/form-validation';
 import { useFormStyles } from '../../src/lib/form-layout';
@@ -55,6 +56,12 @@ function createLoginStyles(c: AppColors) {
     },
     sub: {
       fontSize: 15,
+      color: c.textMuted,
+      marginBottom: 8,
+      textAlign: 'center',
+    },
+    subPhone: {
+      fontSize: 13,
       color: c.textMuted,
       marginBottom: 22,
       textAlign: 'center',
@@ -116,6 +123,7 @@ export default function LoginScreen() {
           <Text style={styles.sub}>
             Sistema interno del restaurante elaborado por DrewTech POS
           </Text>
+          <Text style={styles.subPhone}>Soporte: {DREWTECH_SOPORTE_TELEFONO_LABEL}</Text>
           <TextInput
             style={formStyles.input}
             placeholder="Correo"

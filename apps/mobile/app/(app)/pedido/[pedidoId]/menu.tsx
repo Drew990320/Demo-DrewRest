@@ -26,6 +26,7 @@ import { useMesasVirtuales } from '../../../../src/hooks/useMesasVirtuales';
 import { PedidoIcon } from '../../../../src/lib/app-icons';
 import { mergePedidoRailActions } from '../../../../src/lib/pedido-rail-actions';
 import { alertarSiSinPapel } from '../../../../src/lib/alarma-impresora';
+import { notificarResultadoImpresion } from '../../../../src/lib/impresion-resultado';
 import { confirmAppDialog, showBriefNotice, showNotice } from '../../../../src/lib/app-dialog';
 import { pasarCocinaPedido } from '../../../../src/lib/pasar-cocina-pedido';
 import { categoriaMenuIcon } from '../../../../src/lib/categoria-menu-icon';
@@ -204,13 +205,13 @@ export default function MenuPedidoScreen() {
         token,
       });
       if (alertarSiSinPapel(res)) return;
-      const imp = res.impresion_comanda;
-      await showNotice(
-        imp?.impreso ? 'Comanda reimpresa' : 'Sin imprimir',
-        imp?.impreso
-          ? `Ticket impreso (${imp.destino ?? 'impresora'}). Marca REIMPRESIÓN en el papel.`
-          : imp?.error ?? 'No se pudo reimprimir la comanda de cocina.',
-        imp?.impreso ? 'success' : 'error',
+      await notificarResultadoImpresion(
+        res.impresion_comanda,
+        {
+          titulo: 'Comanda reimpresa',
+          mensaje: `Ticket impreso (${res.impresion_comanda?.destino ?? 'impresora'}). Marca REIMPRESIÓN en el papel.`,
+        },
+        { titulo: 'Sin imprimir' },
       );
     } catch (e) {
       await manejarErrorOperacion(e, {

@@ -34,3 +34,4 @@ export * from './transferencia-pedido';
 export * from './mesa-label';
 export * from './permisos-chef';
 export * from './usuario-display';
+export * from './impresion-soporte';

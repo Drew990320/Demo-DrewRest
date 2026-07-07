@@ -44,6 +44,7 @@ import { ScreenLoading } from '../../../../src/components/ScreenLoading';
 import { api } from '../../../../src/lib/api';
 import { AccionIcon, PedidoIcon } from '../../../../src/lib/app-icons';
 import { alertarSiSinPapel } from '../../../../src/lib/alarma-impresora';
+import { notificarResultadoImpresion, mensajeImpresionFallidaTrasAccion } from '../../../../src/lib/impresion-resultado';
 import { showAppDialog, showNotice, confirmAppDialog } from '../../../../src/lib/app-dialog';
 import {
   digitsFromMonto,
@@ -1640,20 +1641,14 @@ export default function FacturaScreen() {
       if (alertarSiSinPapel(res.impresion_factura ?? {})) {
         return;
       }
-      const imp = res.impresion_factura;
-      if (imp?.impreso) {
-        await showNotice(
-          'Factura reimpresa',
-          `Ticket impreso (${imp.destino ?? 'impresora'}).`,
-          'success',
-        );
-      } else {
-        await showNotice(
-          'Sin imprimir',
-          imp?.error ?? 'No se pudo imprimir.',
-          'error',
-        );
-      }
+      await notificarResultadoImpresion(
+        res.impresion_factura,
+        {
+          titulo: 'Factura reimpresa',
+          mensaje: `Ticket impreso (${res.impresion_factura?.destino ?? 'impresora'}).`,
+        },
+        { titulo: 'Sin imprimir' },
+      );
     } catch (e) {
       await manejarErrorOperacion(e, {
         title: 'No se reimprimió la factura',
@@ -1716,20 +1711,16 @@ export default function FacturaScreen() {
           'El ticket se imprime en cola (puede tardar si hay comandas antes).',
           'success',
         );
-      } else if (imp?.impreso) {
-        const copiaMsg = res.factura_con_copia
-          ? ' (copia negocio y copia cliente)'
-          : '';
-        await showNotice(
-          'Pre-cuenta impresa',
-          `Ticket enviado a la impresora${copiaMsg}. Aún no se ha cobrado.`,
-          'success',
-        );
       } else {
-        await showNotice(
-          'Sin imprimir',
-          imp?.error ?? 'No se pudo imprimir la pre-cuenta.',
-          'error',
+        await notificarResultadoImpresion(
+          imp,
+          {
+            titulo: 'Pre-cuenta impresa',
+            mensaje: `Ticket enviado a la impresora${
+              res.factura_con_copia ? ' (copia negocio y copia cliente)' : ''
+            }. Aún no se ha cobrado.`,
+          },
+          { titulo: 'Sin imprimir' },
         );
       }
     } catch (e) {
@@ -2695,7 +2686,10 @@ export default function FacturaScreen() {
       } else if (imp?.error) {
         await showAppDialog({
           title: quedaPendiente ? 'Cobro parcial (sin imprimir)' : 'Cobro registrado (sin imprimir)',
-          message: `El cobro quedó guardado.\n\nFactura: ${imp.error}`,
+          message: mensajeImpresionFallidaTrasAccion(
+            imp,
+            'El cobro quedó guardado.',
+          ),
           variant: 'warning',
           buttons: [
             {

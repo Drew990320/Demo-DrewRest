@@ -12,6 +12,7 @@ import { consultarPapelSerial } from './escpos-paper-status';
 import { loadSerialPortClass } from './serialport-loader';
 import { printRawWindows } from './windows-raw-print';
 import { consultarPapelWindows } from './windows-printer-status';
+import { mensajeImpresionRequiereDrewTech } from '@la-reserva/shared-domain/impresion-soporte';
 
 const DEFAULT_CHARS = 32;
 
@@ -19,6 +20,7 @@ export type CodigoErrorImpresion =
   | 'sin_papel'
   | 'papel_bajo'
   | 'offline'
+  | 'no_disponible'
   | 'otro';
 
 export type ResultadoImpresion = {
@@ -251,8 +253,8 @@ export class ComandaPrinterService {
     if (!this.enabled()) {
       return {
         impreso: false,
-        error:
-          'Impresora deshabilitada. En api/.env (DrewRest) o services/api/.env pon PRINTER_ENABLED=true',
+        codigo_error: 'no_disponible',
+        error: mensajeImpresionRequiereDrewTech(),
       };
     }
 
@@ -322,7 +324,7 @@ export class ComandaPrinterService {
         destino: null,
         sin_papel: null,
         papel_bajo: null,
-        error: 'Impresora deshabilitada (PRINTER_ENABLED)',
+        error: mensajeImpresionRequiereDrewTech(),
       };
     }
     const targets = this.targets();

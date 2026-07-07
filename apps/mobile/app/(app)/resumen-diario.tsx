@@ -36,6 +36,11 @@ import { AccionIcon, AdminIcon, ResumenIcon } from '../../src/lib/app-icons';
 import { api } from '../../src/lib/api';
 import { alertarSiSinPapel } from '../../src/lib/alarma-impresora';
 import { confirmAppDialog, showNotice } from '../../src/lib/app-dialog';
+import {
+  mensajeImpresionFallidaTrasAccion,
+  notificarResultadoImpresion,
+} from '../../src/lib/impresion-resultado';
+import { esErrorImpresionNoDisponible, mensajeImpresionRequiereDrewTech } from '@la-reserva/shared-domain/impresion-soporte';
 import { manejarErrorAccion, manejarErrorOperacion } from '../../src/lib/recurso-disponible';
 import { digitsFromMonto, parseCOPDigits } from '../../src/lib/cop-input';
 import {
@@ -753,7 +758,7 @@ export default function ResumenDiarioScreen() {
       } else if (imp?.error) {
         await showNotice(
           'Cierre guardado',
-          `Base registrada, pero no se imprimió: ${imp.error}`,
+          mensajeImpresionFallidaTrasAccion(imp, 'Base registrada, pero no se imprimió.'),
           'warning',
         );
       }
@@ -881,10 +886,16 @@ export default function ResumenDiarioScreen() {
       return;
     }
     if (imp?.error) {
+      const titulo =
+        contexto === 'registrar' ? `${etiqueta} registrada` : 'Impresión no disponible';
+      if (esErrorImpresionNoDisponible(imp)) {
+        await showNotice(titulo, mensajeImpresionRequiereDrewTech(), 'warning');
+        return;
+      }
       await showNotice(
         contexto === 'registrar' ? `${etiqueta} registrada` : 'Impresión',
         contexto === 'registrar'
-          ? `${etiqueta} registrada, pero no se imprimió: ${imp.error}`
+          ? mensajeImpresionFallidaTrasAccion(imp, `${etiqueta} registrada, pero no se imprimió.`)
           : `No se pudo imprimir: ${imp.error}`,
         'warning',
       );
@@ -976,7 +987,7 @@ export default function ResumenDiarioScreen() {
       } else if (imp?.error) {
         await showNotice(
           'Caja guardada',
-          `Base registrada, pero no se imprimió: ${imp.error}`,
+          mensajeImpresionFallidaTrasAccion(imp, 'Base registrada, pero no se imprimió.'),
           'warning',
         );
       }
@@ -1048,6 +1059,19 @@ export default function ResumenDiarioScreen() {
         );
         return;
       }
+      if (
+        res.facturas_impresas === 0 &&
+        res.comandas_impresas === 0 &&
+        (res.errores.length === 0 ||
+          esErrorImpresionNoDisponible({ error: res.errores[0] }))
+      ) {
+        await showNotice(
+          'Impresión no disponible',
+          mensajeImpresionRequiereDrewTech(),
+          'warning',
+        );
+        return;
+      }
       const msg = [
         `Comandas: ${res.comandas_impresas} impresa(s)`,
         res.comandas_omitidas > 0
@@ -1090,12 +1114,13 @@ export default function ResumenDiarioScreen() {
         return;
       }
       const imp = res.impresion_cierre;
-      await showNotice(
-        imp?.impreso ? 'Cierre impreso' : 'Sin imprimir',
-        imp?.impreso
-          ? `Ticket de totales del ${data.fecha} enviado a ${imp.destino ?? 'la impresora'}.`
-          : imp?.error ?? 'No se pudo imprimir el cierre.',
-        imp?.impreso ? 'success' : 'error',
+      await notificarResultadoImpresion(
+        imp,
+        {
+          titulo: 'Cierre impreso',
+          mensaje: `Ticket de totales del ${data.fecha} enviado a ${imp?.destino ?? 'la impresora'}.`,
+        },
+        { titulo: 'Sin imprimir', mensaje: imp?.error ?? 'No se pudo imprimir el cierre.' },
       );
     } catch (e) {
       await manejarErrorAccion(e, 'imprimir el cierre');
@@ -1288,16 +1313,19 @@ export default function ResumenDiarioScreen() {
         return;
       }
       const imp = res.impresion_factura;
-      const msg = imp?.impreso
-        ? `Total del pedido #${idPedido} reimpreso (${imp.destino ?? 'impresora'}). Incluye todos los ítems${(res.num_cobros ?? 1) > 1 ? ` y ${res.num_cobros} cobros` : ''}.`
-        : imp?.error
-          ? `No se pudo imprimir: ${imp.error}`
-          : 'No se pudo imprimir el total del pedido.';
-      await showNotice(
-        imp?.impreso ? 'Reimpresión' : 'Sin imprimir',
-        msg,
-        imp?.impreso ? 'success' : 'error',
-      );
+      if (imp?.impreso) {
+        await showNotice(
+          'Reimpresión',
+          `Total del pedido #${idPedido} reimpreso (${imp.destino ?? 'impresora'}). Incluye todos los ítems${(res.num_cobros ?? 1) > 1 ? ` y ${res.num_cobros} cobros` : ''}.`,
+          'success',
+        );
+      } else {
+        await notificarResultadoImpresion(
+          imp,
+          { titulo: 'Reimpresión', mensaje: '' },
+          { titulo: 'Sin imprimir', mensaje: 'No se pudo imprimir el total del pedido.' },
+        );
+      }
     } catch (e) {
       await manejarErrorAccion(e, 'reimprimir el total del pedido');
     } finally {
@@ -1323,16 +1351,19 @@ export default function ResumenDiarioScreen() {
         return;
       }
       const imp = res.impresion_factura;
-      const msg = imp?.impreso
-        ? `Factura reimpresa (${imp.destino ?? 'impresora'}). El ticket indica REIMPRESIÓN.`
-        : imp?.error
-          ? `No se pudo imprimir: ${imp.error}`
-          : 'No se pudo imprimir la factura.';
-      await showNotice(
-        imp?.impreso ? 'Reimpresión' : 'Sin imprimir',
-        msg,
-        imp?.impreso ? 'success' : 'error',
-      );
+      if (imp?.impreso) {
+        await showNotice(
+          'Reimpresión',
+          `Factura reimpresa (${imp.destino ?? 'impresora'}). El ticket indica REIMPRESIÓN.`,
+          'success',
+        );
+      } else {
+        await notificarResultadoImpresion(
+          imp,
+          { titulo: 'Reimpresión', mensaje: '' },
+          { titulo: 'Sin imprimir', mensaje: 'No se pudo imprimir la factura.' },
+        );
+      }
     } catch (e) {
       await manejarErrorAccion(e, 'reimprimir la factura');
     } finally {
@@ -1358,12 +1389,13 @@ export default function ResumenDiarioScreen() {
         return;
       }
       const imp = res.impresion_comanda;
-      await showNotice(
-        imp?.impreso ? 'Comanda reimpresa' : 'Sin imprimir',
-        imp?.impreso
-          ? `Ticket impreso (${imp.destino ?? 'impresora'}).`
-          : imp?.error ?? 'No se pudo imprimir la comanda.',
-        imp?.impreso ? 'success' : 'error',
+      await notificarResultadoImpresion(
+        imp,
+        {
+          titulo: 'Comanda reimpresa',
+          mensaje: `Ticket impreso (${imp?.destino ?? 'impresora'}).`,
+        },
+        { titulo: 'Sin imprimir', mensaje: 'No se pudo imprimir la comanda.' },
       );
     } catch (e) {
       await manejarErrorAccion(e, 'reimprimir la comanda');
@@ -1480,6 +1512,19 @@ export default function ResumenDiarioScreen() {
           'Sin papel',
           'La impresión se detuvo: recargue el rollo en la impresora POS.',
           'error',
+        );
+        return;
+      }
+      if (
+        res.facturas_impresas === 0 &&
+        res.comandas_impresas === 0 &&
+        (res.errores.length === 0 ||
+          esErrorImpresionNoDisponible({ error: res.errores[0] }))
+      ) {
+        await showNotice(
+          'Impresión no disponible',
+          mensajeImpresionRequiereDrewTech(),
+          'warning',
         );
         return;
       }

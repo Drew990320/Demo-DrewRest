@@ -7,6 +7,10 @@ import {
   restaurantTicketPhone,
   restaurantMostrarCreditoDrewTech,
 } from '../common/restaurant-branding';
+import {
+  DREWTECH_SOPORTE_TELEFONO,
+  DREWTECH_SOPORTE_TELEFONO_LABEL,
+} from '@la-reserva/shared-domain/impresion-soporte';
 import { resolverAssetVisualPath } from '../visual/visual-assets.util';
 
 export const DEFAULT_ESC_POS_WIDTH = 32;
@@ -58,8 +62,8 @@ function anchoEscPosPx(width: number, maxWidth: number): number {
   return Math.max(8, Math.floor(capped / 8) * 8);
 }
 
-export const DREWTECH_TELEFONO = '3207964367';
-export const DREWTECH_TELEFONO_LABEL = 'Tel: 320 796 4367';
+export const DREWTECH_TELEFONO = DREWTECH_SOPORTE_TELEFONO;
+export const DREWTECH_TELEFONO_LABEL = `Tel: ${DREWTECH_SOPORTE_TELEFONO_LABEL}`;
 export const DREWTECH_CREDITO_LINEA =
   'Sistema interno del restaurante elaborado por DrewTech POS';
 
