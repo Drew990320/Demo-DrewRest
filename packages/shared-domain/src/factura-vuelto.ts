@@ -25,7 +25,7 @@ export type LineaTicketExcesoCobro = {
 
 export type CalcularDetalleExcesoCobroInput = {
   total: number;
-  metodo: 'efectivo' | 'transferencia' | 'mixto';
+  metodo: 'efectivo' | 'transferencia' | 'mixto' | 'credito';
   monto_recibido_efectivo?: number | null;
   monto_transferencia?: number | null;
   devolucion_exceso_metodo?: DevolucionExcesoMetodo | null;
@@ -128,7 +128,7 @@ export function calcularDetalleExcesoCobro(
   params: CalcularDetalleExcesoCobroInput,
 ): DetalleExcesoCobro | null {
   const t = Math.max(0, Math.round(params.total));
-  if (t <= 0) return null;
+  if (t <= 0 || params.metodo === 'credito') return null;
   const ef = Math.max(0, Math.round(params.monto_recibido_efectivo ?? 0));
   const tr = Math.max(0, Math.round(params.monto_transferencia ?? 0));
   const dev = params.devolucion_exceso_metodo ?? null;
