@@ -44,6 +44,11 @@ services:
         value: "false"
       - key: DEMO_USE_DB_PUSH
         value: "true"
+      - key: PUBLIC_WEB_URL
+        fromService:
+          type: web
+          name: drewrest-demo-web
+          envVarKey: RENDER_EXTERNAL_URL
 
   - type: web
     name: drewrest-demo-web

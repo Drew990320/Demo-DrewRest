@@ -31,7 +31,9 @@ export default function ConexionMovilScreen() {
     <ScreenScroll contentPadding={r.contentPadding}>
       <Text style={[styles.intro, { fontSize: r.fontSize.body }]}>
         Muestra el código QR o comparte la dirección para que los meseros abran La
-        Reserva en el navegador del celular (misma red Wi‑Fi del restaurante).
+        Reserva en el navegador del celular. En el restaurante usan la misma red Wi‑Fi
+        del servidor; en la demo en la nube el QR apunta a la app pública para simular
+        ese flujo.
       </Text>
       <ConexionCelularesCard variant="page" />
     </ScreenScroll>

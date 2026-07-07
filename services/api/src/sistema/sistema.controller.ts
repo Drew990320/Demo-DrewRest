@@ -57,6 +57,31 @@ export class SistemaController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
   conexionCelulares() {
+    const publicWebUrl = process.env.PUBLIC_WEB_URL?.trim().replace(/\/$/, '');
+    const apiBase =
+      process.env.RENDER_EXTERNAL_URL?.trim().replace(/\/$/, '') ||
+      (process.env.PORT
+        ? `http://localhost:${process.env.PORT}`
+        : 'http://localhost:3000');
+
+    if (publicWebUrl) {
+      return {
+        ip: null,
+        adaptador: null,
+        tipo_red: 'demo',
+        puerto_api: Number(process.env.PORT ?? 3000),
+        puerto_web: publicWebUrl.startsWith('https') ? 443 : 80,
+        puerto_web_por_defecto: PUERTO_WEB_POR_DEFECTO,
+        url_api: apiBase,
+        url_web_celular: publicWebUrl,
+        url_web_local: publicWebUrl,
+        health_celular: `${apiBase}/health`,
+        modo_conexion: 'demo_nube' as const,
+        aviso:
+          'Demo en la nube: el QR abre la misma app web pública (simula cómo los meseros entrarían por la red local). En el restaurante real, aquí aparecería la IP Wi‑Fi del PC servidor.',
+      };
+    }
+
     const red = detectarRedLocal();
     const apiPort = Number(process.env.PORT ?? 3000);
     const webPort = leerPuertoWeb();
@@ -81,6 +106,7 @@ export class SistemaController {
       url_web_celular: ip ? `http://${ip}:${webPort}` : null,
       url_web_local: `http://localhost:${webPort}`,
       health_celular: ip ? `http://${ip}:${apiPort}/health` : null,
+      modo_conexion: 'lan' as const,
       aviso: avisos.join(' '),
     };
   }

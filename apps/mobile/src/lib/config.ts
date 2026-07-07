@@ -81,8 +81,21 @@ export function resolveUrlWebCelular(data: {
   ip: string | null;
   url_web_celular: string | null;
   puerto_web: number;
+  modo_conexion?: 'lan' | 'demo_nube';
 } | null): string | null {
-  if (!data?.ip) return data?.url_web_celular ?? null;
+  const urlApi = data?.url_web_celular?.trim().replace(/\/$/, '') ?? null;
+  if (data?.modo_conexion === 'demo_nube' && urlApi) {
+    return urlApi;
+  }
+  if (urlApi && !looksLikePrivateLanUrl(urlApi) && !urlTargetsLocalhost(urlApi)) {
+    return urlApi;
+  }
+
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && !apiIsOnLocalLan()) {
+    return window.location.origin;
+  }
+
+  if (!data?.ip) return urlApi;
 
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
     const { hostname, port, protocol } = window.location;

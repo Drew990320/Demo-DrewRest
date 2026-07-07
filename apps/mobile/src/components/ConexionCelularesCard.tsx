@@ -25,6 +25,7 @@ type ConexionCelulares = {
   url_web_celular: string | null;
   url_web_local: string;
   health_celular: string | null;
+  modo_conexion?: 'lan' | 'demo_nube';
   aviso: string;
 };
 
@@ -78,6 +79,7 @@ export function ConexionCelularesCard({
   if (user?.rol !== 'admin') return null;
 
   const urlCelular = resolveUrlWebCelular(data);
+  const esDemoNube = data?.modo_conexion === 'demo_nube';
   const puertoQr = puertoDesdeUrlWeb(urlCelular);
   const puertoServidor = data?.puerto_web ?? null;
   const usaPuertoDistinto =
@@ -108,9 +110,11 @@ export function ConexionCelularesCard({
             <View style={styles.headText}>
               <Text style={styles.title}>Celulares en la red</Text>
               <Text style={styles.subtitle} numberOfLines={1}>
-                {data?.ip
-                  ? `IP ${data.ip} · puerto ${puertoQr ?? data.puerto_web}`
-                  : 'Toca para ver QR y URL del celular'}
+                {esDemoNube
+                  ? 'Demo en la nube · QR a la app pública'
+                  : data?.ip
+                    ? `IP ${data.ip} · puerto ${puertoQr ?? data.puerto_web}`
+                    : 'Toca para ver QR y URL del celular'}
               </Text>
             </View>
           </View>
@@ -122,9 +126,11 @@ export function ConexionCelularesCard({
           <View style={styles.headText}>
             <Text style={styles.title}>Conexión móvil</Text>
             <Text style={styles.subtitle} numberOfLines={2}>
-              {data?.ip
-                ? `IP ${data.ip} · puerto ${puertoQr ?? data.puerto_web}`
-                : 'Obteniendo la URL para celulares…'}
+              {esDemoNube
+                ? 'Demo en la nube · el QR abre la app pública'
+                : data?.ip
+                  ? `IP ${data.ip} · puerto ${puertoQr ?? data.puerto_web}`
+                  : 'Obteniendo la URL para celulares…'}
             </Text>
           </View>
         </View>
@@ -163,7 +169,9 @@ export function ConexionCelularesCard({
                   <View style={styles.qrSection}>
                     <Text style={styles.label}>Escanea con el celular</Text>
                     <Text style={styles.qrHint}>
-                      Misma red Wi‑Fi · abre la app en el navegador del teléfono
+                      {esDemoNube
+                        ? 'Demo: escanea para abrir la app en el celular (misma URL que en la nube)'
+                        : 'Misma red Wi‑Fi · abre la app en el navegador del teléfono'}
                     </Text>
                     <View style={styles.qrBox}>
                       <QRCode
