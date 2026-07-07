@@ -306,7 +306,7 @@ export default function UsuariosAdminScreen() {
       <FormModal visible={modal} title="Nuevo mesero" onClose={closeModal}>
         <Text style={formStyles.help}>
           El correo de acceso se crea solo a partir del nombre (ej. Juan →
-          juan@lareserva.local). Solo define la contraseña.
+          juan@restaurant.local). Solo define la contraseña.
         </Text>
         <Text style={formStyles.label}>Nombre</Text>
         <TextInput

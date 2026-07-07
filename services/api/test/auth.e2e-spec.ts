@@ -27,7 +27,7 @@ describeE2e('Auth (e2e)', () => {
 
     const login = await request(app.getHttpServer())
       .post('/auth/login')
-      .send({ email: 'mesero@lareserva.local', password: 'mesero123' })
+      .send({ email: 'mesero@restaurant.local', password: 'mesero123' })
       .expect(201);
 
     expect(typeof login.body.access_token).toBe('string');
@@ -38,7 +38,7 @@ describeE2e('Auth (e2e)', () => {
       .set(authHeader(login.body.access_token))
       .expect(200)
       .expect((res) => {
-        expect(res.body.email).toBe('mesero@lareserva.local');
+        expect(res.body.email).toBe('mesero@restaurant.local');
       });
   });
 

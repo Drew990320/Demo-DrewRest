@@ -62,6 +62,32 @@ async function ensureMesasVirtuales(prisma) {
   }
 }
 
+async function migrateLegacyDemoEmails(prisma) {
+  const pairs = [
+    ['mesero@lareserva.local', 'mesero@restaurant.local'],
+    ['chef@lareserva.local', 'chef@restaurant.local'],
+    ['admin@lareserva.local', 'admin@restaurant.local'],
+  ];
+
+  for (const [oldEmail, newEmail] of pairs) {
+    const legacy = await prisma.usuario.findUnique({ where: { email: oldEmail } });
+    if (!legacy) continue;
+
+    const exists = await prisma.usuario.findUnique({ where: { email: newEmail } });
+    if (exists) {
+      await prisma.usuario.delete({ where: { email: oldEmail } });
+      console.log(`[cloud-db] Usuario legacy eliminado: ${oldEmail}`);
+      continue;
+    }
+
+    await prisma.usuario.update({
+      where: { email: oldEmail },
+      data: { email: newEmail },
+    });
+    console.log(`[cloud-db] Usuario migrado: ${oldEmail} → ${newEmail}`);
+  }
+}
+
 async function ensureDemoUsers(prisma) {
   const bcrypt = require('bcrypt');
   const roles = ['mesero', 'chef', 'admin'];
@@ -81,21 +107,21 @@ async function ensureDemoUsers(prisma) {
       idRol: rolMesero.idRol,
       nombre: 'Mesero',
       apellido: 'Demo',
-      email: 'mesero@lareserva.local',
+      email: 'mesero@restaurant.local',
       password: 'mesero123',
     },
     {
       idRol: rolChef.idRol,
       nombre: 'Chef',
       apellido: 'Demo',
-      email: 'chef@lareserva.local',
+      email: 'chef@restaurant.local',
       password: 'chef123',
     },
     {
       idRol: rolAdmin.idRol,
       nombre: 'Administrador',
       apellido: '',
-      email: 'admin@lareserva.local',
+      email: 'admin@restaurant.local',
       password: 'admin123',
     },
   ];
@@ -126,6 +152,7 @@ async function main() {
 
   const prisma = new PrismaClient();
   try {
+    await migrateLegacyDemoEmails(prisma);
     await ensureMesasVirtuales(prisma);
     const userCount = await prisma.usuario.count();
     const forceSeed =

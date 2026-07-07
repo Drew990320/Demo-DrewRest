@@ -37,7 +37,7 @@ describeIntegration('mazorca-linea-pedido (integración Prisma)', () => {
         idMesa: fixture.idMesaE2e,
         idUsuario: (
           await fixture.prisma.usuario.findUniqueOrThrow({
-            where: { email: 'mesero@lareserva.local' },
+            where: { email: 'mesero@restaurant.local' },
           })
         ).idUsuario,
         numComensales: 2,

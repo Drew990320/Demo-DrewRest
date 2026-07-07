@@ -5,7 +5,7 @@ import type { App } from 'supertest/types';
 export async function loginAsMesero(app: INestApplication<App>): Promise<string> {
   const res = await request(app.getHttpServer())
     .post('/auth/login')
-    .send({ email: 'mesero@lareserva.local', password: 'mesero123' })
+    .send({ email: 'mesero@restaurant.local', password: 'mesero123' })
     .expect(201);
 
   return res.body.access_token as string;
