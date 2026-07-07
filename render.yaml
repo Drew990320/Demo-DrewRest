@@ -17,8 +17,7 @@ services:
       cd packages/shared-domain && npm ci && npm run build &&
       cd ../../services/api && NPM_CONFIG_PRODUCTION=false npm ci &&
       npx prisma generate && npm run build
-    preDeployCommand: cd services/api && node scripts/prepare-cloud-db.js
-    startCommand: cd services/api && node dist/src/main.js
+    startCommand: cd services/api && node scripts/start-cloud-demo.js
     healthCheckPath: /health
     envVars:
       - key: NODE_VERSION
