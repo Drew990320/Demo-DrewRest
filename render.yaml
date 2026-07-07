@@ -1,14 +1,5 @@
 # Blueprint Render — demo DrewRest en la nube (API + PostgreSQL + web estática).
 # Uso: https://render.com → New → Blueprint → conectar repo → aplicar este archivo.
-#
-# Tras el despliegue obtienes:
-#   - URL del API:  https://drewrest-demo-api.onrender.com
-#   - URL del POS:  https://drewrest-demo-web.onrender.com
-#
-# Credenciales demo (tras el seed automático):
-#   admin@restaurant.local / admin123
-#   mesero@restaurant.local / mesero123
-#   chef@restaurant.local / chef123
 
 databases:
   - name: drewrest-demo-db
@@ -24,8 +15,10 @@ services:
     rootDir: .
     buildCommand: >-
       cd packages/shared-domain && npm ci && npm run build &&
-      cd ../../services/api && npm ci && npx prisma generate && npm run build
-    startCommand: cd services/api && node scripts/start-cloud-demo.js
+      cd ../../services/api && NPM_CONFIG_PRODUCTION=false npm ci &&
+      npx prisma generate && npm run build
+    preDeployCommand: cd services/api && node scripts/prepare-cloud-db.js
+    startCommand: cd services/api && node dist/src/main.js
     healthCheckPath: /health
     envVars:
       - key: NODE_VERSION
@@ -58,9 +51,12 @@ services:
     buildCommand: >-
       cd packages/shared-domain && npm ci && npm run build &&
       cd ../../apps/mobile && npm ci &&
-      EXPO_PUBLIC_LOCAL_MODE=false npm run export:web &&
-      cp dist/index.html dist/404.html
+      EXPO_PUBLIC_LOCAL_MODE=false npm run export:web
     staticPublishPath: apps/mobile/dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
     envVars:
       - key: NODE_VERSION
         value: "22"
