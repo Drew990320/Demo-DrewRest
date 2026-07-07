@@ -96,6 +96,40 @@ export function resumenImpactoMovimientosCaja(
   };
 }
 
+export type TotalesPorMetodoResumen = {
+  efectivo: number;
+  transferencia: number;
+  credito: number;
+};
+
+export function totalesPorMetodoResumenVacios(): TotalesPorMetodoResumen {
+  return { efectivo: 0, transferencia: 0, credito: 0 };
+}
+
+/** Acumula ventas por método. Crédito no entra al efectivo físico en caja. */
+export function acumularVentaPorMetodoPago(
+  totales: TotalesPorMetodoResumen,
+  metodo: string,
+  monto: number,
+): void {
+  const t = Math.round(Number(monto) || 0);
+  if (t <= 0) return;
+  switch (metodo) {
+    case 'efectivo':
+      totales.efectivo += t;
+      break;
+    case 'credito':
+      totales.credito += t;
+      break;
+    case 'transferencia':
+    case 'tarjeta':
+      totales.transferencia += t;
+      break;
+    default:
+      break;
+  }
+}
+
 export type CuadreCajaEfectivoInput = {
   monto_base_efectivo: number;
   ventas_efectivo: number;

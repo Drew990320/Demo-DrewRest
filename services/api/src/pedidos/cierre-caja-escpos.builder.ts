@@ -154,6 +154,16 @@ export async function buildCierreCajaEscPos(
 
   );
 
+  if ((ticket.totales_por_metodo.credito ?? 0) > 0) {
+    await printer.println(
+      lineaConPrecio(
+        'Créditos (no caja)',
+        formatCopEscPos(ticket.totales_por_metodo.credito ?? 0),
+        w,
+      ),
+    );
+  }
+
   if ((ticket.total_pagos_meseros ?? 0) > 0) {
     await printer.println(
       lineaConPrecio(

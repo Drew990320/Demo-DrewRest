@@ -58,7 +58,11 @@ import {
   debeMarcarCocina,
 } from '@la-reserva/shared-domain/cocina-producto';
 import { agregarVentasResumenDiario } from '@la-reserva/shared-domain/resumen-diario-ventas';
-import { calcularEfectivoEsperadoEnCaja } from '@la-reserva/shared-domain/movimiento-caja';
+import {
+  acumularVentaPorMetodoPago,
+  calcularEfectivoEsperadoEnCaja,
+  totalesPorMetodoResumenVacios,
+} from '@la-reserva/shared-domain/movimiento-caja';
 import {
   pedidoDebeTenerLineaMazorca,
   validarTransferenciaPedido,
@@ -1889,21 +1893,14 @@ export class PedidosService {
         ? Number(cajaRow.montoBaseCierreEfectivo)
         : null;
 
-    const totalesPorMetodo = {
-      efectivo: 0,
-      transferencia: 0,
-    };
+    const totalesPorMetodo = totalesPorMetodoResumenVacios();
 
     const byMesa = new Map<number, { pedidos: number; total: number }>();
     let totalFacturado = 0;
     for (const f of facturas) {
       const t = Number(f.total);
       totalFacturado += t;
-      if (f.metodoPago === 'efectivo') totalesPorMetodo.efectivo += t;
-      else {
-        /* transferencia y registros históricos con tarjeta */
-        totalesPorMetodo.transferencia += t;
-      }
+      acumularVentaPorMetodoPago(totalesPorMetodo, f.metodoPago, t);
 
       const numero = f.pedido.mesa.numero;
       const prev = byMesa.get(numero) ?? { pedidos: 0, total: 0 };

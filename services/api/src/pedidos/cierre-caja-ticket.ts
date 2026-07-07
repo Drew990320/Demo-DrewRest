@@ -31,6 +31,8 @@ export type CierreCajaTicket = {
 
     transferencia: number;
 
+    credito?: number;
+
   };
 
   efectivo_esperado_en_caja: number;

@@ -109,7 +109,11 @@ import {
   validarPatchMesaAdmin,
 } from '@la-reserva/shared-domain/mesa-admin-validacion';
 import { agregarVentasResumenDiario } from '@la-reserva/shared-domain/resumen-diario-ventas';
-import { calcularEfectivoEsperadoEnCaja } from '@la-reserva/shared-domain/movimiento-caja';
+import {
+  acumularVentaPorMetodoPago,
+  calcularEfectivoEsperadoEnCaja,
+  totalesPorMetodoResumenVacios,
+} from '@la-reserva/shared-domain/movimiento-caja';
 import {
   pedidoDebeTenerLineaMazorca,
   validarTransferenciaPedido,
@@ -4706,10 +4710,9 @@ export async function localApi<T = unknown>(
     const montoBaseEfectivo = baseRow?.monto_base_efectivo ?? 0;
     const target = fecha;
     const facturas = db.facturas.filter((f) => toDateKey(f.emitida_en) === target);
-    const totalesPorMetodo = { efectivo: 0, transferencia: 0 };
+    const totalesPorMetodo = totalesPorMetodoResumenVacios();
     for (const f of facturas) {
-      if (f.metodo_pago === 'efectivo') totalesPorMetodo.efectivo += f.total;
-      else totalesPorMetodo.transferencia += f.total;
+      acumularVentaPorMetodoPago(totalesPorMetodo, f.metodo_pago, f.total);
     }
     const movimientosDia = db.movimientosCaja
       .filter((m) => m.fecha === target)
@@ -5237,12 +5240,11 @@ export async function localApi<T = unknown>(
     const montoBaseCierreEfectivo =
       db.cajaDiaria.find((c) => c.fecha === target)?.monto_base_cierre_efectivo ??
       null;
-    const totalesPorMetodo = { efectivo: 0, transferencia: 0 };
+    const totalesPorMetodo = totalesPorMetodoResumenVacios();
     const byMesa = new Map<number, { pedidos: number; total: number }>();
     for (const f of facturas) {
       const t = f.total;
-      if (f.metodo_pago === 'efectivo') totalesPorMetodo.efectivo += t;
-      else totalesPorMetodo.transferencia += t;
+      acumularVentaPorMetodoPago(totalesPorMetodo, f.metodo_pago, t);
       const p = db.pedidos.find((x) => x.id_pedido === f.id_pedido);
       if (!p) continue;
       const mesa = db.mesas.find((m) => m.id_mesa === p.id_mesa);

@@ -1,10 +1,24 @@
 import {
+  acumularVentaPorMetodoPago,
   calcularEfectivoEsperadoEnCaja,
   impactoMovimientoCajaEfectivo,
   resumenImpactoMovimientosCaja,
+  totalesPorMetodoResumenVacios,
 } from './movimiento-caja';
 
 describe('movimiento-caja', () => {
+  it('excluye crédito de totales de caja inmediata', () => {
+    const totales = totalesPorMetodoResumenVacios();
+    acumularVentaPorMetodoPago(totales, 'efectivo', 10000);
+    acumularVentaPorMetodoPago(totales, 'credito', 25000);
+    acumularVentaPorMetodoPago(totales, 'transferencia', 5000);
+    expect(totales).toEqual({
+      efectivo: 10000,
+      transferencia: 5000,
+      credito: 25000,
+    });
+  });
+
   it('calcula impacto por tipo', () => {
     expect(
       impactoMovimientoCajaEfectivo({

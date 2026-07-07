@@ -220,6 +220,11 @@ export function buildCierreCajaPreviewHtml(ticket: CierreCajaTicket): string {
     `Base efectivo: ${formatCop(ticket.monto_base_efectivo)}`,
     `Ventas efectivo: ${formatCop(ticket.totales_por_metodo.efectivo)}`,
     `Ventas transferencia: ${formatCop(ticket.totales_por_metodo.transferencia)}`,
+    ...((ticket.totales_por_metodo.credito ?? 0) > 0
+      ? [
+          `Ventas crédito (no en caja): ${formatCop(ticket.totales_por_metodo.credito ?? 0)}`,
+        ]
+      : []),
     `Efectivo esperado en caja: ${formatCop(ticket.efectivo_esperado_en_caja)}`,
     `Impreso: ${fechaTicket(ticket.emitida_en)}`,
   ]);

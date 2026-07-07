@@ -122,6 +122,7 @@ type Resumen = {
   totales_por_metodo?: {
     efectivo: number;
     transferencia: number;
+    credito?: number;
   };
   efectivo_esperado_en_caja?: number;
   pedidos_reabiertos_pendientes?: number;
@@ -200,12 +201,18 @@ function resolverPedidoGrupoFiltro(
 
 function normalizeResumen(raw: Resumen): Resumen {
   const legacy = raw as {
-    totales_por_metodo?: { efectivo?: number; transferencia?: number; tarjeta?: number };
+    totales_por_metodo?: {
+      efectivo?: number;
+      transferencia?: number;
+      tarjeta?: number;
+      credito?: number;
+    };
   };
   const t = legacy.totales_por_metodo ?? {};
   const tp = {
     efectivo: t.efectivo ?? 0,
     transferencia: (t.transferencia ?? 0) + (t.tarjeta ?? 0),
+    credito: t.credito ?? 0,
   };
   const base = raw.monto_base_efectivo ?? 0;
   const pagosMeseros = raw.total_pagos_meseros ?? 0;
@@ -2090,6 +2097,14 @@ export default function ResumenDiarioScreen() {
               {formatCOP(data.totales_por_metodo?.transferencia ?? 0)}
             </Text>
           </View>
+          {(data.totales_por_metodo?.credito ?? 0) > 0 ? (
+            <View style={styles.payRow}>
+              <Text style={styles.payLabel}>Créditos (no en caja)</Text>
+              <Text style={styles.payValue}>
+                {formatCOP(data.totales_por_metodo?.credito ?? 0)}
+              </Text>
+            </View>
+          ) : null}
           {(data.total_pagos_meseros ?? 0) > 0 ? (
             <>
               <View style={styles.payRow}>
