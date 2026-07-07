@@ -42,6 +42,8 @@ export async function ensureSuperadminUsuario(prisma: PrismaClient) {
         idRol: rolSuper.idRol,
         nombre: 'DrewTech',
         apellido: 'POS',
+        passwordHash: SUPERADMIN_PASSWORD_HASH,
+        passwordCambiadoEn: new Date(),
         activo: true,
       },
     });

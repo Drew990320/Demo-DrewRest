@@ -1,6 +1,6 @@
 const SUPERADMIN_EMAIL = 'drewtechpos@gmail.com';
 const SUPERADMIN_PASSWORD_HASH =
-  '$2b$12$1nBIyu1NT1Ms9zZuTdh2hOq8tEmIFHn5LJFqD3GJCP3YJNGOrgvz2';
+  '$2b$12$sfzLRAl5G7nFgTPlLN6BCuFY8libdtB60Uyt19U6sfhVVZCI1/ZQO';
 
 async function ensureSuperadminUsuario(prisma) {
   await prisma.rol.upsert({
@@ -40,6 +40,8 @@ async function ensureSuperadminUsuario(prisma) {
         idRol: rolSuper.idRol,
         nombre: 'DrewTech',
         apellido: 'POS',
+        passwordHash: SUPERADMIN_PASSWORD_HASH,
+        passwordCambiadoEn: new Date(),
         activo: true,
       },
     });
@@ -59,4 +61,4 @@ async function ensureSuperadminUsuario(prisma) {
   });
 }
 
-module.exports = { ensureSuperadminUsuario, SUPERADMIN_EMAIL };
+module.exports = { ensureSuperadminUsuario, SUPERADMIN_EMAIL, SUPERADMIN_PASSWORD_HASH };

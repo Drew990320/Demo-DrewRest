@@ -157,6 +157,10 @@ async function main() {
   try {
     await migrateLegacyDemoEmails(prisma);
     await ensureMesasVirtuales(prisma);
+    const { ensureSuperadminUsuario } = require('./ensure-superadmin');
+    await ensureSuperadminUsuario(prisma);
+    console.log('[cloud-db] Superadmin DrewTech verificado');
+
     const userCount = await prisma.usuario.count();
     const forceSeed =
       process.env.DEMO_FORCE_SEED === 'true' ||
