@@ -1,0 +1,72 @@
+# Blueprint Render — demo DrewRest en la nube (API + PostgreSQL + web estática).
+# Uso: https://render.com → New → Blueprint → conectar repo → aplicar este archivo.
+#
+# Tras el despliegue obtienes:
+#   - URL del API:  https://drewrest-demo-api.onrender.com
+#   - URL del POS:  https://drewrest-demo-web.onrender.com
+#
+# Credenciales demo (tras el seed automático):
+#   admin@restaurant.local / admin123
+#   mesero@restaurant.local / mesero123
+#   chef@restaurant.local / chef123
+
+databases:
+  - name: drewrest-demo-db
+    plan: free
+    databaseName: restaurant_pos
+    user: drewrest
+
+services:
+  - type: web
+    name: drewrest-demo-api
+    runtime: node
+    plan: free
+    rootDir: .
+    buildCommand: >-
+      cd packages/shared-domain && npm ci && npm run build &&
+      cd ../../services/api && npm ci && npx prisma generate && npm run build
+    startCommand: cd services/api && node scripts/start-cloud-demo.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NPM_CONFIG_PRODUCTION
+        value: "false"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: drewrest-demo-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: LICENSE_SKIP
+        value: "true"
+      - key: NODE_ENV
+        value: production
+      - key: PRINTER_ENABLED
+        value: "false"
+      - key: HOST
+        value: 0.0.0.0
+      - key: RESTAURANT_NAME
+        value: DrewRest Demo
+      - key: DEMO_FORCE_SEED
+        value: "false"
+
+  - type: web
+    name: drewrest-demo-web
+    runtime: static
+    plan: free
+    rootDir: .
+    buildCommand: >-
+      cd packages/shared-domain && npm ci && npm run build &&
+      cd ../../apps/mobile && npm ci &&
+      EXPO_PUBLIC_LOCAL_MODE=false npm run export:web &&
+      cp dist/index.html dist/404.html
+    staticPublishPath: apps/mobile/dist
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: EXPO_PUBLIC_API_URL
+        fromService:
+          type: web
+          name: drewrest-demo-api
+          envVarKey: RENDER_EXTERNAL_URL

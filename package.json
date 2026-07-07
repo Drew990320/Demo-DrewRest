@@ -1,7 +1,7 @@
 {
-  "name": "la-reserva",
+  "name": "drewrest",
   "private": true,
-  "description": "Monorepo La Reserva: API (NestJS) + app móvil (Expo). Instala dependencias en cada carpeta (ver scripts).",
+  "description": "Monorepo DrewRest: API (NestJS) + app móvil (Expo). Instala dependencias en cada carpeta (ver scripts).",
   "scripts": {
     "api": "npm run start:dev --prefix services/api",
     "api:build": "npm run build --prefix services/api",
@@ -16,15 +16,20 @@
     "shared-domain:install": "npm install --prefix packages/shared-domain",
     "install:all": "npm run shared-domain:install && npm run shared-domain:build && npm run api:install && npm run mobile:install && npm run shared-types:install",
     "prisma:deploy": "npm run prisma:deploy --prefix services/api",
+    "prisma:generate": "npm run prisma:generate --prefix services/api",
     "prisma:ensure-mesas": "npm run prisma:ensure-mesas --prefix services/api",
     "deploy:local:ip": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/show-lan-ip.ps1",
-    "la-reserva:empaquetar-api": "npm run shared-domain:build && npm run api:build && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/empaquetar-api-la-reserva.ps1",
-    "la-reserva:empaquetar-web": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/empaquetar-web-la-reserva.ps1",
-    "la-reserva:empaquetar": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/empaquetar-la-reserva-completo.ps1",
+    "backup:postgres": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/backup-postgres.ps1",
+    "shared-domain:test": "npm test --prefix packages/shared-domain",
+    "mobile:typecheck": "npm run typecheck --prefix apps/mobile",
+    "DrewRest:Empaquetar-Api": "npm run shared-domain:build && npm run api:build && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/empaquetar-api-drewrest.ps1",
+    "DrewRest:Empaquetar-Web": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/empaquetar-web-drewrest.ps1",
+    "DrewRest:Empaquetar": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/empaquetar-drewrest-completo.ps1",
     "license:id": "node services/api/scripts/license/mostrar-id-maquina.js",
     "license:generar": "node scripts/generar-licencia.js",
     "mobile:build:android:preview": "npm exec --prefix apps/mobile -- eas-cli build --platform android --profile preview",
-    "mobile:eas:login": "npm exec --prefix apps/mobile -- eas-cli login"
+    "mobile:eas:login": "npm exec --prefix apps/mobile -- eas-cli login",
+    "demo:cloud:start": "node services/api/scripts/start-cloud-demo.js"
   },
   "engines": {
     "node": ">=20"
