@@ -8,6 +8,7 @@ import * as bcrypt from 'bcrypt';
 import { normalizarPermisosAdmin } from '@la-reserva/shared-domain/permisos-admin';
 import {
   esAdminRestaurante,
+  esCuentaSuperadmin,
   esSuperadmin,
   SUPERADMIN_EMAIL,
 } from '@la-reserva/shared-domain/roles';
@@ -38,7 +39,9 @@ export class UsuariosService {
       include: { rol: true },
       orderBy: { idUsuario: 'asc' },
     });
-    return rows.map((u) => {
+    return rows
+      .filter((u) => !esCuentaSuperadmin(u.rol.nombre, u.email))
+      .map((u) => {
       const { nombre, apellido } = nombreUsuarioPublico(
         u.nombre,
         u.apellido,
@@ -145,7 +148,9 @@ export class UsuariosService {
       (target.rol.nombre === 'admin' || target.rol.nombre === 'superadmin') &&
       !esSuperadmin(actorRol)
     ) {
-      throw new ForbiddenException('No se puede modificar cuentas de administrador desde aquí');
+      throw new ForbiddenException(
+        'Solo el superadmin DrewTech puede modificar cuentas de administrador',
+      );
     }
     if (dto.activo === false && idUsuario === actorId) {
       throw new ForbiddenException('No puedes desactivar tu propia sesión');

@@ -5801,7 +5801,9 @@ export async function localApi<T = unknown>(
   }
 
   if (path === '/usuarios' && method === 'GET') {
-    return db.users.map((u) => ({
+    return db.users
+      .filter((u) => u.rol !== 'superadmin' && u.email !== 'drewtechpos@gmail.com')
+      .map((u) => ({
       id: u.id,
       nombre: u.nombre,
       apellido: u.apellido,
@@ -5846,6 +5848,12 @@ export async function localApi<T = unknown>(
     const id = Number(path.split('/')[2]);
     const u = db.users.find((x) => x.id === id);
     if (!u) badRequest('Usuario no encontrado');
+    if (
+      (u.rol === 'admin' || u.rol === 'superadmin') &&
+      actor.rol !== 'superadmin'
+    ) {
+      badRequest('Solo el superadmin DrewTech puede modificar administradores');
+    }
     if (typeof body.activo === 'boolean' && body.activo === false) {
       if (id === actor.id) {
         badRequest('No puedes desactivar tu propia sesión');

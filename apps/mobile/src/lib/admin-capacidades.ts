@@ -5,7 +5,7 @@ import {
   esSuperadmin,
 } from '@la-reserva/shared-domain/roles';
 
-export { esRolAdministrativo, esSuperadmin, esAdminRestaurante } from '@la-reserva/shared-domain/roles';
+export { esRolAdministrativo, esSuperadmin, esAdminRestaurante, esCuentaSuperadmin } from '@la-reserva/shared-domain/roles';
 
 export function puedeCapacidadAdmin(
   user:

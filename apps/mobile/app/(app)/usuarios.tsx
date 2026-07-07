@@ -31,6 +31,7 @@ import { SuperadminAdminsPanel } from '../../src/components/SuperadminAdminsPane
 import {
   esRolAdministrativo,
   esSuperadmin,
+  esCuentaSuperadmin,
   puedeCapacidadAdmin,
 } from '../../src/lib/admin-capacidades';
 import type { AppColors } from '../../src/lib/theme';
@@ -262,6 +263,8 @@ export default function UsuariosAdminScreen() {
     return <ScreenLoading />;
   }
 
+  const equipoRows = rows.filter((u) => !esCuentaSuperadmin(u.rol, u.email));
+
   return (
     <>
       <ScreenScroll
@@ -287,7 +290,7 @@ export default function UsuariosAdminScreen() {
 
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Equipo</Text>
-          {rows.map((u) => (
+          {equipoRows.map((u) => (
             <View key={u.id} style={styles.row}>
               <View style={styles.rowMain}>
                 <Text style={styles.rowName}>{nombreUsuarioDisplay(u)}</Text>

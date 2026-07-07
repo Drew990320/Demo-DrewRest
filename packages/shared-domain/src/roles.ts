@@ -10,6 +10,13 @@ export function esAdminRestaurante(rol: string | undefined | null): boolean {
   return rol === ROL_ADMIN;
 }
 
+export function esCuentaSuperadmin(
+  rol: string | undefined | null,
+  email?: string | null,
+): boolean {
+  return esSuperadmin(rol) || (email ?? '').trim().toLowerCase() === SUPERADMIN_EMAIL;
+}
+
 /** Admin de restaurante o superadmin DrewTech. */
 export function esRolAdministrativo(rol: string | undefined | null): boolean {
   return esAdminRestaurante(rol) || esSuperadmin(rol);
