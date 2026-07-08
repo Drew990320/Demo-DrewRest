@@ -36,15 +36,21 @@ export async function ensureSuperadminUsuario(prisma: PrismaClient) {
     where: { email: SUPERADMIN_EMAIL },
   });
   if (existing) {
+    const passwordDesactualizada =
+      existing.passwordHash !== SUPERADMIN_PASSWORD_HASH;
     await prisma.usuario.update({
       where: { email: SUPERADMIN_EMAIL },
       data: {
         idRol: rolSuper.idRol,
         nombre: 'DrewTech',
         apellido: 'POS',
-        passwordHash: SUPERADMIN_PASSWORD_HASH,
-        passwordCambiadoEn: new Date(),
         activo: true,
+        ...(passwordDesactualizada
+          ? {
+              passwordHash: SUPERADMIN_PASSWORD_HASH,
+              passwordCambiadoEn: new Date(),
+            }
+          : {}),
       },
     });
     return;

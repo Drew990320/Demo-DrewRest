@@ -118,11 +118,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const t = await storage.getItem(TOKEN_KEY);
         const u = await storage.getItem(USER_KEY);
         if (t && u) {
-          setToken(t);
-          setUser(JSON.parse(u) as User);
-          setSocketAuthToken(t);
-          connectSocket(t);
-          ensurePedidoSocketSync();
+          try {
+            await api('/auth/me', { token: t, silentUnauthorized: true });
+            setToken(t);
+            setUser(JSON.parse(u) as User);
+            setSocketAuthToken(t);
+            connectSocket(t);
+            ensurePedidoSocketSync();
+          } catch {
+            await storage.deleteItem(TOKEN_KEY);
+            await storage.deleteItem(USER_KEY);
+            await storage.deleteItem(TOKEN_EXPIRES_KEY);
+          }
         }
       } finally {
         setLoading(false);

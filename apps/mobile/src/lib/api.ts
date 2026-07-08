@@ -23,6 +23,8 @@ export type ApiOptions = RequestInit & {
   offlineFallback?: boolean;
   /** Timeout en ms (por defecto 25s). */
   timeoutMs?: number;
+  /** No intenta refresh ni cierra sesión en 401 (p. ej. validación al restaurar token). */
+  silentUnauthorized?: boolean;
 };
 
 function mergeAbortSignals(
@@ -59,6 +61,7 @@ export async function api<T = unknown>(
     token,
     offlineFallback = true,
     timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+    silentUnauthorized = false,
     ...fetchOpts
   } = opts;
 
@@ -187,7 +190,7 @@ export async function api<T = unknown>(
         ? (err.message as string[]).join(', ')
         : (err.message as string) || res.statusText;
       const message = msg || `HTTP ${res.status}`;
-      if (res.status === 401 && token) {
+      if (res.status === 401 && token && !silentUnauthorized) {
         const renewed = await tryRefreshAccessToken();
         if (renewed) {
           headers.set('Authorization', `Bearer ${renewed}`);
