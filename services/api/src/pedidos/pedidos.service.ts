@@ -40,6 +40,7 @@ import {
   esMesaParaLlevarNumero,
   resolverMesasVirtuales,
 } from '@la-reserva/shared-domain/mesa-label';
+import { esRolAdministrativo } from '@la-reserva/shared-domain/roles';
 import { mesaDisponibleHoyBogota } from '../common/mesa-dia';
 import { fechaBogotaDb } from '../common/fecha-bogota-db';
 import {
@@ -701,7 +702,7 @@ export class PedidosService {
     actor: { idUsuario: number; rol: { nombre: string } },
     dto: CrearMovimientoCajaDto,
   ) {
-    if (actor.rol.nombre !== 'admin') {
+    if (!esRolAdministrativo(actor.rol.nombre)) {
       throw new ForbiddenException('Solo admin');
     }
     const { base, fechaOnly } = this.parseFechaResumenBogota(dto.fecha);
@@ -737,7 +738,7 @@ export class PedidosService {
     actor: { idUsuario: number; rol: { nombre: string } },
     idMovimiento: number,
   ) {
-    if (actor.rol.nombre !== 'admin') {
+    if (!esRolAdministrativo(actor.rol.nombre)) {
       throw new ForbiddenException('Solo admin');
     }
     const row = await this.prisma.movimientoCaja.findUnique({
@@ -791,7 +792,7 @@ export class PedidosService {
     actor: { idUsuario: number; rol: { nombre: string } },
     idMovimiento: number,
   ) {
-    if (actor.rol.nombre !== 'admin') {
+    if (!esRolAdministrativo(actor.rol.nombre)) {
       throw new ForbiddenException('Solo admin');
     }
     const row = await this.prisma.movimientoCaja.findUnique({
@@ -2149,7 +2150,7 @@ export class PedidosService {
     dto: CancelarReabiertosDto,
     fecha?: string,
   ) {
-    if (actor.rol.nombre !== 'admin') {
+    if (!esRolAdministrativo(actor.rol.nombre)) {
       throw new ForbiddenException('Solo admin');
     }
     if (dto.confirmar.trim().toUpperCase() !== 'CANCELAR') {
@@ -2238,7 +2239,7 @@ export class PedidosService {
     dto: VaciarResumenDiarioDto,
     fecha?: string,
   ) {
-    if (actor.rol.nombre !== 'admin') {
+    if (!esRolAdministrativo(actor.rol.nombre)) {
       throw new ForbiddenException('Solo admin');
     }
     if (dto.confirmar.trim().toUpperCase() !== 'VACIAR') {
@@ -2374,7 +2375,7 @@ export class PedidosService {
     dto: ReabrirCobroDto,
     actor: { idUsuario: number; rol: { nombre: string } },
   ) {
-    if (actor.rol.nombre !== 'admin') {
+    if (!esRolAdministrativo(actor.rol.nombre)) {
       throw new ForbiddenException('Solo admin');
     }
     if (dto.confirmar.trim().toUpperCase() !== 'REABRIR') {
@@ -2520,7 +2521,7 @@ export class PedidosService {
     dto: RevertirTandaCobroDto,
     actor: { idUsuario: number; rol: { nombre: string } },
   ) {
-    if (actor.rol.nombre !== 'admin') {
+    if (!esRolAdministrativo(actor.rol.nombre)) {
       throw new ForbiddenException('Solo admin');
     }
     if (dto.confirmar.trim().toUpperCase() !== 'REVERTIR') {
@@ -3343,7 +3344,7 @@ export class PedidosService {
   async listarPendientesCobroResumen(actor: {
     rol: { nombre: string };
   }) {
-    if (actor.rol.nombre !== 'admin') {
+    if (!esRolAdministrativo(actor.rol.nombre)) {
       throw new ForbiddenException('Solo admin');
     }
 
@@ -3403,7 +3404,7 @@ export class PedidosService {
     rol: { nombre: string };
   }) {
     await this.exigirPermisoMesero(actor, 'ayuda_companeros');
-    if (actor.rol.nombre !== 'mesero' && actor.rol.nombre !== 'admin') {
+    if (actor.rol.nombre !== 'mesero' && !esRolAdministrativo(actor.rol.nombre)) {
       return { pedidos: [], total_platos_para_recoger: 0 };
     }
     const rows = await this.prisma.pedido.findMany({
@@ -3433,7 +3434,7 @@ export class PedidosService {
     rol: { nombre: string };
   }) {
     await this.exigirPermisoMesero(actor, 'ayuda_companeros');
-    if (actor.rol.nombre !== 'mesero' && actor.rol.nombre !== 'admin') {
+    if (actor.rol.nombre !== 'mesero' && !esRolAdministrativo(actor.rol.nombre)) {
       return {
         platos_para_recoger: 0,
         pedidos: 0,
@@ -3637,7 +3638,7 @@ export class PedidosService {
       throw new ConflictException('El pedido ya no está activo');
     }
     if (
-      actorRol !== 'admin' &&
+      !esRolAdministrativo(actorRol) &&
       actorRol !== 'mesero' &&
       det.pedido.idUsuario !== actorId
     ) {

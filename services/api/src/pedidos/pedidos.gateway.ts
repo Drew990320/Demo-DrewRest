@@ -13,6 +13,7 @@ import {
 } from '../auth/auth-user-cache';
 import { invalidateMenuHoyCache } from '../common/menu-hoy-cache';
 import { PrismaService } from '../prisma/prisma.service';
+import { esRolAdministrativo } from '@la-reserva/shared-domain/roles';
 
 type SocketUser = {
   idUsuario: number;
@@ -94,7 +95,7 @@ export class PedidosGateway implements OnGatewayConnection {
   private joinRoleRooms(client: Socket, user: SocketUser): void {
     void client.join(`rol:${user.rol}`);
     void client.join(`usuario:${user.idUsuario}`);
-    if (user.rol === 'mesero' || user.rol === 'admin') {
+    if (user.rol === 'mesero' || esRolAdministrativo(user.rol)) {
       void client.join(`mesero:${user.idUsuario}`);
     }
   }
@@ -118,10 +119,10 @@ export class PedidosGateway implements OnGatewayConnection {
     if (!user) {
       return { ok: false, error: 'no_auth' };
     }
-    if (data?.cocina && (user.rol === 'chef' || user.rol === 'admin')) {
+    if (data?.cocina && (user.rol === 'chef' || esRolAdministrativo(user.rol))) {
       void client.join('cocina');
     }
-    if (data?.resumen && user.rol === 'admin') {
+    if (data?.resumen && esRolAdministrativo(user.rol)) {
       void client.join('resumen');
     }
     if (data?.mesaId != null) {
@@ -138,7 +139,7 @@ export class PedidosGateway implements OnGatewayConnection {
     user: SocketUser,
     mesaId: number,
   ): Promise<boolean> {
-    if (user.rol === 'admin' || user.rol === 'chef') {
+    if (esRolAdministrativo(user.rol) || user.rol === 'chef') {
       return true;
     }
     if (user.rol !== 'mesero') {
