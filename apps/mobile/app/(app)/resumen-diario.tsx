@@ -43,6 +43,7 @@ import { confirmAppDialog, showNotice } from '../../src/lib/app-dialog';
 import {
   mensajeImpresionFallidaTrasAccion,
   notificarResultadoImpresion,
+  type ResultadoImpresionUi,
 } from '../../src/lib/impresion-resultado';
 import { mostrarVistaPreviaTicket } from '../../src/lib/ticket-preview';
 import { esErrorImpresionNoDisponible } from '@la-reserva/shared-domain/impresion-soporte';
@@ -743,12 +744,7 @@ export default function ResumenDiarioScreen() {
         fecha: string;
         monto_base_cierre_efectivo: number;
         efectivo_esperado_en_caja?: number;
-        impresion_cierre?: {
-          impreso?: boolean;
-          en_cola?: boolean;
-          error?: string;
-          codigo_error?: string;
-        };
+        impresion_cierre?: ResultadoImpresionUi;
       }>('/pedidos/caja-diaria/cierre', {
         method: 'PUT',
         token,
@@ -825,12 +821,7 @@ export default function ResumenDiarioScreen() {
     setSavingMovCaja(true);
     try {
       const res = await api<{
-        impresion_movimiento?: {
-          impreso?: boolean;
-          en_cola?: boolean;
-          error?: string;
-          codigo_error?: string;
-        };
+        impresion_movimiento?: ResultadoImpresionUi;
       }>('/pedidos/movimientos-caja', {
         method: 'POST',
         token,
@@ -859,12 +850,7 @@ export default function ResumenDiarioScreen() {
     setImprimiendoMovCajaId(id);
     try {
       const res = await api<{
-        impresion_movimiento?: {
-          impreso?: boolean;
-          en_cola?: boolean;
-          error?: string;
-          codigo_error?: string;
-        };
+        impresion_movimiento?: ResultadoImpresionUi;
       }>(`/pedidos/movimientos-caja/${id}/imprimir`, {
         method: 'POST',
         token,
@@ -883,12 +869,7 @@ export default function ResumenDiarioScreen() {
 
   async function avisarImpresionMovimientoCaja(
     tipo: 'entrada_manual' | 'salida_manual',
-    imp?: {
-      impreso?: boolean;
-      en_cola?: boolean;
-      error?: string;
-      codigo_error?: string;
-    },
+    imp?: ResultadoImpresionUi,
     contexto: 'registrar' | 'reimprimir' = 'registrar',
   ) {
     const etiqueta = tipo === 'entrada_manual' ? 'Entrada' : 'Salida';
@@ -982,12 +963,7 @@ export default function ResumenDiarioScreen() {
       const res = await api<{
         fecha: string;
         monto_base_efectivo: number;
-        impresion_base?: {
-          impreso?: boolean;
-          en_cola?: boolean;
-          error?: string;
-          codigo_error?: string;
-        };
+        impresion_base?: ResultadoImpresionUi;
       }>('/pedidos/caja-diaria', {
         method: 'PUT',
         token,
@@ -1125,12 +1101,7 @@ export default function ResumenDiarioScreen() {
     try {
       const res = await api<{
         ok: boolean;
-        impresion_cierre?: {
-          impreso: boolean;
-          error?: string;
-          codigo_error?: string;
-          destino?: string;
-        };
+        impresion_cierre?: ResultadoImpresionUi;
       }>(`/pedidos/resumen-diario/imprimir-total${qsFecha()}`, {
         method: 'POST',
         token,

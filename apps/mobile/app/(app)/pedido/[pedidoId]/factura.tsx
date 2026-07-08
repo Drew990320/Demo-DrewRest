@@ -45,7 +45,7 @@ import { ScreenLoading } from '../../../../src/components/ScreenLoading';
 import { api } from '../../../../src/lib/api';
 import { AccionIcon, PedidoIcon } from '../../../../src/lib/app-icons';
 import { alertarSiSinPapel } from '../../../../src/lib/alarma-impresora';
-import { notificarResultadoImpresion, mensajeImpresionFallidaTrasAccion } from '../../../../src/lib/impresion-resultado';
+import { notificarResultadoImpresion, mensajeImpresionFallidaTrasAccion, type ResultadoImpresionUi } from '../../../../src/lib/impresion-resultado';
 import { mostrarVistaPreviaTicket } from '../../../../src/lib/ticket-preview';
 import { esErrorImpresionNoDisponible } from '@la-reserva/shared-domain/impresion-soporte';
 import { showAppDialog, showNotice, confirmAppDialog } from '../../../../src/lib/app-dialog';
@@ -1636,12 +1636,7 @@ export default function FacturaScreen() {
     setBusy(true);
     try {
       const res = await api<{
-        impresion_factura?: {
-          impreso: boolean;
-          error?: string;
-          destino?: string;
-          codigo_error?: string;
-        };
+        impresion_factura?: ResultadoImpresionUi;
       }>(`/pedidos/${pedidoId}/reimprimir-factura`, {
         method: 'POST',
         token,
@@ -1893,14 +1888,7 @@ export default function FacturaScreen() {
         PedidoFull & {
           cobro_completo?: boolean;
           id_factura_emitida?: number;
-          impresion_factura?: {
-            impreso: boolean;
-            omitido?: boolean;
-            en_cola?: boolean;
-            error?: string;
-            destino?: string;
-            codigo_error?: string;
-          };
+          impresion_factura?: ResultadoImpresionUi;
         }
       >(`/pedidos/${pedidoId}/facturar-mixto`, {
         method: 'POST',
@@ -2636,14 +2624,7 @@ export default function FacturaScreen() {
         cobro_completo?: boolean;
         id_factura_emitida?: number;
         factura_con_copia?: boolean;
-        impresion_factura?: {
-          impreso: boolean;
-          omitido?: boolean;
-          en_cola?: boolean;
-          error?: string;
-          destino?: string;
-          codigo_error?: string;
-        };
+        impresion_factura?: ResultadoImpresionUi;
         facturas?: { id_factura: number }[];
       }>(`/pedidos/${pedidoId}/facturar`, {
         method: 'POST',

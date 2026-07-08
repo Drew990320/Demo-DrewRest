@@ -6,6 +6,7 @@ type Props = {
   style?: StyleProp<ImageStyle>;
   contentFit?: ImageContentFit;
   accessibilityLabel?: string;
+  cachePolicy?: ImageProps['cachePolicy'];
   onError?: () => void;
   onLoad?: ImageProps['onLoad'];
 };
@@ -16,6 +17,7 @@ export function CachedRemoteImage({
   style,
   contentFit = 'contain',
   accessibilityLabel,
+  cachePolicy = 'memory-disk',
   onError,
   onLoad,
 }: Props) {
@@ -24,7 +26,7 @@ export function CachedRemoteImage({
       source={{ uri }}
       style={style}
       contentFit={contentFit}
-      cachePolicy="memory-disk"
+      cachePolicy={cachePolicy}
       transition={120}
       accessibilityLabel={accessibilityLabel}
       onError={onError}
