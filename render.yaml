@@ -49,6 +49,9 @@ services:
     staticPublishPath: .
     routes:
       - type: rewrite
+        source: /fonts/*
+        destination: /fonts/:splat
+      - type: rewrite
         source: /assets/*
         destination: /assets/:splat
       - type: rewrite
