@@ -14,7 +14,7 @@ services:
     runtime: node
     plan: free
     rootDir: api
-    buildCommand: npm install --omit=dev && npm run render:build
+    buildCommand: npm install --omit=dev && node prisma/render-db-setup.js && node prisma/ensure-mesas-virtuales.js
     startCommand: npm start
     healthCheckPath: /health
     envVars:
