@@ -15,18 +15,22 @@ const pedidos_gateway_1 = require("./pedidos.gateway");
 const pedidos_service_1 = require("./pedidos.service");
 const comanda_printer_service_1 = require("./comanda-printer.service");
 const factura_email_service_1 = require("./factura-email.service");
+const ticket_preview_controller_1 = require("./ticket-preview.controller");
+const ticket_preview_service_1 = require("./ticket-preview.service");
 let PedidosModule = class PedidosModule {
 };
 exports.PedidosModule = PedidosModule;
 exports.PedidosModule = PedidosModule = __decorate([
     (0, common_1.Module)({
         imports: [auth_module_1.AuthModule, permisos_module_1.PermisosModule],
-        controllers: [pedidos_controller_1.PedidosController],
+        controllers: [pedidos_controller_1.PedidosController, ticket_preview_controller_1.TicketPreviewController],
         providers: [
             pedidos_service_1.PedidosService,
             pedidos_gateway_1.PedidosGateway,
             comanda_printer_service_1.ComandaPrinterService,
             factura_email_service_1.FacturaEmailService,
+            ticket_preview_service_1.TicketPreviewService,
+            ticket_preview_controller_1.TicketPreviewEnabledGuard,
         ],
         exports: [pedidos_service_1.PedidosService, pedidos_gateway_1.PedidosGateway],
     })

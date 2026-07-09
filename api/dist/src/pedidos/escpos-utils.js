@@ -38,6 +38,7 @@ exports.ticketNombreLocal = ticketNombreLocal;
 exports.ticketTelefono = ticketTelefono;
 exports.ticketDireccion = ticketDireccion;
 exports.dimensionesLogoContenidas = dimensionesLogoContenidas;
+exports.ticketLogoPngBufferForPreview = ticketLogoPngBufferForPreview;
 exports.printPieDrewTechFactura = printPieDrewTechFactura;
 exports.formatCopEscPos = formatCopEscPos;
 exports.wrapEscPos = wrapEscPos;
@@ -168,6 +169,12 @@ function resolveTicketLogoPath() {
         (0, visual_assets_util_1.resolverAssetVisualPath)('factura', null) ??
         (0, visual_assets_util_1.resolverAssetVisualPath)('login', null) ??
         (0, restaurant_branding_1.resolveRestaurantLogoPath)());
+}
+async function ticketLogoPngBufferForPreview() {
+    const logoPath = resolveTicketLogoPath();
+    if (!logoPath)
+        return null;
+    return cargarLogoTicketRedimensionado(logoPath);
 }
 async function printPieDrewTechFactura(printer, charWidth = exports.DEFAULT_ESC_POS_WIDTH) {
     if (!(0, restaurant_branding_1.restaurantMostrarCreditoDrewTech)())

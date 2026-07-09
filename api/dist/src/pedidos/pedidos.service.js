@@ -4199,6 +4199,38 @@ let PedidosService = class PedidosService {
             impresion_factura: impresion,
         };
     }
+    async ticketComandaParaVistaPrevia(idPedido) {
+        const pedido = await this.prisma.pedido.findUnique({
+            where: { idPedido },
+            include: {
+                mesa: true,
+                usuario: true,
+                detalles: {
+                    include: detalleInclude,
+                    orderBy: { idDetalle: 'asc' },
+                },
+            },
+        });
+        if (!pedido) {
+            throw new common_1.NotFoundException('Pedido no encontrado');
+        }
+        const enviados = pedido.detalles.filter((d) => productoDebePasarCocina(d.producto) && d.enviadoCocina);
+        if (enviados.length === 0) {
+            throw new common_1.BadRequestException('No hay platos enviados a cocina para previsualizar');
+        }
+        return this.construirTicketComanda(pedido, enviados);
+    }
+    async ticketFacturaParaVistaPrevia(idFactura) {
+        const factura = await this.prisma.factura.findUnique({
+            where: { idFactura },
+            select: { idPedido: true },
+        });
+        if (!factura) {
+            throw new common_1.NotFoundException('Factura no encontrada');
+        }
+        const completo = await this.obtenerPorIdTrasEscritura(factura.idPedido);
+        return this.construirTicketFactura(completo, idFactura, false);
+    }
     async imprimirPrecuenta(idPedido, dto, actor) {
         await this.exigirPermisoMesero(actor, 'precuenta');
         const pedido = await this.prisma.pedido.findUnique({

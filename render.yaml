@@ -28,6 +28,8 @@ services:
         value: "true"
       - key: PRINTER_ENABLED
         value: "false"
+      - key: TICKET_PREVIEW_ENABLED
+        value: "true"
       - key: RESTAURANT_NAME
         value: DrewRest Demo
       - key: JWT_SECRET
