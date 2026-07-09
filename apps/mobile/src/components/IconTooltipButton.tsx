@@ -1,5 +1,6 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import type { ComponentProps, RefObject } from 'react';
+import { usePathname } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Platform,
@@ -151,8 +152,13 @@ export function IconTooltipButton({
   fixedSize = false,
 }: Props) {
   const [hover, setHover] = useState(false);
+  const pathname = usePathname();
   const wrapRef = useRef<View>(null);
   const showTip = Platform.OS === 'web' && hover && !disabled;
+
+  useEffect(() => {
+    setHover(false);
+  }, [pathname]);
   const r = useResponsive();
   const iconSz = fixedSize ? (size ?? 26) : (size ?? r.iconSize);
   const btnSize = fixedSize ? Math.max(52, iconSz + 28) : r.iconBtnSize;

@@ -4,6 +4,10 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { HeaderHomeTitle } from '../../src/components/HeaderHomeTitle';
+import {
+  stackPushAnimation,
+  stackPushAnimationDuration,
+} from '../../src/lib/stack-screen-options';
 import { MOTION } from '../../src/lib/motion';
 import { useAuth } from '../../src/context/AuthContext';
 import { useNetwork } from '../../src/context/NetworkContext';
@@ -44,8 +48,8 @@ export default function AppGroupLayout() {
       headerTitleStyle: { fontWeight: '700' as const },
       headerTitleAlign: 'center' as const,
       contentStyle: { backgroundColor: colors.background },
-      animation: 'slide_from_right' as const,
-      animationDuration: MOTION.normal,
+      animation: stackPushAnimation(),
+      animationDuration: stackPushAnimationDuration(),
       headerTitle: (props: { children?: string }) => (
         <HeaderHomeTitle>{String(props.children ?? '')}</HeaderHomeTitle>
       ),

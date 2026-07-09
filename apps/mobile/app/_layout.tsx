@@ -30,6 +30,7 @@ export function ErrorBoundary({
       title={titulo}
       message={mensajeErrorUsuario(error, 'Ocurrió un error inesperado. Vuelve al inicio e intenta de nuevo.')}
       buttonLabel="Volver a mesas"
+      configureStack={false}
       onPress={() => {
         retry();
         router.replace('/(app)/mesas');

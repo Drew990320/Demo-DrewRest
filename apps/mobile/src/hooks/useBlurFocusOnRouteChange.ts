@@ -1,13 +1,13 @@
 import { usePathname } from 'expo-router';
-import { useEffect } from 'react';
+import { useLayoutEffect } from 'react';
 import { Platform } from 'react-native';
 import { blurWebFocus } from '../lib/web-a11y';
 
-/** Al cambiar de ruta en web, suelta el foco para que react-native-screens no dispare aria-hidden. */
+/** Al cambiar de ruta en web, suelta el foco antes del pintado para evitar conflictos con aria-hidden/inert. */
 export function useBlurFocusOnRouteChange() {
   const pathname = usePathname();
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (Platform.OS !== 'web') return;
     blurWebFocus();
   }, [pathname]);

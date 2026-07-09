@@ -5,7 +5,10 @@ import { NotificationHeaderButton } from '../../../../src/components/Notificatio
 import { PantallaSoloMeseros } from '../../../../src/components/PantallaSoloMeseros';
 import { useVisualTheme } from '../../../../src/context/VisualThemeContext';
 import { useRequiereTomarPedidos } from '../../../../src/hooks/usePuedeTomarPedidos';
-import { MOTION } from '../../../../src/lib/motion';
+import {
+  stackPushAnimation,
+  stackPushAnimationDuration,
+} from '../../../../src/lib/stack-screen-options';
 
 export default function PedidoLayout() {
   const { ok, loading } = useRequiereTomarPedidos();
@@ -16,8 +19,8 @@ export default function PedidoLayout() {
       headerStyle: { backgroundColor: colors.backgroundAlt },
       headerTintColor: colors.text,
       headerTitleAlign: 'center' as const,
-      animation: 'slide_from_right' as const,
-      animationDuration: MOTION.normal,
+      animation: stackPushAnimation(),
+      animationDuration: stackPushAnimationDuration(),
       headerTitle: (props: { children?: string }) => (
         <HeaderHomeTitle>{String(props.children ?? '')}</HeaderHomeTitle>
       ),

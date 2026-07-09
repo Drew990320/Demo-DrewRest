@@ -10,6 +10,8 @@ type Props = {
   message?: string;
   buttonLabel?: string;
   onPress?: () => void;
+  /** Desactivar en ErrorBoundary: Stack.Screen puede fallar fuera del árbol del navigator. */
+  configureStack?: boolean;
 };
 
 /** Pantalla de recuperación cuando falla una carga o la ruta quedó inválida. */
@@ -18,6 +20,7 @@ export function RouteRecoveryScreen({
   message = 'El recurso no existe o ya no está disponible.',
   buttonLabel = 'Volver a mesas',
   onPress,
+  configureStack = true,
 }: Props) {
   const router = useRouter();
 
@@ -31,7 +34,9 @@ export function RouteRecoveryScreen({
 
   return (
     <>
-      <Stack.Screen options={{ title: 'Aviso', headerShown: false }} />
+      {configureStack ? (
+        <Stack.Screen options={{ title: 'Aviso', headerShown: false }} />
+      ) : null}
       <View style={styles.container}>
         <View style={styles.card}>
           <Text style={styles.title}>{title}</Text>
