@@ -23,6 +23,11 @@ function sendPdf(res, pdf, filename) {
     res.setHeader('Cache-Control', 'private, max-age=60');
     res.send(pdf);
 }
+function sendHtml(res, html) {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'private, max-age=60');
+    res.send(html);
+}
 let TicketPreviewEnabledGuard = class TicketPreviewEnabledGuard {
     preview;
     constructor(preview) {
@@ -51,6 +56,10 @@ let TicketPreviewController = class TicketPreviewController {
             items: this.preview.catalog(),
         };
     }
+    async demoHtml(tipo, res) {
+        const html = await this.preview.demoHtml(tipo);
+        sendHtml(res, html);
+    }
     async demo(tipo, res) {
         try {
             const pdf = await this.preview.demoPdf(tipo);
@@ -61,17 +70,37 @@ let TicketPreviewController = class TicketPreviewController {
                 throw e;
             if (e instanceof common_1.NotFoundException)
                 throw e;
-            const msg = e instanceof Error ? e.message : String(e);
-            throw new common_1.NotFoundException(msg);
+            const html = await this.preview.demoHtml(tipo);
+            sendHtml(res, html);
         }
     }
+    async pedidoComandaHtml(id, res) {
+        const html = await this.preview.pedidoComandaHtml(id);
+        sendHtml(res, html);
+    }
     async pedidoComanda(id, res) {
-        const pdf = await this.preview.pedidoComandaPdf(id);
-        sendPdf(res, pdf, `drewrest-comanda-pedido-${id}.pdf`);
+        try {
+            const pdf = await this.preview.pedidoComandaPdf(id);
+            sendPdf(res, pdf, `drewrest-comanda-pedido-${id}.pdf`);
+        }
+        catch {
+            const html = await this.preview.pedidoComandaHtml(id);
+            sendHtml(res, html);
+        }
+    }
+    async facturaHtml(id, res) {
+        const html = await this.preview.facturaHtml(id);
+        sendHtml(res, html);
     }
     async factura(id, res) {
-        const pdf = await this.preview.facturaPdf(id);
-        sendPdf(res, pdf, `drewrest-factura-${id}.pdf`);
+        try {
+            const pdf = await this.preview.facturaPdf(id);
+            sendPdf(res, pdf, `drewrest-factura-${id}.pdf`);
+        }
+        catch {
+            const html = await this.preview.facturaHtml(id);
+            sendHtml(res, html);
+        }
     }
 };
 exports.TicketPreviewController = TicketPreviewController;
@@ -82,6 +111,14 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], TicketPreviewController.prototype, "catalog", null);
 __decorate([
+    (0, common_1.Get)('demo/:tipo/html'),
+    __param(0, (0, common_1.Param)('tipo')),
+    __param(1, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], TicketPreviewController.prototype, "demoHtml", null);
+__decorate([
     (0, common_1.Get)('demo/:tipo'),
     __param(0, (0, common_1.Param)('tipo')),
     __param(1, (0, common_1.Res)()),
@@ -90,6 +127,14 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], TicketPreviewController.prototype, "demo", null);
 __decorate([
+    (0, common_1.Get)('pedido/:id/comanda/html'),
+    __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
+    __param(1, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number, Object]),
+    __metadata("design:returntype", Promise)
+], TicketPreviewController.prototype, "pedidoComandaHtml", null);
+__decorate([
     (0, common_1.Get)('pedido/:id/comanda'),
     __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
     __param(1, (0, common_1.Res)()),
@@ -97,6 +142,14 @@ __decorate([
     __metadata("design:paramtypes", [Number, Object]),
     __metadata("design:returntype", Promise)
 ], TicketPreviewController.prototype, "pedidoComanda", null);
+__decorate([
+    (0, common_1.Get)('factura/:id/html'),
+    __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
+    __param(1, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number, Object]),
+    __metadata("design:returntype", Promise)
+], TicketPreviewController.prototype, "facturaHtml", null);
 __decorate([
     (0, common_1.Get)('factura/:id'),
     __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),

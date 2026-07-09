@@ -14,11 +14,20 @@ const common_1 = require("@nestjs/common");
 const config_1 = require("@nestjs/config");
 const comanda_escpos_builder_1 = require("./comanda-escpos.builder");
 const factura_escpos_builder_1 = require("./factura-escpos.builder");
+const escpos_buffer_decode_1 = require("./escpos-buffer-decode");
 const ticket_preview_pdf_1 = require("./ticket-preview-pdf");
+const ticket_preview_html_builder_1 = require("./ticket-preview-html.builder");
 const ticket_preview_samples_1 = require("./ticket-preview.samples");
-const escpos_utils_1 = require("./escpos-utils");
 const pedidos_service_1 = require("./pedidos.service");
 const ticket_preview_util_1 = require("./ticket-preview.util");
+function withTimeout(promise, ms) {
+    return Promise.race([
+        promise,
+        new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Tiempo agotado generando PDF')), ms);
+        }),
+    ]);
+}
 let TicketPreviewService = class TicketPreviewService {
     config;
     pedidos;
@@ -40,13 +49,25 @@ let TicketPreviewService = class TicketPreviewService {
     catalog() {
         return ticket_preview_samples_1.TICKET_PREVIEW_CATALOG;
     }
+    bufferToHtml(buffer, subtitle) {
+        const segments = (0, escpos_buffer_decode_1.decodeEscPosBuffer)(buffer, this.charWidth());
+        return (0, ticket_preview_html_builder_1.segmentsToTicketPreviewHtml)(segments, { subtitle });
+    }
     async bufferToPdf(buffer, subtitle) {
-        const logoPng = await (0, escpos_utils_1.ticketLogoPngBufferForPreview)();
-        return (0, ticket_preview_pdf_1.escposBufferToPdf)(buffer, {
+        return withTimeout((0, ticket_preview_pdf_1.escposBufferToPdf)(buffer, {
             subtitle,
-            logoPng,
+            logoPng: null,
             charWidth: this.charWidth(),
-        });
+        }), 12_000);
+    }
+    async demoHtml(tipo) {
+        this.assertEnabled();
+        const item = (0, ticket_preview_samples_1.catalogItemForTipo)(tipo);
+        if (!item) {
+            throw new common_1.NotFoundException(`Tipo de ticket no válido: ${tipo}`);
+        }
+        const buffer = await (0, ticket_preview_samples_1.buildSampleEscPosBuffer)(tipo, this.charWidth());
+        return this.bufferToHtml(buffer, `${item.label} · demo 58 mm`);
     }
     async demoPdf(tipo) {
         this.assertEnabled();
@@ -57,11 +78,23 @@ let TicketPreviewService = class TicketPreviewService {
         const buffer = await (0, ticket_preview_samples_1.buildSampleEscPosBuffer)(tipo, this.charWidth());
         return this.bufferToPdf(buffer, `${item.label} · demo 58 mm`);
     }
+    async pedidoComandaHtml(idPedido) {
+        this.assertEnabled();
+        const ticket = await this.pedidos.ticketComandaParaVistaPrevia(idPedido);
+        const buffer = await (0, comanda_escpos_builder_1.buildComandaEscPos)(ticket, this.charWidth());
+        return this.bufferToHtml(buffer, `Comanda pedido #${idPedido} · vista previa 58 mm`);
+    }
     async pedidoComandaPdf(idPedido) {
         this.assertEnabled();
         const ticket = await this.pedidos.ticketComandaParaVistaPrevia(idPedido);
         const buffer = await (0, comanda_escpos_builder_1.buildComandaEscPos)(ticket, this.charWidth());
         return this.bufferToPdf(buffer, `Comanda pedido #${idPedido} · vista previa 58 mm`);
+    }
+    async facturaHtml(idFactura) {
+        this.assertEnabled();
+        const ticket = await this.pedidos.ticketFacturaParaVistaPrevia(idFactura);
+        const buffer = await (0, factura_escpos_builder_1.buildFacturaEscPos)(ticket, this.charWidth());
+        return this.bufferToHtml(buffer, `Factura #${idFactura} · vista previa 58 mm`);
     }
     async facturaPdf(idFactura) {
         this.assertEnabled();

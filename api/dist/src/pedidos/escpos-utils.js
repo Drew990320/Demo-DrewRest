@@ -224,9 +224,7 @@ function lineaConPrecio(etiqueta, precio, width) {
 }
 function createEscPosPrinter(charWidth) {
     const { ThermalPrinter, PrinterTypes, CharacterSet } = require('node-thermal-printer');
-    const dummyIface = process.platform === 'win32'
-        ? path.join(os.tmpdir(), 'pos-escpos-dummy.bin')
-        : '/dev/null';
+    const dummyIface = path.join(os.tmpdir(), `pos-escpos-dummy-${process.pid}.bin`);
     return new ThermalPrinter({
         type: PrinterTypes.EPSON,
         interface: dummyIface,
