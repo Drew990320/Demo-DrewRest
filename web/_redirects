@@ -1,2 +1,5 @@
-# Rutas SPA: todas sirven index.html
+/assets/*  /assets/:splat  200
+/_expo/*   /_expo/:splat   200
+/favicon.ico  /favicon.ico  200
+/apple-touch-icon.png  /apple-touch-icon.png  200
 /*    /index.html   200
