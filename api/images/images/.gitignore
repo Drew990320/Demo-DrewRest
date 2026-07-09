@@ -1,0 +1,6 @@
+# Coloca aquí el logo del restaurante (logo.png). No versionar assets del cliente.
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.gif

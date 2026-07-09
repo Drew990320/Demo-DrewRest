@@ -1,0 +1,90 @@
+import { PrismaService } from '../prisma/prisma.service';
+import { PedidosGateway } from '../pedidos/pedidos.gateway';
+import { CreateProductoDto } from './dto/create-producto.dto';
+import { UpdateProductoDto } from './dto/update-producto.dto';
+export declare class ProductosService {
+    private readonly prisma;
+    private readonly gateway;
+    constructor(prisma: PrismaService, gateway: PedidosGateway);
+    private asegurarUnicoMazorca;
+    listarCategorias(): Promise<{
+        id_categoria: number;
+        nombre: string;
+    }[]>;
+    listarProductos(incluirInactivos: boolean): Promise<{
+        id_producto: number;
+        id_categoria: number;
+        categoria_nombre: string;
+        nombre: string;
+        descripcion: string | null;
+        precio: number;
+        activo: boolean;
+        es_plato_principal: boolean;
+        es_empacable: boolean;
+        es_acompanamiento_mazorca: boolean;
+        tipo_proteina: string;
+        control_stock: boolean;
+        stock_disponible: number;
+        ocultar_sin_stock: boolean;
+        es_bebida: boolean;
+        total_usos_pedido: number;
+    }[]>;
+    crear(dto: CreateProductoDto): Promise<{
+        id_producto: number;
+        id_categoria: number;
+        categoria_nombre: string;
+        nombre: string;
+        descripcion: string | null;
+        precio: number;
+        activo: boolean;
+        es_plato_principal: boolean;
+        es_empacable: boolean;
+        es_acompanamiento_mazorca: boolean;
+        tipo_proteina: string;
+        control_stock: boolean;
+        stock_disponible: number;
+        ocultar_sin_stock: boolean;
+        es_bebida: boolean;
+        total_usos_pedido: number;
+    }>;
+    actualizar(idProducto: number, dto: UpdateProductoDto): Promise<{
+        id_producto: number;
+        id_categoria: number;
+        categoria_nombre: string;
+        nombre: string;
+        descripcion: string | null;
+        precio: number;
+        activo: boolean;
+        es_plato_principal: boolean;
+        es_empacable: boolean;
+        es_acompanamiento_mazorca: boolean;
+        tipo_proteina: string;
+        control_stock: boolean;
+        stock_disponible: number;
+        ocultar_sin_stock: boolean;
+        es_bebida: boolean;
+        total_usos_pedido: number;
+    }>;
+    desactivar(idProducto: number): Promise<{
+        id_producto: number;
+        id_categoria: number;
+        categoria_nombre: string;
+        nombre: string;
+        descripcion: string | null;
+        precio: number;
+        activo: boolean;
+        es_plato_principal: boolean;
+        es_empacable: boolean;
+        es_acompanamiento_mazorca: boolean;
+        tipo_proteina: string;
+        control_stock: boolean;
+        stock_disponible: number;
+        ocultar_sin_stock: boolean;
+        es_bebida: boolean;
+        total_usos_pedido: number;
+    }>;
+    eliminarPermanente(idProducto: number): Promise<{
+        ok: boolean;
+        id_producto: number;
+    }>;
+}

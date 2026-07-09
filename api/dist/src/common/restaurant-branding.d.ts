@@ -1,0 +1,18 @@
+export declare function restaurantName(): string;
+export declare function restaurantTicketPhone(): string;
+export declare function restaurantTicketAddress(): string;
+export declare function restaurantEmailDomain(): string;
+export declare function restaurantEmailSuffix(): string;
+export declare function restaurantTextoGraciasTicket(): string;
+export declare function restaurantTextoPropinaTicket(): string;
+export declare function restaurantTextoAvisoNoDian(): string;
+export declare function restaurantTextoPieCorreo(): string | null;
+export declare function restaurantPrefijoAsuntoCorreo(): string | null;
+export declare function restaurantMostrarCreditoDrewTech(): boolean;
+export declare function restaurantModuloEnvioCorreoActivo(): boolean;
+export declare function restaurantModuloResumenDiarioActivo(): boolean;
+export declare function restaurantModuloMeserosOperativosActivo(): boolean;
+export declare function restaurantModuloInventarioActivo(): boolean;
+export declare function resolveImagesDir(): string;
+export declare function resolveRestaurantLogoPath(): string | null;
+export declare function restaurantHasLogo(): boolean;

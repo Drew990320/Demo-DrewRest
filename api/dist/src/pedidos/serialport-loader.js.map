@@ -1,0 +1,1 @@
+{"version":3,"file":"serialport-loader.js","sourceRoot":"","sources":["../../../src/pedidos/serialport-loader.ts"],"names":[],"mappings":";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;AAOA,kDAKC;AARD,IAAI,gBAAgB,GAA4B,IAAI,CAAC;AAG9C,KAAK,UAAU,mBAAmB;IACvC,IAAI,CAAC,gBAAgB,EAAE,CAAC;QACtB,gBAAgB,GAAG,wDAAa,YAAY,GAAC,CAAC;IAChD,CAAC;IACD,OAAO,gBAAgB,CAAC,UAAU,CAAC;AACrC,CAAC"}

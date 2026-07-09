@@ -1,0 +1,12 @@
+export declare const MESA_FORMA_IDS: readonly ["rectangular", "redonda", "cuadrada", "barra"];
+export type MesaFormaId = (typeof MESA_FORMA_IDS)[number];
+export declare const MESA_VISTA_IDS: readonly ["cuadricula", "compacta", "lista"];
+export type MesaVistaId = (typeof MESA_VISTA_IDS)[number];
+export declare const MESA_FORMA_LABELS: Record<MesaFormaId, string>;
+export declare const MESA_FORMA_DESCRIPCION: Record<MesaFormaId, string>;
+export declare const MESA_VISTA_LABELS: Record<MesaVistaId, string>;
+export declare const MESA_VISTA_DESCRIPCION: Record<MesaVistaId, string>;
+export declare function esMesaFormaValida(id: string | null | undefined): id is MesaFormaId;
+export declare function esMesaVistaValida(id: string | null | undefined): id is MesaVistaId;
+export declare function resolverMesaForma(guardado?: string | null): MesaFormaId;
+export declare function resolverMesaVista(guardado?: string | null): MesaVistaId;

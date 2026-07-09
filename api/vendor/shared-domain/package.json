@@ -1,0 +1,173 @@
+{
+    "name":  "@drewrest/shared-domain",
+    "version":  "0.0.1",
+    "private":  true,
+    "main":  "./dist/index.js",
+    "types":  "./dist/index.d.ts",
+    "exports":  {
+                    ".":  {
+                              "types":  "./dist/index.d.ts",
+                              "default":  "./dist/index.js"
+                          },
+                    "./asignar-cobro-por-monto":  {
+                                                      "types":  "./dist/asignar-cobro-por-monto.d.ts",
+                                                      "default":  "./dist/asignar-cobro-por-monto.js"
+                                                  },
+                    "./categoria-reglas":  {
+                                               "types":  "./dist/categoria-reglas.d.ts",
+                                               "default":  "./dist/categoria-reglas.js"
+                                           },
+                    "./categoria-menu-icon":  {
+                                                  "types":  "./dist/categoria-menu-icon.d.ts",
+                                                  "default":  "./dist/categoria-menu-icon.js"
+                                              },
+                    "./nav-app-icon":  {
+                                           "types":  "./dist/nav-app-icon.d.ts",
+                                           "default":  "./dist/nav-app-icon.js"
+                                       },
+                    "./action-app-icon":  {
+                                              "types":  "./dist/action-app-icon.d.ts",
+                                              "default":  "./dist/action-app-icon.js"
+                                          },
+                    "./visual-style":  {
+                                           "types":  "./dist/visual-style.d.ts",
+                                           "default":  "./dist/visual-style.js"
+                                       },
+                    "./mesa-visual":  {
+                                          "types":  "./dist/mesa-visual.d.ts",
+                                          "default":  "./dist/mesa-visual.js"
+                                      },
+                    "./visual-palette":  {
+                                             "types":  "./dist/visual-palette.d.ts",
+                                             "default":  "./dist/visual-palette.js"
+                                         },
+                    "./cobro-parcial":  {
+                                            "types":  "./dist/cobro-parcial.d.ts",
+                                            "default":  "./dist/cobro-parcial.js"
+                                        },
+                    "./cobro-invariantes":  {
+                                                "types":  "./dist/cobro-invariantes.d.ts",
+                                                "default":  "./dist/cobro-invariantes.js"
+                                            },
+                    "./repartir-monto-cop":  {
+                                                 "types":  "./dist/repartir-monto-cop.d.ts",
+                                                 "default":  "./dist/repartir-monto-cop.js"
+                                             },
+                    "./consolidar-fragmentos-precio":  {
+                                                           "types":  "./dist/consolidar-fragmentos-precio.d.ts",
+                                                           "default":  "./dist/consolidar-fragmentos-precio.js"
+                                                       },
+                    "./saldo-restante":  {
+                                             "types":  "./dist/saldo-restante.d.ts",
+                                             "default":  "./dist/saldo-restante.js"
+                                         },
+                    "./cocina-prioridad":  {
+                                               "types":  "./dist/cocina-prioridad.d.ts",
+                                               "default":  "./dist/cocina-prioridad.js"
+                                           },
+                    "./descuentos-pedido":  {
+                                                "types":  "./dist/descuentos-pedido.d.ts",
+                                                "default":  "./dist/descuentos-pedido.js"
+                                            },
+                    "./empaque-para-llevar":  {
+                                                  "types":  "./dist/empaque-para-llevar.d.ts",
+                                                  "default":  "./dist/empaque-para-llevar.js"
+                                              },
+                    "./email-mesero":  {
+                                           "types":  "./dist/email-mesero.d.ts",
+                                           "default":  "./dist/email-mesero.js"
+                                       },
+                    "./orden-lineas-pedido":  {
+                                                  "types":  "./dist/orden-lineas-pedido.d.ts",
+                                                  "default":  "./dist/orden-lineas-pedido.js"
+                                              },
+                    "./factura-lineas-group":  {
+                                                   "types":  "./dist/factura-lineas-group.d.ts",
+                                                   "default":  "./dist/factura-lineas-group.js"
+                                               },
+                    "./factura-mixto":  {
+                                            "types":  "./dist/factura-mixto.d.ts",
+                                            "default":  "./dist/factura-mixto.js"
+                                        },
+                    "./factura-cobro-plan":  {
+                                                 "types":  "./dist/factura-cobro-plan.d.ts",
+                                                 "default":  "./dist/factura-cobro-plan.js"
+                                             },
+                    "./factura-vuelto":  {
+                                             "types":  "./dist/factura-vuelto.d.ts",
+                                             "default":  "./dist/factura-vuelto.js"
+                                         },
+                    "./mazorca-pedido":  {
+                                             "types":  "./dist/mazorca-pedido.d.ts",
+                                             "default":  "./dist/mazorca-pedido.js"
+                                         },
+                    "./promociones-pedido":  {
+                                                 "types":  "./dist/promociones-pedido.d.ts",
+                                                 "default":  "./dist/promociones-pedido.js"
+                                             },
+                    "./mazorca-linea-pedido":  {
+                                                   "types":  "./dist/mazorca-linea-pedido.d.ts",
+                                                   "default":  "./dist/mazorca-linea-pedido.js"
+                                               },
+                    "./mesa-label":  {
+                                         "types":  "./dist/mesa-label.d.ts",
+                                         "default":  "./dist/mesa-label.js"
+                                     },
+                    "./movimiento-caja":  {
+                                              "types":  "./dist/movimiento-caja.d.ts",
+                                              "default":  "./dist/movimiento-caja.js"
+                                          },
+                    "./mesa-admin-validacion":  {
+                                                    "types":  "./dist/mesa-admin-validacion.d.ts",
+                                                    "default":  "./dist/mesa-admin-validacion.js"
+                                                },
+                    "./cocina-producto":  {
+                                              "types":  "./dist/cocina-producto.d.ts",
+                                              "default":  "./dist/cocina-producto.js"
+                                          },
+                    "./cocina-vista":  {
+                                           "types":  "./dist/cocina-vista.d.ts",
+                                           "default":  "./dist/cocina-vista.js"
+                                       },
+                    "./cuota-pendiente-reparto":  {
+                                                      "types":  "./dist/cuota-pendiente-reparto.d.ts",
+                                                      "default":  "./dist/cuota-pendiente-reparto.js"
+                                                  },
+                    "./permisos-mesero":  {
+                                              "types":  "./dist/permisos-mesero.d.ts",
+                                              "default":  "./dist/permisos-mesero.js"
+                                          },
+                    "./permisos-chef":  {
+                                            "types":  "./dist/permisos-chef.d.ts",
+                                            "default":  "./dist/permisos-chef.js"
+                                        },
+                    "./comanda-lineas-group":  {
+                                                   "types":  "./dist/comanda-lineas-group.d.ts",
+                                                   "default":  "./dist/comanda-lineas-group.js"
+                                               },
+                    "./companero-pedido":  {
+                                               "types":  "./dist/companero-pedido.d.ts",
+                                               "default":  "./dist/companero-pedido.js"
+                                           },
+                    "./dias-semana":  {
+                                          "types":  "./dist/dias-semana.d.ts",
+                                          "default":  "./dist/dias-semana.js"
+                                      },
+                    "./usuario-display":  {
+                                              "types":  "./dist/usuario-display.d.ts",
+                                              "default":  "./dist/usuario-display.js"
+                                          },
+                    "./resumen-diario-ventas":  {
+                                                    "types":  "./dist/resumen-diario-ventas.d.ts",
+                                                    "default":  "./dist/resumen-diario-ventas.js"
+                                                },
+                    "./stock-producto":  {
+                                             "types":  "./dist/stock-producto.d.ts",
+                                             "default":  "./dist/stock-producto.js"
+                                         },
+                    "./transferencia-pedido":  {
+                                                   "types":  "./dist/transferencia-pedido.d.ts",
+                                                   "default":  "./dist/transferencia-pedido.js"
+                                               }
+                }
+}

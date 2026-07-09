@@ -1,61 +1,6 @@
-# Dependencies
 node_modules/
-# Expo export en DrewRest (rutas con "node_modules" o "build" en el nombre, no son npm)
-!DrewRest/web/assets/
-!DrewRest/web/assets/**
-!DrewRest/web/assets/**/build/**
-
-# Build / cache
-dist/
-build/
-*.tsbuildinfo
-.cache/
-*.zip
-
-# Env — cualquier variante local; solo permitir plantillas de ejemplo
 .env
 .env.*
-!.env.example
-!**/.env.example
-
-# Licencias y claves criptográficas (nunca subir)
-scripts/license-keys/private.pem
-**/private.pem
-license.key
-**/license.key
-*.p12
-*.pfx
-
-# Logs & OS
 *.log
-npm-debug.log*
 .DS_Store
 Thumbs.db
-
-# Test
-coverage/
-backups/
-services/api/logs/
-
-# NestJS
-services/api/coverage/
-
-# Paquete on-prem generado (puede incluir .env, license.key, node_modules)
-DrewRest/
-LaReserva/
-
-# Expo / React Native
-apps/mobile/.expo/
-apps/mobile/dist/
-apps/mobile/web-build/
-apps/mobile/*.jks
-apps/mobile/*.p8
-apps/mobile/*.p12
-apps/mobile/*.key
-apps/mobile/*.mobileprovision
-apps/mobile/.metro-health-check*
-
-# IDE
-.idea/
-.vscode/*
-!.vscode/extensions.json

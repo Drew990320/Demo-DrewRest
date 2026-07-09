@@ -1,0 +1,11 @@
+DrewRest â€” paquete para Render (generado, no editar a mano)
+==========================================================
+
+1. Sube esta carpeta a un repo GitHub (puede ser solo render-deploy/ como raiz del repo).
+2. En Render: New > Blueprint y selecciona render.yaml
+   O crea dos servicios manualmente (API Node en api/, Static Site en web/).
+3. En el dashboard del API configura CORS_ORIGINS con la URL de la web estatica.
+4. Actualizar version: vuelve a ejecutar npm run Render:Empaquetar y push al repo.
+
+Generado: 2026-07-09 15:15
+API URL web compilada: https://drewrest-demo-api.onrender.com

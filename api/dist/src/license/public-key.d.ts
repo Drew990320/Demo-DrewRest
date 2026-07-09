@@ -1,0 +1,1 @@
+export declare const LICENSE_PUBLIC_KEY_PEM = "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAx7eTrNSFKY6ASlo2Go1OUf+4YG3Qfx2KJUe0RU8K+sw=\n-----END PUBLIC KEY-----\n";

@@ -1,0 +1,1 @@
+{"version":3,"file":"write-throttle.decorator.js","sourceRoot":"","sources":["../../../src/common/write-throttle.decorator.ts"],"names":[],"mappings":";;AAIA,sCASC;AAbD,2CAAiD;AACjD,iDAA6C;AAG7C,SAAgB,aAAa;IAC3B,OAAO,IAAA,wBAAe,EACpB,IAAA,oBAAQ,EAAC;QACP,OAAO,EAAE;YACP,KAAK,EAAE,EAAE;YACT,GAAG,EAAE,MAAM;SACZ;KACF,CAAC,CACH,CAAC;AACJ,CAAC"}
