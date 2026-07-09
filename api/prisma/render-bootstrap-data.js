@@ -1,10 +1,12 @@
 /**
- * Datos mínimos del tenant para Render (restaurante, roles, usuarios demo, mesas).
- * Usado tras migrate deploy cuando la BD se creó con db push sin seed SQL.
+ * Datos del tenant demo para Render (restaurante, config, lugares, mesas, menú mínimo).
+ * Se ejecuta en cada deploy del API para mantener la demo alineada con desarrollo.
  */
 const bcrypt = require('bcrypt');
 
 const DEFAULT_SLUG = 'principal';
+const SALON_NOMBRE = 'Salón principal';
+const DEMO_MESA_COUNT = 20;
 
 const DEMO_USERS = [
   {
@@ -124,7 +126,52 @@ async function ensureDemoUsers(prisma, idRestaurante) {
   return created;
 }
 
-async function ensureMesa(prisma, idRestaurante, numero, capacidad = 4) {
+async function ensureDemoConfig(prisma, idRestaurante) {
+  const nombre = process.env.RESTAURANT_NAME?.trim() || 'DrewRest Demo';
+  await prisma.configRestaurante.upsert({
+    where: { idRestaurante },
+    create: {
+      idRestaurante,
+      nombreComercial: nombre,
+      dominioEmailInterno: 'drewrest.local',
+      moduloInventarioActivo: true,
+      moduloMeserosOperativosActivo: true,
+      moduloResumenDiarioActivo: true,
+      moduloContabilidadActivo: true,
+      moduloCreditosActivo: true,
+    },
+    update: {
+      nombreComercial: nombre,
+      moduloInventarioActivo: true,
+      moduloMeserosOperativosActivo: true,
+      moduloResumenDiarioActivo: true,
+      moduloContabilidadActivo: true,
+      moduloCreditosActivo: true,
+    },
+  });
+}
+
+async function ensureSalonLugar(prisma, idRestaurante) {
+  const existing = await prisma.lugarMesa.findFirst({
+    where: {
+      idRestaurante,
+      nombre: { equals: SALON_NOMBRE, mode: 'insensitive' },
+    },
+  });
+  if (existing) return existing.idLugar;
+
+  const created = await prisma.lugarMesa.create({
+    data: {
+      idRestaurante,
+      nombre: SALON_NOMBRE,
+      orden: 1,
+      activo: true,
+    },
+  });
+  return created.idLugar;
+}
+
+async function ensureMesa(prisma, idRestaurante, numero, capacidad = 4, idLugar = null) {
   await prisma.mesa.upsert({
     where: {
       idRestaurante_numero: { idRestaurante, numero },
@@ -134,26 +181,91 @@ async function ensureMesa(prisma, idRestaurante, numero, capacidad = 4) {
       numero,
       capacidad,
       estado: 'libre',
+      idLugar,
     },
-    update: {},
+    update: {
+      capacidad,
+      ...(idLugar != null ? { idLugar } : {}),
+    },
   });
 }
 
-async function ensureDemoMesas(prisma, idRestaurante) {
-  for (let n = 1; n <= 15; n++) {
-    await ensureMesa(prisma, idRestaurante, n, 4);
+async function ensureDemoMesas(prisma, idRestaurante, idLugar) {
+  for (let n = 1; n <= DEMO_MESA_COUNT; n++) {
+    await ensureMesa(prisma, idRestaurante, n, 4, idLugar);
   }
-  await ensureMesa(prisma, idRestaurante, 98, 1);
-  await ensureMesa(prisma, idRestaurante, 99, 1);
+  await ensureMesa(prisma, idRestaurante, 98, 1, null);
+  await ensureMesa(prisma, idRestaurante, 99, 1, null);
+
+  await prisma.mesa.updateMany({
+    where: {
+      idRestaurante,
+      numero: { gte: 1, lte: DEMO_MESA_COUNT },
+      idLugar: null,
+    },
+    data: { idLugar },
+  });
+}
+
+async function ensureDemoMenuIfEmpty(prisma, idRestaurante) {
+  const count = await prisma.categoria.count({ where: { idRestaurante } });
+  if (count > 0) return;
+
+  const platos = await prisma.categoria.create({
+    data: {
+      idRestaurante,
+      nombre: 'Platos principales',
+      esPlatoPrincipalDefault: true,
+      productos: {
+        create: {
+          nombre: 'Plato del día',
+          precio: 25000,
+          esPlatoPrincipal: true,
+          enviaCocina: true,
+        },
+      },
+    },
+  });
+
+  await prisma.categoria.create({
+    data: {
+      idRestaurante,
+      nombre: 'Bebidas',
+      esBebida: true,
+      visibleEnMostrador: true,
+      productos: {
+        create: [
+          { nombre: 'Agua', precio: 2000, enviaCocina: false },
+          { nombre: 'Gaseosa', precio: 4000, enviaCocina: false },
+        ],
+      },
+    },
+  });
+
+  await prisma.configOperativa.upsert({
+    where: { idRestaurante },
+    create: {
+      idRestaurante,
+      mazorcaActiva: false,
+      prioridadCocinaAutomatica: false,
+      prioridadCocinaModo: 'fifo',
+    },
+    update: {},
+  });
+
+  console.log(`Menú demo mínimo creado (categoría ${platos.nombre}).`);
 }
 
 async function ensureTenantBaseData(prisma) {
   const idRestaurante = await resolveRestauranteId(prisma);
   await ensureRoles(prisma);
   await ensureDemoUsers(prisma, idRestaurante);
-  await ensureDemoMesas(prisma, idRestaurante);
+  await ensureDemoConfig(prisma, idRestaurante);
+  const idLugar = await ensureSalonLugar(prisma, idRestaurante);
+  await ensureDemoMesas(prisma, idRestaurante, idLugar);
+  await ensureDemoMenuIfEmpty(prisma, idRestaurante);
   console.log(
-    `Tenant demo: restaurante ${idRestaurante}, usuarios y mesas 1-15, 98, 99.`,
+    `Tenant demo: restaurante ${idRestaurante}, ${SALON_NOMBRE}, mesas 1-${DEMO_MESA_COUNT}, módulos inventario/contabilidad activos.`,
   );
   return idRestaurante;
 }
