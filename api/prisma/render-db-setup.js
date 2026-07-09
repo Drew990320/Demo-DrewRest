@@ -5,6 +5,8 @@
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { PrismaClient } = require('@prisma/client');
+const { ensureTenantBaseData } = require('./render-bootstrap-data');
 
 const migrationsDir = path.join(__dirname, 'migrations');
 
@@ -70,4 +72,18 @@ function tryMigrateDeploy() {
   }
 }
 
-tryMigrateDeploy();
+async function main() {
+  tryMigrateDeploy();
+
+  const prisma = new PrismaClient();
+  try {
+    await ensureTenantBaseData(prisma);
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
