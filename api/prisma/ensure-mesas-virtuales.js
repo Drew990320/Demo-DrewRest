@@ -4,18 +4,29 @@
 const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
+const DEFAULT_RESTAURANTE_ID = 1;
+
+async function ensureMesaVirtual(numero) {
+  await prisma.mesa.upsert({
+    where: {
+      idRestaurante_numero: {
+        idRestaurante: DEFAULT_RESTAURANTE_ID,
+        numero,
+      },
+    },
+    create: {
+      idRestaurante: DEFAULT_RESTAURANTE_ID,
+      numero,
+      capacidad: 1,
+      estado: 'libre',
+    },
+    update: {},
+  });
+}
 
 async function main() {
-  await prisma.mesa.upsert({
-    where: { numero: 98 },
-    create: { numero: 98, capacidad: 1, estado: 'libre' },
-    update: {},
-  });
-  await prisma.mesa.upsert({
-    where: { numero: 99 },
-    create: { numero: 99, capacidad: 1, estado: 'libre' },
-    update: {},
-  });
+  await ensureMesaVirtual(98);
+  await ensureMesaVirtual(99);
   console.log('Mesas virtuales listas: 98 (para llevar), 99 (mostrador).');
 }
 
