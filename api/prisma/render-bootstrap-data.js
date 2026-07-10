@@ -264,11 +264,84 @@ async function ensureDemoMenuIfEmpty(prisma, idRestaurante) {
   console.log(`Menú demo mínimo creado (categoría ${platos.nombre}).`);
 }
 
+async function ensureDemoVisualAssets(prisma, idRestaurante) {
+  const fs = require('fs');
+  const path = require('path');
+  const targetDir = process.env.RESTAURANT_IMAGES_DIR?.trim()
+    ? process.env.RESTAURANT_IMAGES_DIR.trim()
+    : path.join(process.cwd(), 'images');
+  const bundledDir = path.join(__dirname, '..', 'images');
+
+  if (!fs.existsSync(targetDir)) {
+    fs.mkdirSync(targetDir, { recursive: true });
+  }
+
+  const logoSpecs = [
+    { archivo: 'logo-login.png', field: 'logoLoginArchivo' },
+    { archivo: 'logo-factura.png', field: 'logoFacturaArchivo' },
+    { archivo: 'logo-ticket.png', field: 'logoTicketArchivo' },
+    { archivo: 'favicon.png', field: 'faviconArchivo' },
+  ];
+
+  const visualPatch = {};
+  for (const spec of logoSpecs) {
+    const src = path.join(bundledDir, spec.archivo);
+    const dest = path.join(targetDir, spec.archivo);
+    if (!fs.existsSync(src)) continue;
+    if (!fs.existsSync(dest)) {
+      fs.copyFileSync(src, dest);
+    }
+    visualPatch[spec.field] = spec.archivo;
+  }
+
+  const logoSrc = path.join(bundledDir, 'logo.png');
+  if (fs.existsSync(logoSrc)) {
+    const logoDest = path.join(targetDir, 'logo.png');
+    if (!fs.existsSync(logoDest)) {
+      fs.copyFileSync(logoSrc, logoDest);
+    }
+    await prisma.configRestaurante.upsert({
+      where: { idRestaurante },
+      create: { idRestaurante, logoArchivo: 'logo.png' },
+      update: {},
+    });
+    const cfg = await prisma.configRestaurante.findUnique({
+      where: { idRestaurante },
+    });
+    if (!cfg?.logoArchivo) {
+      await prisma.configRestaurante.update({
+        where: { idRestaurante },
+        data: { logoArchivo: 'logo.png' },
+      });
+    }
+  }
+
+  if (Object.keys(visualPatch).length === 0) return;
+
+  const existing = await prisma.configVisual.findUnique({
+    where: { idRestaurante },
+  });
+  const createData = { idRestaurante, ...visualPatch };
+  const updateData = {};
+  for (const [field, archivo] of Object.entries(visualPatch)) {
+    if (!existing?.[field]) {
+      updateData[field] = archivo;
+    }
+  }
+
+  await prisma.configVisual.upsert({
+    where: { idRestaurante },
+    create: createData,
+    update: updateData,
+  });
+}
+
 async function ensureTenantBaseData(prisma) {
   const idRestaurante = await resolveRestauranteId(prisma);
   await ensureRoles(prisma);
   await ensureDemoUsers(prisma, idRestaurante);
   await ensureDemoConfig(prisma, idRestaurante);
+  await ensureDemoVisualAssets(prisma, idRestaurante);
   const idLugar = await ensureSalonLugar(prisma, idRestaurante);
   await ensureDemoMesas(prisma, idRestaurante, idLugar);
   await ensureDemoMenuIfEmpty(prisma, idRestaurante);

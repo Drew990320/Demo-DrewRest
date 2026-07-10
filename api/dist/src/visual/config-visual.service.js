@@ -1,16 +1,50 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
 var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
     var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
     if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
     else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
     return c > 3 && r && Object.defineProperty(target, key, r), r;
 };
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ConfigVisualService = void 0;
 const common_1 = require("@nestjs/common");
+const path = __importStar(require("path"));
 const client_1 = require("@prisma/client");
 const nav_app_icon_1 = require("@drewrest/shared-domain/nav-app-icon");
 const action_app_icon_1 = require("@drewrest/shared-domain/action-app-icon");
@@ -46,8 +80,34 @@ let ConfigVisualService = class ConfigVisualService {
             });
         }
         row = await this.aplicarPaletaFabricaSiCorresponde(row);
+        row = await this.syncFilenamesAssetsDesdeDisco(row);
         cachedRowByTenant.set(tenantId, row);
         return row;
+    }
+    async syncFilenamesAssetsDesdeDisco(row) {
+        const specs = [
+            { tipo: 'login', field: 'logoLoginArchivo' },
+            { tipo: 'factura', field: 'logoFacturaArchivo' },
+            { tipo: 'ticket', field: 'logoTicketArchivo' },
+            { tipo: 'favicon', field: 'faviconArchivo' },
+            { tipo: 'navbar-fondo', field: 'navbarFondoArchivo' },
+        ];
+        const data = {};
+        for (const { tipo, field } of specs) {
+            if (row[field])
+                continue;
+            const found = (0, visual_assets_util_1.resolverAssetVisualPath)(tipo, null);
+            if (!found)
+                continue;
+            data[field] = path.basename(found);
+        }
+        if (Object.keys(data).length === 0)
+            return row;
+        const updated = await this.prisma.configVisual.update({
+            where: { idRestaurante: row.idRestaurante },
+            data,
+        });
+        return updated;
     }
     coloresCrudos(row) {
         return {
@@ -152,11 +212,11 @@ let ConfigVisualService = class ConfigVisualService {
             logo_ticket_archivo: row.logoTicketArchivo,
             favicon_archivo: row.faviconArchivo,
             navbar_fondo_archivo: row.navbarFondoArchivo,
-            tiene_logo_login: Boolean((0, visual_assets_util_1.assetVisualConfigurado)(row.logoLoginArchivo)),
-            tiene_logo_factura: Boolean((0, visual_assets_util_1.assetVisualConfigurado)(row.logoFacturaArchivo)),
-            tiene_logo_ticket: Boolean((0, visual_assets_util_1.assetVisualConfigurado)(row.logoTicketArchivo)),
-            tiene_favicon: Boolean((0, visual_assets_util_1.assetVisualConfigurado)(row.faviconArchivo)),
-            tiene_navbar_fondo: Boolean((0, visual_assets_util_1.assetVisualConfigurado)(row.navbarFondoArchivo)),
+            tiene_logo_login: Boolean((0, visual_assets_util_1.resolverAssetVisualPath)('login', row.logoLoginArchivo)),
+            tiene_logo_factura: Boolean((0, visual_assets_util_1.resolverAssetVisualPath)('factura', row.logoFacturaArchivo)),
+            tiene_logo_ticket: Boolean((0, visual_assets_util_1.resolverAssetVisualPath)('ticket', row.logoTicketArchivo)),
+            tiene_favicon: Boolean((0, visual_assets_util_1.resolverAssetVisualPath)('favicon', row.faviconArchivo)),
+            tiene_navbar_fondo: Boolean((0, visual_assets_util_1.resolverAssetVisualPath)('navbar-fondo', row.navbarFondoArchivo)),
             actualizado_en: row.actualizadoEn.toISOString(),
         };
     }
@@ -322,15 +382,15 @@ let ConfigVisualService = class ConfigVisualService {
             return null;
         switch (tipo) {
             case 'login':
-                return (0, visual_assets_util_1.assetVisualConfigurado)(row.logoLoginArchivo);
+                return (0, visual_assets_util_1.resolverAssetVisualPath)('login', row.logoLoginArchivo);
             case 'factura':
-                return (0, visual_assets_util_1.assetVisualConfigurado)(row.logoFacturaArchivo);
+                return (0, visual_assets_util_1.resolverAssetVisualPath)('factura', row.logoFacturaArchivo);
             case 'ticket':
-                return (0, visual_assets_util_1.assetVisualConfigurado)(row.logoTicketArchivo);
+                return (0, visual_assets_util_1.resolverAssetVisualPath)('ticket', row.logoTicketArchivo);
             case 'favicon':
-                return (0, visual_assets_util_1.assetVisualConfigurado)(row.faviconArchivo);
+                return (0, visual_assets_util_1.resolverAssetVisualPath)('favicon', row.faviconArchivo);
             case 'navbar-fondo':
-                return (0, visual_assets_util_1.assetVisualConfigurado)(row.navbarFondoArchivo);
+                return (0, visual_assets_util_1.resolverAssetVisualPath)('navbar-fondo', row.navbarFondoArchivo);
         }
     }
     iconoNav(key, row) {

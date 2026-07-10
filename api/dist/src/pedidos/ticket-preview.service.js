@@ -21,6 +21,7 @@ const ticket_preview_html_builder_1 = require("./ticket-preview-html.builder");
 const ticket_preview_samples_1 = require("./ticket-preview.samples");
 const pedidos_service_1 = require("./pedidos.service");
 const ticket_preview_util_1 = require("./ticket-preview.util");
+const escpos_utils_1 = require("./escpos-utils");
 function withTimeout(promise, ms) {
     return Promise.race([
         promise,
@@ -59,19 +60,32 @@ let TicketPreviewService = class TicketPreviewService {
     charWidth() {
         return (0, ticket_preview_util_1.ticketPreviewCharWidth)(this.config);
     }
-    catalog() {
-        return ticket_preview_samples_1.TICKET_PREVIEW_CATALOG;
+    async previewLogoPng() {
+        return (0, escpos_utils_1.ticketLogoPngBufferForPreview)();
     }
-    bufferToHtml(buffer, subtitle) {
+    logoDataUrlFromPng(logoPng) {
+        if (!logoPng?.length)
+            return null;
+        return `data:image/png;base64,${logoPng.toString('base64')}`;
+    }
+    async bufferToHtml(buffer, subtitle) {
+        const logoPng = await this.previewLogoPng();
         const segments = (0, escpos_buffer_decode_1.decodeEscPosBuffer)(buffer, this.charWidth());
-        return (0, ticket_preview_html_builder_1.segmentsToTicketPreviewHtml)(segments, { subtitle });
+        return (0, ticket_preview_html_builder_1.segmentsToTicketPreviewHtml)(segments, {
+            subtitle,
+            logoDataUrl: this.logoDataUrlFromPng(logoPng),
+        });
     }
     async bufferToPdf(buffer, subtitle) {
+        const logoPng = await this.previewLogoPng();
         return withTimeout((0, ticket_preview_pdf_1.escposBufferToPdf)(buffer, {
             subtitle,
-            logoPng: null,
+            logoPng,
             charWidth: this.charWidth(),
         }), 12_000);
+    }
+    catalog() {
+        return ticket_preview_samples_1.TICKET_PREVIEW_CATALOG;
     }
     async demoHtml(tipo) {
         this.assertEnabled();
