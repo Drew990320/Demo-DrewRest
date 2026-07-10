@@ -13,6 +13,22 @@ const MAX_OFFSET = 24;
 const ROOT = __dirname;
 const PORT_FILE = path.join(ROOT, 'web-port.txt');
 
+/** Puertos reservados (p. ej. 8081 = Expo en desarrollo). No usar ni al buscar alternativa. */
+const RESERVED_PORTS = new Set(
+  String(process.env.WEB_PORT_SKIP || '8081')
+    .split(/[,;\s]+/)
+    .map((s) => Number(s.trim()))
+    .filter((n) => Number.isFinite(n) && n > 0 && n < 65536),
+);
+
+function nextCandidatePort(port, preferred) {
+  let next = port + 1;
+  while (RESERVED_PORTS.has(next) && next <= preferred + MAX_OFFSET) {
+    next += 1;
+  }
+  return next;
+}
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8',
@@ -142,8 +158,11 @@ function onListening(port, preferred) {
   console.log('');
 
   if (port !== preferred) {
-    console.log(`Nota: el puerto ${preferred} estaba ocupado por otro servicio (p. ej. Postgres).`);
-    console.log(`      Se uso el puerto ${port}.`);
+    const reserved = [...RESERVED_PORTS].sort((a, b) => a - b).join(', ');
+    console.log(`Nota: el puerto ${preferred} estaba ocupado. Se uso el puerto ${port}.`);
+    if (reserved) {
+      console.log(`      Puertos reservados (no se usan): ${reserved}`);
+    }
     console.log('');
   }
 }
@@ -152,17 +171,20 @@ function tryListen(port, preferred) {
   const server = http.createServer(onRequest);
   server.on('error', (err) => {
     if (err && err.code === 'EADDRINUSE') {
-      const next = port + 1;
+      const next = nextCandidatePort(port, preferred);
       if (next > preferred + MAX_OFFSET) {
         console.error('');
         console.error(
           `No hay puerto libre entre ${preferred} y ${preferred + MAX_OFFSET}.`,
         );
-        console.error('Cierra otro programa que use esos puertos o cambia WEB_PORT en inicio.bat.');
+        console.error(
+          `Reservados: ${[...RESERVED_PORTS].join(', ') || '(ninguno)'}. Cierra otro programa o cambia WEB_PORT.`,
+        );
         console.error('');
         process.exit(1);
       }
-      console.warn(`Puerto ${port} ocupado, probando ${next}...`);
+      const skipHint = RESERVED_PORTS.has(port + 1) ? ' (reservado para desarrollo)' : '';
+      console.warn(`Puerto ${port} ocupado, probando ${next}...${skipHint}`);
       tryListen(next, preferred);
       return;
     }
