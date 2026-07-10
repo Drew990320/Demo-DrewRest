@@ -76,6 +76,7 @@ let VisualController = class VisualController {
         const tipo = parseAssetTipo(tipoRaw);
         const path = this.visual.resolveAssetPath(tipo);
         if (!path) {
+            res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
             res.status(404).json({ message: 'Asset no configurado' });
             return;
         }

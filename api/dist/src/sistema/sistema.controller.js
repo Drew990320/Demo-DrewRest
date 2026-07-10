@@ -76,6 +76,7 @@ let SistemaController = class SistemaController {
         await this.configRestaurante.obtenerRow();
         const logoPath = (0, restaurant_branding_1.resolveRestaurantLogoPath)();
         if (!logoPath) {
+            res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
             res.status(404).json({ message: 'Logo no configurado' });
             return;
         }
