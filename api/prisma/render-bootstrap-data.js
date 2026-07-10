@@ -30,6 +30,13 @@ const DEMO_USERS = [
     email: 'admin@drewrest.local',
     password: 'admin123',
   },
+  {
+    rol: 'superadmin',
+    nombre: 'Superadmin',
+    apellido: '',
+    email: 'superadmin@drewrest.local',
+    password: 'superadmin123',
+  },
 ];
 
 async function resolveRestauranteId(prisma) {
@@ -83,6 +90,7 @@ async function ensureRoles(prisma) {
     { nombre: 'mesero', descripcion: 'Toma pedidos y factura' },
     { nombre: 'chef', descripcion: 'Vista cocina' },
     { nombre: 'admin', descripcion: 'Administracion' },
+    { nombre: 'superadmin', descripcion: 'Operación oculta del sistema' },
   ];
   for (const rol of roles) {
     await prisma.rol.upsert({
