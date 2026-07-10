@@ -757,7 +757,7 @@ export declare const NAV_APP_ICONOS: ReadonlyArray<{
     id: NavAppIconId;
     label: string;
 }>;
-export declare const NAV_ICON_KEYS: readonly ["mesas", "pedidos", "mostrador", "para_llevar", "ayuda", "cocina", "caja", "mas", "cuenta", "mesa", "menu", "cobrar", "usuarios", "editar_menu", "categorias", "mesas_admin", "descuentos_promociones", "creditos", "inventario", "contabilidad", "configuracion", "conexion", "permisos", "turno", "personalizacion"];
+export declare const NAV_ICON_KEYS: readonly ["mesas", "pedidos", "mostrador", "para_llevar", "ayuda", "cocina", "caja", "mas", "cuenta", "mesa", "menu", "cobrar", "usuarios", "editar_menu", "categorias", "mesas_admin", "descuentos_promociones", "creditos", "inventario", "contabilidad", "configuracion", "conexion", "permisos", "turno", "personalizacion", "vista_previa_tickets"];
 export type NavIconKey = (typeof NAV_ICON_KEYS)[number];
 export declare const NAV_ICON_DEFAULTS: Record<NavIconKey, NavAppIconId>;
 export declare function esNavAppIconValido(icono: string | null | undefined): icono is NavAppIconId;

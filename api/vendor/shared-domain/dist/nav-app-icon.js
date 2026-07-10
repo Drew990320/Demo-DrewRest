@@ -364,6 +364,7 @@ exports.NAV_ICON_KEYS = [
     'permisos',
     'turno',
     'personalizacion',
+    'vista_previa_tickets',
 ];
 exports.NAV_ICON_DEFAULTS = {
     mesas: 'grid-outline',
@@ -391,6 +392,7 @@ exports.NAV_ICON_DEFAULTS = {
     permisos: 'shield-checkmark-outline',
     turno: 'wallet-outline',
     personalizacion: 'color-palette-outline',
+    vista_previa_tickets: 'receipt-outline',
 };
 const ICON_SET = new Set(exports.NAV_APP_ICONOS.map((i) => i.id));
 function esNavAppIconValido(icono) {

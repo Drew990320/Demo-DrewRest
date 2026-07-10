@@ -1,6 +1,26 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.firstCorsOrigin = firstCorsOrigin;
+exports.resolveDemoWebLoginUrl = resolveDemoWebLoginUrl;
 exports.resolveCorsOrigin = resolveCorsOrigin;
+function firstCorsOrigin() {
+    const raw = process.env.CORS_ORIGINS?.trim();
+    if (!raw)
+        return null;
+    const first = raw
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)[0];
+    return first ?? null;
+}
+function resolveDemoWebLoginUrl() {
+    const explicit = process.env.DEMO_WEB_URL?.trim() || process.env.PUBLIC_WEB_URL?.trim();
+    const base = explicit || firstCorsOrigin();
+    if (!base)
+        return null;
+    const normalized = base.replace(/\/$/, '');
+    return normalized.endsWith('/login') ? normalized : `${normalized}/login`;
+}
 function resolveCorsOrigin() {
     const raw = process.env.CORS_ORIGINS?.trim();
     if (!raw)
