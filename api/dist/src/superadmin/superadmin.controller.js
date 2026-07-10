@@ -1,0 +1,101 @@
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.SuperadminController = void 0;
+const common_1 = require("@nestjs/common");
+const jwt_auth_guard_1 = require("../auth/jwt-auth.guard");
+const roles_decorator_1 = require("../auth/roles.decorator");
+const roles_guard_1 = require("../auth/roles.guard");
+const current_tenant_decorator_1 = require("../tenant/current-tenant.decorator");
+const patch_acceso_dto_1 = require("./dto/patch-acceso.dto");
+const purgar_dto_1 = require("./dto/purgar.dto");
+const superadmin_service_1 = require("./superadmin.service");
+let SuperadminController = class SuperadminController {
+    superadmin;
+    constructor(superadmin) {
+        this.superadmin = superadmin;
+    }
+    estado(tenantId) {
+        return this.superadmin.estado(tenantId ?? 1);
+    }
+    patchAcceso(dto, tenantId) {
+        return this.superadmin.patchAcceso(tenantId ?? 1, dto);
+    }
+    eliminarAdmin(tenantId) {
+        return this.superadmin.eliminarAdmin(tenantId ?? 1);
+    }
+    purgarMenu(dto, tenantId) {
+        return this.superadmin.purgarMenu(tenantId ?? 1, dto.confirmar);
+    }
+    purgarMesas(dto, tenantId) {
+        return this.superadmin.purgarMesas(tenantId ?? 1, dto.confirmar);
+    }
+    purgarLugares(dto, tenantId) {
+        return this.superadmin.purgarLugares(tenantId ?? 1, dto.confirmar);
+    }
+};
+exports.SuperadminController = SuperadminController;
+__decorate([
+    (0, common_1.Get)('estado'),
+    __param(0, (0, current_tenant_decorator_1.CurrentTenantId)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", void 0)
+], SuperadminController.prototype, "estado", null);
+__decorate([
+    (0, common_1.Patch)('acceso'),
+    __param(0, (0, common_1.Body)()),
+    __param(1, (0, current_tenant_decorator_1.CurrentTenantId)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [patch_acceso_dto_1.PatchAccesoRestauranteDto, Object]),
+    __metadata("design:returntype", void 0)
+], SuperadminController.prototype, "patchAcceso", null);
+__decorate([
+    (0, common_1.Delete)('admin'),
+    __param(0, (0, current_tenant_decorator_1.CurrentTenantId)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", void 0)
+], SuperadminController.prototype, "eliminarAdmin", null);
+__decorate([
+    (0, common_1.Post)('purgar/menu'),
+    __param(0, (0, common_1.Body)()),
+    __param(1, (0, current_tenant_decorator_1.CurrentTenantId)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [purgar_dto_1.PurgarSuperadminDto, Object]),
+    __metadata("design:returntype", void 0)
+], SuperadminController.prototype, "purgarMenu", null);
+__decorate([
+    (0, common_1.Post)('purgar/mesas'),
+    __param(0, (0, common_1.Body)()),
+    __param(1, (0, current_tenant_decorator_1.CurrentTenantId)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [purgar_dto_1.PurgarSuperadminDto, Object]),
+    __metadata("design:returntype", void 0)
+], SuperadminController.prototype, "purgarMesas", null);
+__decorate([
+    (0, common_1.Post)('purgar/lugares'),
+    __param(0, (0, common_1.Body)()),
+    __param(1, (0, current_tenant_decorator_1.CurrentTenantId)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [purgar_dto_1.PurgarSuperadminDto, Object]),
+    __metadata("design:returntype", void 0)
+], SuperadminController.prototype, "purgarLugares", null);
+exports.SuperadminController = SuperadminController = __decorate([
+    (0, common_1.Controller)('superadmin'),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
+    (0, roles_decorator_1.Roles)('superadmin'),
+    __metadata("design:paramtypes", [superadmin_service_1.SuperadminService])
+], SuperadminController);
+//# sourceMappingURL=superadmin.controller.js.map

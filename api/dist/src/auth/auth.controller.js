@@ -78,7 +78,7 @@ __decorate([
 __decorate([
     (0, throttler_1.Throttle)({ default: { limit: 10, ttl: 60_000 } }),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
-    (0, roles_decorator_1.Roles)('admin'),
+    (0, roles_decorator_1.Roles)('superadmin'),
     (0, common_1.Post)('verify-password'),
     __param(0, (0, common_1.Body)()),
     __param(1, (0, common_1.Req)()),

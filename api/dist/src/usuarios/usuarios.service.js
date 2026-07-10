@@ -45,6 +45,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.UsuariosService = void 0;
 const common_1 = require("@nestjs/common");
 const bcrypt = __importStar(require("bcrypt"));
+const roles_1 = require("@drewrest/shared-domain/roles");
 const prisma_service_1 = require("../prisma/prisma.service");
 const auth_user_cache_1 = require("../auth/auth-user-cache");
 const pedidos_gateway_1 = require("../pedidos/pedidos.gateway");
@@ -60,13 +61,22 @@ let UsuariosService = class UsuariosService {
         this.prisma = prisma;
         this.gateway = gateway;
     }
-    async listar(tenantId) {
+    async listar(tenantId, actor) {
         const rows = await this.prisma.usuario.findMany({
             where: { idRestaurante: tenantId },
             include: { rol: true },
             orderBy: { idUsuario: 'asc' },
         });
-        return rows.map((u) => {
+        return rows
+            .filter((u) => {
+            if ((0, roles_1.esRolOcultoEnUsuarios)(u.rol.nombre))
+                return false;
+            if ((0, roles_1.esRolAdmin)(actor?.rol) && u.rol.nombre === roles_1.ROL_ADMIN) {
+                return u.idUsuario !== actor?.idUsuario;
+            }
+            return true;
+        })
+            .map((u) => {
             const { nombre, apellido } = (0, usuario_display_1.nombreUsuarioPublico)(u.nombre, u.apellido, u.rol.nombre);
             return {
                 id: u.idUsuario,

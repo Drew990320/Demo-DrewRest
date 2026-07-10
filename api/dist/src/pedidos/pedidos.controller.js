@@ -377,7 +377,7 @@ __decorate([
     (0, throttler_1.SkipThrottle)(),
     (0, common_1.Get)('resumen-diario/facturas/:idFactura/lineas'),
     (0, common_1.UseGuards)(pedido_tenant_guard_1.PedidoTenantGuard, roles_guard_1.RolesGuard),
-    (0, roles_decorator_1.Roles)('admin'),
+    (0, roles_decorator_1.Roles)('admin', 'superadmin'),
     __param(0, (0, common_1.Param)('idFactura', common_1.ParseIntPipe)),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Number]),
@@ -387,7 +387,7 @@ __decorate([
     (0, throttler_1.SkipThrottle)(),
     (0, common_1.Get)('resumen-diario'),
     (0, common_1.UseGuards)(pedido_tenant_guard_1.PedidoTenantGuard, roles_guard_1.RolesGuard),
-    (0, roles_decorator_1.Roles)('admin'),
+    (0, roles_decorator_1.Roles)('admin', 'superadmin'),
     __param(0, (0, common_1.Query)('fecha')),
     __param(1, (0, current_tenant_decorator_1.CurrentTenantId)()),
     __metadata("design:type", Function),
@@ -397,7 +397,7 @@ __decorate([
 __decorate([
     (0, common_1.Post)('resumen-diario/vaciar'),
     (0, common_1.UseGuards)(pedido_tenant_guard_1.PedidoTenantGuard, roles_guard_1.RolesGuard),
-    (0, roles_decorator_1.Roles)('admin'),
+    (0, roles_decorator_1.Roles)('superadmin'),
     __param(0, (0, common_1.Body)()),
     __param(1, (0, common_1.Query)('fecha')),
     __param(2, (0, common_1.Req)()),
@@ -408,7 +408,7 @@ __decorate([
 __decorate([
     (0, common_1.Post)('resumen-diario/cancelar-reabiertos'),
     (0, common_1.UseGuards)(pedido_tenant_guard_1.PedidoTenantGuard, roles_guard_1.RolesGuard),
-    (0, roles_decorator_1.Roles)('admin'),
+    (0, roles_decorator_1.Roles)('superadmin'),
     __param(0, (0, common_1.Body)()),
     __param(1, (0, common_1.Query)('fecha')),
     __param(2, (0, common_1.Req)()),
@@ -419,7 +419,7 @@ __decorate([
 __decorate([
     (0, common_1.Post)('resumen-diario/imprimir-completo'),
     (0, common_1.UseGuards)(pedido_tenant_guard_1.PedidoTenantGuard, roles_guard_1.RolesGuard),
-    (0, roles_decorator_1.Roles)('admin'),
+    (0, roles_decorator_1.Roles)('admin', 'superadmin'),
     __param(0, (0, common_1.Query)('fecha')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
@@ -428,7 +428,7 @@ __decorate([
 __decorate([
     (0, common_1.Post)('resumen-diario/imprimir-total'),
     (0, common_1.UseGuards)(pedido_tenant_guard_1.PedidoTenantGuard, roles_guard_1.RolesGuard),
-    (0, roles_decorator_1.Roles)('admin'),
+    (0, roles_decorator_1.Roles)('admin', 'superadmin'),
     __param(0, (0, common_1.Query)('fecha')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
@@ -437,7 +437,7 @@ __decorate([
 __decorate([
     (0, common_1.Post)('resumen-diario/imprimir-seleccion'),
     (0, common_1.UseGuards)(pedido_tenant_guard_1.PedidoTenantGuard, roles_guard_1.RolesGuard),
-    (0, roles_decorator_1.Roles)('admin'),
+    (0, roles_decorator_1.Roles)('admin', 'superadmin'),
     __param(0, (0, common_1.Body)()),
     __param(1, (0, common_1.Query)('fecha')),
     __metadata("design:type", Function),

@@ -157,6 +157,10 @@
                                               "types":  "./dist/usuario-display.d.ts",
                                               "default":  "./dist/usuario-display.js"
                                           },
+                    "./roles":  {
+                                    "types":  "./dist/roles.d.ts",
+                                    "default":  "./dist/roles.js"
+                                },
                     "./resumen-diario-ventas":  {
                                                     "types":  "./dist/resumen-diario-ventas.d.ts",
                                                     "default":  "./dist/resumen-diario-ventas.js"

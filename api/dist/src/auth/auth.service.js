@@ -49,6 +49,7 @@ const bcrypt = __importStar(require("bcrypt"));
 const prisma_service_1 = require("../prisma/prisma.service");
 const tenant_constants_1 = require("../tenant/tenant.constants");
 const tenant_service_1 = require("../tenant/tenant.service");
+const tenant_access_1 = require("../tenant/tenant-access");
 const usuario_display_1 = require("../usuarios/usuario-display");
 let AuthService = class AuthService {
     prisma;
@@ -75,6 +76,7 @@ let AuthService = class AuthService {
         if (!ok) {
             throw new common_1.UnauthorizedException('Credenciales inválidas');
         }
+        await (0, tenant_access_1.assertTenantAccessForUser)(this.prisma, user);
         const pwdAt = (user.passwordCambiadoEn ?? user.creadoEn).getTime();
         const payload = {
             sub: user.idUsuario,
@@ -105,6 +107,7 @@ let AuthService = class AuthService {
         if (!user?.activo) {
             throw new common_1.UnauthorizedException('Sesión inválida');
         }
+        await (0, tenant_access_1.assertTenantAccessForUser)(this.prisma, user);
         const pwdAt = (user.passwordCambiadoEn ?? user.creadoEn).getTime();
         const payload = {
             sub: user.idUsuario,

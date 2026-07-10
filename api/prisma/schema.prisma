@@ -120,6 +120,8 @@ model Restaurante {
   slug          String   @unique @db.VarChar(80)
   nombre        String   @db.VarChar(120)
   activo        Boolean  @default(true)
+  /// Si está definido y ya pasó, nadie (salvo superadmin) puede iniciar sesión.
+  accesoHasta   DateTime? @map("acceso_hasta")
   plan          String   @default("core") @db.VarChar(40)
   creadoEn      DateTime @default(now()) @map("creado_en")
 

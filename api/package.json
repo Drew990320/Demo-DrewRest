@@ -8,7 +8,7 @@
                 },
     "scripts":  {
                     "postinstall":  "prisma generate",
-                    "render:build":  "node prisma/render-db-setup.js \u0026\u0026 node prisma/ensure-mesas-virtuales.js",
+                    "render:build":  "node prisma/render-db-setup.js \u0026\u0026 node prisma/ensure-mesas-virtuales.js \u0026\u0026 node prisma/ensure-superadmin.js",
                     "start":  "node dist/src/main"
                 },
     "prisma":  {

@@ -33,6 +33,7 @@ const restaurante_module_1 = require("./restaurante/restaurante.module");
 const tenant_module_1 = require("./tenant/tenant.module");
 const visual_module_1 = require("./visual/visual.module");
 const sistema_controller_1 = require("./sistema/sistema.controller");
+const superadmin_module_1 = require("./superadmin/superadmin.module");
 const usuarios_module_1 = require("./usuarios/usuarios.module");
 let AppModule = class AppModule {
 };
@@ -71,6 +72,7 @@ exports.AppModule = AppModule = __decorate([
             cuentas_por_pagar_module_1.CuentasPorPagarModule,
             integracion_module_1.IntegracionModule,
             platform_module_1.PlatformModule,
+            superadmin_module_1.SuperadminModule,
         ],
         controllers: [app_controller_1.AppController, sistema_controller_1.SistemaController],
         providers: [{ provide: core_1.APP_GUARD, useClass: throttler_1.ThrottlerGuard }],

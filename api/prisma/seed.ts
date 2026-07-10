@@ -69,13 +69,19 @@ async function main() {
       { nombre: 'mesero', descripcion: 'Toma pedidos y factura' },
       { nombre: 'chef', descripcion: 'Vista cocina' },
       { nombre: 'admin', descripcion: 'Administración' },
+      { nombre: 'superadmin', descripcion: 'Operación oculta del sistema' },
     ],
   });
   const rolMesero = await prisma.rol.findFirstOrThrow({ where: { nombre: 'mesero' } });
   const rolChef = await prisma.rol.findFirstOrThrow({ where: { nombre: 'chef' } });
   const rolAdmin = await prisma.rol.findFirstOrThrow({ where: { nombre: 'admin' } });
+  const rolSuperadmin = await prisma.rol.findFirstOrThrow({ where: { nombre: 'superadmin' } });
 
   const hash = (p: string) => bcrypt.hashSync(p, 10);
+  const superEmail =
+    process.env.SUPERADMIN_EMAIL?.trim().toLowerCase() ||
+    'superadmin@drewrest.local';
+  const superPassword = process.env.SUPERADMIN_PASSWORD?.trim() || 'superadmin123';
   await prisma.usuario.createMany({
     data: [
       {
@@ -98,6 +104,13 @@ async function main() {
         apellido: '',
         email: 'admin@drewrest.local',
         passwordHash: hash('admin123'),
+      },
+      {
+        idRol: rolSuperadmin.idRol,
+        nombre: 'Superadmin',
+        apellido: '',
+        email: superEmail,
+        passwordHash: hash(superPassword),
       },
     ],
   });

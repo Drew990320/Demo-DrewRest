@@ -1533,8 +1533,8 @@ let PedidosService = class PedidosService {
         return ids.length;
     }
     async cancelarPedidosReabiertos(actor, dto, fecha) {
-        if (actor.rol.nombre !== 'admin') {
-            throw new common_1.ForbiddenException('Solo admin');
+        if (actor.rol.nombre !== 'superadmin') {
+            throw new common_1.ForbiddenException('Solo superadmin');
         }
         if (dto.confirmar.trim().toUpperCase() !== 'CANCELAR') {
             throw new common_1.BadRequestException('Escribe confirmar: "CANCELAR" para eliminar pedidos reabiertos');
@@ -1601,8 +1601,8 @@ let PedidosService = class PedidosService {
         };
     }
     async vaciarResumenDiario(actor, dto, fecha) {
-        if (actor.rol.nombre !== 'admin') {
-            throw new common_1.ForbiddenException('Solo admin');
+        if (actor.rol.nombre !== 'superadmin') {
+            throw new common_1.ForbiddenException('Solo superadmin');
         }
         if (dto.confirmar.trim().toUpperCase() !== 'VACIAR') {
             throw new common_1.BadRequestException('Escribe confirmar: "VACIAR" para vaciar el resumen del día');

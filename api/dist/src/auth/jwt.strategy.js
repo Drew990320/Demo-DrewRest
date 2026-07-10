@@ -15,6 +15,7 @@ const config_1 = require("@nestjs/config");
 const passport_1 = require("@nestjs/passport");
 const passport_jwt_1 = require("passport-jwt");
 const prisma_service_1 = require("../prisma/prisma.service");
+const tenant_access_1 = require("../tenant/tenant-access");
 const auth_user_cache_1 = require("./auth-user-cache");
 let JwtStrategy = class JwtStrategy extends (0, passport_1.PassportStrategy)(passport_jwt_1.Strategy) {
     prisma;
@@ -33,6 +34,7 @@ let JwtStrategy = class JwtStrategy extends (0, passport_1.PassportStrategy)(pas
         }
         const cached = (0, auth_user_cache_1.getCachedAuthUser)(id);
         if (cached?.activo) {
+            await (0, tenant_access_1.assertTenantAccessForUser)(this.prisma, cached);
             return cached;
         }
         const user = await this.prisma.usuario.findUnique({
@@ -50,6 +52,7 @@ let JwtStrategy = class JwtStrategy extends (0, passport_1.PassportStrategy)(pas
         if (payload.pwdAt == null || payload.pwdAt < pwdAtEsperado) {
             throw new common_1.UnauthorizedException('Sesión expirada. Inicia sesión de nuevo.');
         }
+        await (0, tenant_access_1.assertTenantAccessForUser)(this.prisma, user);
         (0, auth_user_cache_1.setCachedAuthUser)(user);
         return user;
     }

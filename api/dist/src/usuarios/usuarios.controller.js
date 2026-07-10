@@ -26,7 +26,10 @@ let UsuariosController = class UsuariosController {
         this.usuarios = usuarios;
     }
     listar(req) {
-        return this.usuarios.listar(req.user.idRestaurante);
+        return this.usuarios.listar(req.user.idRestaurante, {
+            idUsuario: req.user.idUsuario,
+            rol: req.user.rol.nombre,
+        });
     }
     crearMesero(dto, req) {
         return this.usuarios.crearMesero(dto, req.user.idRestaurante);
