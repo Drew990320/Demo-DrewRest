@@ -9,6 +9,10 @@
                               "types":  "./dist/index.d.ts",
                               "default":  "./dist/index.js"
                           },
+                    "./help-tutorials":  {
+                                             "types":  "./dist/help-tutorials.d.ts",
+                                             "default":  "./dist/help-tutorials.js"
+                                         },
                     "./asignar-cobro-por-monto":  {
                                                       "types":  "./dist/asignar-cobro-por-monto.d.ts",
                                                       "default":  "./dist/asignar-cobro-por-monto.js"

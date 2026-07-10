@@ -1,3 +1,4 @@
+export * from './help-tutorials';
 export * from './asignar-cobro-por-monto';
 export * from './categoria-reglas';
 export * from './categoria-menu-icon';
