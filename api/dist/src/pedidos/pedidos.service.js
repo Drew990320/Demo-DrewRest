@@ -4046,7 +4046,7 @@ let PedidosService = class PedidosService {
         await this.prisma.$transaction(async (tx) => {
             await tx.detallePedido.updateMany({
                 where: { idDetalle: { in: idsPendientes } },
-                data: { enviadoCocina: true },
+                data: { enviadoCocina: true, enviadoCocinaEn: emitidaEn },
             });
             if (pedido.estado === 'abierto') {
                 await tx.pedido.update({
@@ -4199,7 +4199,7 @@ let PedidosService = class PedidosService {
             impresion_factura: impresion,
         };
     }
-    async ticketComandaParaVistaPrevia(idPedido) {
+    async ticketComandaParaVistaPrevia(idPedido, opts = {}) {
         const pedido = await this.prisma.pedido.findUnique({
             where: { idPedido },
             include: {
@@ -4214,13 +4214,40 @@ let PedidosService = class PedidosService {
         if (!pedido) {
             throw new common_1.NotFoundException('Pedido no encontrado');
         }
-        const enviados = pedido.detalles.filter((d) => productoDebePasarCocina(d.producto) && d.enviadoCocina);
-        if (enviados.length === 0) {
+        const cocinaEnviados = pedido.detalles.filter((d) => productoDebePasarCocina(d.producto) && d.enviadoCocina);
+        if (cocinaEnviados.length === 0) {
             throw new common_1.BadRequestException('No hay platos enviados a cocina para previsualizar');
         }
-        return this.construirTicketComanda(pedido, enviados);
+        if (opts.idDetalles?.length) {
+            const ids = new Set(opts.idDetalles);
+            const detalles = pedido.detalles.filter((d) => ids.has(d.idDetalle));
+            if (detalles.length === 0) {
+                throw new common_1.BadRequestException('Detalles no encontrados en el pedido');
+            }
+            const esAdicional = pedido.detalles.some((d) => productoDebePasarCocina(d.producto) &&
+                d.enviadoCocina &&
+                !ids.has(d.idDetalle));
+            return this.construirTicketComanda(pedido, detalles, { esAdicional });
+        }
+        const modo = opts.modo ?? 'ultimo_envio';
+        if (modo === 'reimpresion') {
+            return this.construirTicketComanda(pedido, cocinaEnviados, {
+                esReimpresion: true,
+            });
+        }
+        if (modo === 'completa') {
+            return this.construirTicketComanda(pedido, cocinaEnviados);
+        }
+        const conMarca = cocinaEnviados.filter((d) => d.enviadoCocinaEn);
+        if (conMarca.length === 0) {
+            return this.construirTicketComanda(pedido, cocinaEnviados);
+        }
+        const maxTs = Math.max(...conMarca.map((d) => d.enviadoCocinaEn.getTime()));
+        const ultimoLote = conMarca.filter((d) => d.enviadoCocinaEn.getTime() === maxTs);
+        const esAdicional = conMarca.some((d) => d.enviadoCocinaEn.getTime() < maxTs);
+        return this.construirTicketComanda(pedido, ultimoLote, { esAdicional });
     }
-    async ticketFacturaParaVistaPrevia(idFactura) {
+    async ticketFacturaParaVistaPrevia(idFactura, esReimpresion = false) {
         const factura = await this.prisma.factura.findUnique({
             where: { idFactura },
             select: { idPedido: true },
@@ -4229,10 +4256,89 @@ let PedidosService = class PedidosService {
             throw new common_1.NotFoundException('Factura no encontrada');
         }
         const completo = await this.obtenerPorIdTrasEscritura(factura.idPedido);
-        return this.construirTicketFactura(completo, idFactura, false);
+        return this.construirTicketFactura(completo, idFactura, esReimpresion);
+    }
+    async ticketPrecuentaParaVistaPrevia(idPedido, dto) {
+        return this.construirTicketPrecuentaDesdeDto(idPedido, dto);
+    }
+    async ticketPedidoTotalParaVistaPrevia(idPedido) {
+        const completo = await this.obtenerPorIdTrasEscritura(idPedido);
+        if ((completo.facturas ?? []).length === 0) {
+            throw new common_1.BadRequestException('Este pedido no tiene facturas');
+        }
+        return this.construirTicketPedidoTotal(completo, true);
+    }
+    async ticketMovimientoCajaParaVistaPrevia(idMovimiento) {
+        const row = await this.prisma.movimientoCaja.findUnique({
+            where: { idMovimientoCaja: idMovimiento },
+            include: {
+                usuario: { select: { nombre: true, apellido: true } },
+            },
+        });
+        if (!row) {
+            throw new common_1.NotFoundException('Movimiento no encontrado');
+        }
+        if (row.tipo !== 'entrada_manual' && row.tipo !== 'salida_manual') {
+            throw new common_1.BadRequestException('Solo se pueden previsualizar entradas o salidas manuales');
+        }
+        const fechaStr = luxon_1.DateTime.fromJSDate(row.fecha, {
+            zone: 'America/Bogota',
+        }).toFormat('yyyy-LL-dd');
+        return this.ticketMovimientoCajaDesdeRow(row, fechaStr);
+    }
+    async ticketCierreCajaParaVistaPrevia(fecha, tenantId = tenant_constants_1.DEFAULT_TENANT_ID) {
+        const resumen = await this.resumenDiario(fecha, undefined, tenantId);
+        return {
+            fecha: resumen.fecha,
+            total_facturado: resumen.total_facturado,
+            total_facturas: resumen.total_facturas,
+            monto_base_efectivo: resumen.monto_base_efectivo,
+            totales_por_metodo: resumen.totales_por_metodo,
+            fiados_dia: resumen.fiados_dia,
+            total_fiados_dia: resumen.total_fiados_dia,
+            total_pagos_meseros: resumen.total_pagos_meseros,
+            total_entradas_manual: resumen.total_entradas_manual,
+            total_salidas_manual: resumen.total_salidas_manual,
+            total_devoluciones_efectivo: resumen.total_devoluciones_efectivo,
+            total_pagos_domicilio: resumen.total_pagos_domicilio,
+            total_pagos_mesero_exceso: resumen.total_pagos_mesero_exceso,
+            subtotal_entradas_caja: resumen.subtotal_entradas_caja,
+            subtotal_salidas_caja: resumen.subtotal_salidas_caja,
+            efectivo_esperado_en_caja: resumen.efectivo_esperado_en_caja,
+            emitida_en: new Date().toISOString(),
+        };
+    }
+    async ticketBaseCajaParaVistaPrevia(fecha, tenantId = tenant_constants_1.DEFAULT_TENANT_ID) {
+        const caja = await this.getCajaDiaria(fecha, tenantId);
+        return {
+            fecha: caja.fecha,
+            monto_base_efectivo: caja.monto_base_efectivo,
+            emitida_en: new Date().toISOString(),
+        };
+    }
+    async ticketBaseCajaCierreParaVistaPrevia(fecha, tenantId = tenant_constants_1.DEFAULT_TENANT_ID) {
+        const resumen = await this.resumenDiario(fecha, undefined, tenantId);
+        const caja = await this.getCajaDiaria(fecha, tenantId);
+        return {
+            fecha: resumen.fecha,
+            monto_base_cierre_efectivo: caja.monto_base_cierre_efectivo ?? resumen.monto_base_cierre_efectivo ?? 0,
+            efectivo_esperado_en_caja: resumen.efectivo_esperado_en_caja,
+            emitida_en: new Date().toISOString(),
+        };
     }
     async imprimirPrecuenta(idPedido, dto, actor) {
         await this.exigirPermisoMesero(actor, 'precuenta');
+        const ticket = await this.construirTicketPrecuentaDesdeDto(idPedido, dto);
+        const conCopia = dto.factura_con_copia === true;
+        const impresion = this.encolarImpresionFactura(ticket, idPedido, conCopia);
+        return {
+            ok: true,
+            id_pedido: idPedido,
+            impresion_precuenta: impresion,
+            factura_con_copia: conCopia,
+        };
+    }
+    async construirTicketPrecuentaDesdeDto(idPedido, dto) {
         const pedido = await this.prisma.pedido.findUnique({
             where: { idPedido },
             include: {
@@ -4282,7 +4388,7 @@ let PedidosService = class PedidosService {
         const total = subtotal.sub(descTotal);
         const completo = await this.obtenerPorIdTrasEscritura(idPedido);
         const esTandaParcial = (0, cobro_parcial_1.quedaPendienteTrasCobro)(detallesSerial, solicitudes);
-        const ticket = this.construirTicketPrecuenta(completo, solicitudes, {
+        return this.construirTicketPrecuenta(completo, solicitudes, {
             subtotal: Number(subtotal),
             descuento_sopas: descuentos.descuento_sopas,
             descuento_muleros: descuentos.descuento_muleros,
@@ -4290,14 +4396,6 @@ let PedidosService = class PedidosService {
             promociones_desglose: descuentos.promociones_desglose,
             total: Number(total),
         }, esTandaParcial);
-        const conCopia = dto.factura_con_copia === true;
-        const impresion = this.encolarImpresionFactura(ticket, idPedido, conCopia);
-        return {
-            ok: true,
-            id_pedido: idPedido,
-            impresion_precuenta: impresion,
-            factura_con_copia: conCopia,
-        };
     }
     construirTicketComanda(pedido, detalles, opts = {}) {
         const emitidaEn = opts.emitidaEn ?? new Date();

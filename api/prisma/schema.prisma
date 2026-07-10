@@ -376,6 +376,7 @@ model DetallePedido {
   listoCocina       Boolean              @default(false) @map("listo_cocina")
   listoParaRecoger  Boolean              @default(false) @map("listo_para_recoger")
   enviadoCocina     Boolean              @default(false) @map("enviado_cocina")
+  enviadoCocinaEn   DateTime?            @map("enviado_cocina_en")
   idFactura         Int?                 @map("id_factura")
   pedido            Pedido               @relation(fields: [idPedido], references: [idPedido], onDelete: Cascade)
   producto          Producto             @relation(fields: [idProducto], references: [idProducto])

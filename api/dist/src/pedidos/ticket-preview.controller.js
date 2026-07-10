@@ -15,7 +15,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.TicketPreviewController = exports.TicketPreviewEnabledGuard = void 0;
 const common_1 = require("@nestjs/common");
 const jwt_auth_guard_1 = require("../auth/jwt-auth.guard");
+const current_tenant_decorator_1 = require("../tenant/current-tenant.decorator");
+const pedido_tenant_guard_1 = require("../tenant/pedido-tenant.guard");
+const imprimir_precuenta_dto_1 = require("./dto/imprimir-precuenta.dto");
 const ticket_preview_service_1 = require("./ticket-preview.service");
+const ticket_preview_query_dto_1 = require("./ticket-preview-query.dto");
 function sendPdf(res, pdf, filename) {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Length', String(pdf.length));
@@ -74,33 +78,58 @@ let TicketPreviewController = class TicketPreviewController {
             sendHtml(res, html);
         }
     }
-    async pedidoComandaHtml(id, res) {
-        const html = await this.preview.pedidoComandaHtml(id);
+    async pedidoComandaHtml(id, query, res) {
+        const html = await this.preview.pedidoComandaHtml(id, query);
         sendHtml(res, html);
     }
-    async pedidoComanda(id, res) {
+    async pedidoComanda(id, query, res) {
         try {
-            const pdf = await this.preview.pedidoComandaPdf(id);
+            const pdf = await this.preview.pedidoComandaPdf(id, query);
             sendPdf(res, pdf, `drewrest-comanda-pedido-${id}.pdf`);
         }
         catch {
-            const html = await this.preview.pedidoComandaHtml(id);
+            const html = await this.preview.pedidoComandaHtml(id, query);
             sendHtml(res, html);
         }
     }
-    async facturaHtml(id, res) {
-        const html = await this.preview.facturaHtml(id);
+    async pedidoPrecuentaHtml(id, dto, res) {
+        const html = await this.preview.pedidoPrecuentaHtml(id, dto);
         sendHtml(res, html);
     }
-    async factura(id, res) {
+    async pedidoTotalHtml(id, res) {
+        const html = await this.preview.pedidoTotalHtml(id);
+        sendHtml(res, html);
+    }
+    async facturaHtml(id, query, res) {
+        const html = await this.preview.facturaHtml(id, query.reimpresion === '1' || query.reimpresion === 'true');
+        sendHtml(res, html);
+    }
+    async factura(id, query, res) {
+        const reimpresion = query.reimpresion === '1' || query.reimpresion === 'true';
         try {
-            const pdf = await this.preview.facturaPdf(id);
+            const pdf = await this.preview.facturaPdf(id, reimpresion);
             sendPdf(res, pdf, `drewrest-factura-${id}.pdf`);
         }
         catch {
-            const html = await this.preview.facturaHtml(id);
+            const html = await this.preview.facturaHtml(id, reimpresion);
             sendHtml(res, html);
         }
+    }
+    async movimientoCajaHtml(id, res) {
+        const html = await this.preview.movimientoCajaHtml(id);
+        sendHtml(res, html);
+    }
+    async cierreCajaHtml(query, tenantId, res) {
+        const html = await this.preview.cierreCajaHtml(query.fecha, tenantId);
+        sendHtml(res, html);
+    }
+    async baseCajaHtml(query, tenantId, res) {
+        const html = await this.preview.baseCajaHtml(query.fecha, tenantId);
+        sendHtml(res, html);
+    }
+    async baseCajaCierreHtml(query, tenantId, res) {
+        const html = await this.preview.baseCajaCierreHtml(query.fecha, tenantId);
+        sendHtml(res, html);
     }
 };
 exports.TicketPreviewController = TicketPreviewController;
@@ -128,36 +157,96 @@ __decorate([
 ], TicketPreviewController.prototype, "demo", null);
 __decorate([
     (0, common_1.Get)('pedido/:id/comanda/html'),
+    (0, common_1.UseGuards)(pedido_tenant_guard_1.PedidoTenantGuard),
     __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
-    __param(1, (0, common_1.Res)()),
+    __param(1, (0, common_1.Query)()),
+    __param(2, (0, common_1.Res)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Number, Object]),
+    __metadata("design:paramtypes", [Number, ticket_preview_query_dto_1.TicketComandaPreviewQueryDto, Object]),
     __metadata("design:returntype", Promise)
 ], TicketPreviewController.prototype, "pedidoComandaHtml", null);
 __decorate([
     (0, common_1.Get)('pedido/:id/comanda'),
+    (0, common_1.UseGuards)(pedido_tenant_guard_1.PedidoTenantGuard),
+    __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
+    __param(1, (0, common_1.Query)()),
+    __param(2, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number, ticket_preview_query_dto_1.TicketComandaPreviewQueryDto, Object]),
+    __metadata("design:returntype", Promise)
+], TicketPreviewController.prototype, "pedidoComanda", null);
+__decorate([
+    (0, common_1.Post)('pedido/:id/precuenta/html'),
+    (0, common_1.UseGuards)(pedido_tenant_guard_1.PedidoTenantGuard),
+    __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
+    __param(1, (0, common_1.Body)()),
+    __param(2, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number, imprimir_precuenta_dto_1.ImprimirPrecuentaDto, Object]),
+    __metadata("design:returntype", Promise)
+], TicketPreviewController.prototype, "pedidoPrecuentaHtml", null);
+__decorate([
+    (0, common_1.Get)('pedido/:id/total/html'),
+    (0, common_1.UseGuards)(pedido_tenant_guard_1.PedidoTenantGuard),
     __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
     __param(1, (0, common_1.Res)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Number, Object]),
     __metadata("design:returntype", Promise)
-], TicketPreviewController.prototype, "pedidoComanda", null);
+], TicketPreviewController.prototype, "pedidoTotalHtml", null);
 __decorate([
     (0, common_1.Get)('factura/:id/html'),
     __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
-    __param(1, (0, common_1.Res)()),
+    __param(1, (0, common_1.Query)()),
+    __param(2, (0, common_1.Res)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Number, Object]),
+    __metadata("design:paramtypes", [Number, ticket_preview_query_dto_1.TicketFacturaPreviewQueryDto, Object]),
     __metadata("design:returntype", Promise)
 ], TicketPreviewController.prototype, "facturaHtml", null);
 __decorate([
     (0, common_1.Get)('factura/:id'),
     __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
+    __param(1, (0, common_1.Query)()),
+    __param(2, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number, ticket_preview_query_dto_1.TicketFacturaPreviewQueryDto, Object]),
+    __metadata("design:returntype", Promise)
+], TicketPreviewController.prototype, "factura", null);
+__decorate([
+    (0, common_1.Get)('movimiento-caja/:id/html'),
+    __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
     __param(1, (0, common_1.Res)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Number, Object]),
     __metadata("design:returntype", Promise)
-], TicketPreviewController.prototype, "factura", null);
+], TicketPreviewController.prototype, "movimientoCajaHtml", null);
+__decorate([
+    (0, common_1.Get)('resumen-diario/cierre/html'),
+    __param(0, (0, common_1.Query)()),
+    __param(1, (0, current_tenant_decorator_1.CurrentTenantId)()),
+    __param(2, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [ticket_preview_query_dto_1.TicketFechaPreviewQueryDto, Object, Object]),
+    __metadata("design:returntype", Promise)
+], TicketPreviewController.prototype, "cierreCajaHtml", null);
+__decorate([
+    (0, common_1.Get)('caja-diaria/base/html'),
+    __param(0, (0, common_1.Query)()),
+    __param(1, (0, current_tenant_decorator_1.CurrentTenantId)()),
+    __param(2, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [ticket_preview_query_dto_1.TicketFechaPreviewQueryDto, Object, Object]),
+    __metadata("design:returntype", Promise)
+], TicketPreviewController.prototype, "baseCajaHtml", null);
+__decorate([
+    (0, common_1.Get)('caja-diaria/cierre/html'),
+    __param(0, (0, common_1.Query)()),
+    __param(1, (0, current_tenant_decorator_1.CurrentTenantId)()),
+    __param(2, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [ticket_preview_query_dto_1.TicketFechaPreviewQueryDto, Object, Object]),
+    __metadata("design:returntype", Promise)
+], TicketPreviewController.prototype, "baseCajaCierreHtml", null);
 exports.TicketPreviewController = TicketPreviewController = __decorate([
     (0, common_1.Controller)('ticket-preview'),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, TicketPreviewEnabledGuard),

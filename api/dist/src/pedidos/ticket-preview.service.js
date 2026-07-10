@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.TicketPreviewService = void 0;
 const common_1 = require("@nestjs/common");
 const config_1 = require("@nestjs/config");
+const cierre_caja_escpos_builder_1 = require("./cierre-caja-escpos.builder");
 const comanda_escpos_builder_1 = require("./comanda-escpos.builder");
 const factura_escpos_builder_1 = require("./factura-escpos.builder");
 const escpos_buffer_decode_1 = require("./escpos-buffer-decode");
@@ -27,6 +28,18 @@ function withTimeout(promise, ms) {
             setTimeout(() => reject(new Error('Tiempo agotado generando PDF')), ms);
         }),
     ]);
+}
+function parseIdDetalles(raw) {
+    if (!raw?.trim())
+        return undefined;
+    const ids = raw
+        .split(',')
+        .map((s) => Number(s.trim()))
+        .filter((n) => Number.isFinite(n) && n > 0);
+    return ids.length > 0 ? ids : undefined;
+}
+function parseReimpresion(raw) {
+    return raw === '1' || raw === 'true';
 }
 let TicketPreviewService = class TicketPreviewService {
     config;
@@ -78,29 +91,76 @@ let TicketPreviewService = class TicketPreviewService {
         const buffer = await (0, ticket_preview_samples_1.buildSampleEscPosBuffer)(tipo, this.charWidth());
         return this.bufferToPdf(buffer, `${item.label} · demo 58 mm`);
     }
-    async pedidoComandaHtml(idPedido) {
+    async pedidoComandaHtml(idPedido, opts = {}) {
         this.assertEnabled();
-        const ticket = await this.pedidos.ticketComandaParaVistaPrevia(idPedido);
+        const ticket = await this.pedidos.ticketComandaParaVistaPrevia(idPedido, {
+            modo: opts.modo ?? 'ultimo_envio',
+            idDetalles: parseIdDetalles(opts.detalles),
+        });
         const buffer = await (0, comanda_escpos_builder_1.buildComandaEscPos)(ticket, this.charWidth());
-        return this.bufferToHtml(buffer, `Comanda pedido #${idPedido} · vista previa 58 mm`);
+        const etiqueta = ticket.es_reimpresion
+            ? 'Reimpresión comanda'
+            : ticket.es_adicional
+                ? 'Comanda adicional'
+                : 'Comanda';
+        return this.bufferToHtml(buffer, `${etiqueta} pedido #${idPedido} · datos reales`);
     }
-    async pedidoComandaPdf(idPedido) {
+    async pedidoComandaPdf(idPedido, opts = {}) {
         this.assertEnabled();
-        const ticket = await this.pedidos.ticketComandaParaVistaPrevia(idPedido);
+        const ticket = await this.pedidos.ticketComandaParaVistaPrevia(idPedido, {
+            modo: opts.modo ?? 'ultimo_envio',
+            idDetalles: parseIdDetalles(opts.detalles),
+        });
         const buffer = await (0, comanda_escpos_builder_1.buildComandaEscPos)(ticket, this.charWidth());
-        return this.bufferToPdf(buffer, `Comanda pedido #${idPedido} · vista previa 58 mm`);
+        return this.bufferToPdf(buffer, `Comanda pedido #${idPedido}`);
     }
-    async facturaHtml(idFactura) {
+    async pedidoPrecuentaHtml(idPedido, dto) {
         this.assertEnabled();
-        const ticket = await this.pedidos.ticketFacturaParaVistaPrevia(idFactura);
+        const ticket = await this.pedidos.ticketPrecuentaParaVistaPrevia(idPedido, dto);
         const buffer = await (0, factura_escpos_builder_1.buildFacturaEscPos)(ticket, this.charWidth());
-        return this.bufferToHtml(buffer, `Factura #${idFactura} · vista previa 58 mm`);
+        return this.bufferToHtml(buffer, `Pre-cuenta pedido #${idPedido} · datos reales`);
     }
-    async facturaPdf(idFactura) {
+    async facturaHtml(idFactura, reimpresion = false) {
         this.assertEnabled();
-        const ticket = await this.pedidos.ticketFacturaParaVistaPrevia(idFactura);
+        const ticket = await this.pedidos.ticketFacturaParaVistaPrevia(idFactura, reimpresion);
         const buffer = await (0, factura_escpos_builder_1.buildFacturaEscPos)(ticket, this.charWidth());
-        return this.bufferToPdf(buffer, `Factura #${idFactura} · vista previa 58 mm`);
+        return this.bufferToHtml(buffer, `${reimpresion ? 'Reimpresión factura' : 'Factura'} #${idFactura} · datos reales`);
+    }
+    async facturaPdf(idFactura, reimpresion = false) {
+        this.assertEnabled();
+        const ticket = await this.pedidos.ticketFacturaParaVistaPrevia(idFactura, reimpresion);
+        const buffer = await (0, factura_escpos_builder_1.buildFacturaEscPos)(ticket, this.charWidth());
+        return this.bufferToPdf(buffer, `Factura #${idFactura}`);
+    }
+    async pedidoTotalHtml(idPedido) {
+        this.assertEnabled();
+        const ticket = await this.pedidos.ticketPedidoTotalParaVistaPrevia(idPedido);
+        const buffer = await (0, factura_escpos_builder_1.buildFacturaEscPos)(ticket, this.charWidth());
+        return this.bufferToHtml(buffer, `Total pedido #${idPedido} · datos reales`);
+    }
+    async movimientoCajaHtml(idMovimiento) {
+        this.assertEnabled();
+        const ticket = await this.pedidos.ticketMovimientoCajaParaVistaPrevia(idMovimiento);
+        const buffer = await (0, cierre_caja_escpos_builder_1.buildMovimientoCajaEscPos)(ticket, this.charWidth());
+        return this.bufferToHtml(buffer, `Movimiento caja #${idMovimiento} · datos reales`);
+    }
+    async cierreCajaHtml(fecha, tenantId) {
+        this.assertEnabled();
+        const ticket = await this.pedidos.ticketCierreCajaParaVistaPrevia(fecha, tenantId);
+        const buffer = await (0, cierre_caja_escpos_builder_1.buildCierreCajaEscPos)(ticket, this.charWidth());
+        return this.bufferToHtml(buffer, `Cierre ${ticket.fecha} · datos reales`);
+    }
+    async baseCajaHtml(fecha, tenantId) {
+        this.assertEnabled();
+        const ticket = await this.pedidos.ticketBaseCajaParaVistaPrevia(fecha, tenantId);
+        const buffer = await (0, cierre_caja_escpos_builder_1.buildBaseCajaEscPos)(ticket, this.charWidth());
+        return this.bufferToHtml(buffer, `Base caja ${ticket.fecha} · datos reales`);
+    }
+    async baseCajaCierreHtml(fecha, tenantId) {
+        this.assertEnabled();
+        const ticket = await this.pedidos.ticketBaseCajaCierreParaVistaPrevia(fecha, tenantId);
+        const buffer = await (0, cierre_caja_escpos_builder_1.buildBaseCajaCierreEscPos)(ticket, this.charWidth());
+        return this.bufferToHtml(buffer, `Arqueo cierre ${ticket.fecha} · datos reales`);
     }
 };
 exports.TicketPreviewService = TicketPreviewService;
