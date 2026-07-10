@@ -211,6 +211,7 @@ model Mesa {
   restaurante         Restaurante @relation(fields: [idRestaurante], references: [idRestaurante])
   lugar               LugarMesa? @relation(fields: [idLugar], references: [idLugar], onDelete: SetNull)
   pedidos             Pedido[]
+  pedidosAnexos       PedidoMesaAnexa[]
 
   @@unique([idRestaurante, numero])
   @@index([idRestaurante])
@@ -344,12 +345,27 @@ model Pedido {
   movsInventario            MovInventario[]
   historial                  PedidoHistorial[]
   cuentasCredito             CuentaCredito[]
+  mesasAnexas                PedidoMesaAnexa[]
 
   @@index([idRestaurante, estado, creadoEn])
   @@index([idMesa, estado])
   @@index([estado, creadoEn])
   @@index([idUsuario, estado])
   @@map("pedido")
+}
+
+/// Mesas físicas adicionales ligadas al mismo pedido (mesa principal en pedido.id_mesa).
+model PedidoMesaAnexa {
+  idPedidoMesaAnexa Int      @id @default(autoincrement()) @map("id_pedido_mesa_anexa")
+  idPedido          Int      @map("id_pedido")
+  idMesa            Int      @unique @map("id_mesa")
+  creadoEn          DateTime @default(now()) @map("creado_en")
+  pedido            Pedido   @relation(fields: [idPedido], references: [idPedido], onDelete: Cascade)
+  mesa              Mesa     @relation(fields: [idMesa], references: [idMesa], onDelete: Restrict)
+
+  @@unique([idPedido, idMesa])
+  @@index([idPedido])
+  @@map("pedido_mesa_anexa")
 }
 
 // detalleJson: líneas afectadas, cantidades, nombres (estructura por tipo de evento).
@@ -638,6 +654,7 @@ model PermisosMeseroConfig {
   reimprimirFactura   Boolean @default(true) @map("reimprimir_factura")
   cancelarPedido      Boolean @default(true) @map("cancelar_pedido")
   transferirMesa      Boolean @default(true) @map("transferir_mesa")
+  agruparMesas        Boolean @default(true) @map("agrupar_mesas")
   ayudaCompaneros     Boolean     @default(true) @map("ayuda_companeros")
   restaurante         Restaurante @relation(fields: [idRestaurante], references: [idRestaurante])
 

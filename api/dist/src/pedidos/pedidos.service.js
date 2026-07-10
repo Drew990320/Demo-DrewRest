@@ -33,6 +33,7 @@ const cocina_producto_1 = require("@drewrest/shared-domain/cocina-producto");
 const resumen_diario_ventas_1 = require("@drewrest/shared-domain/resumen-diario-ventas");
 const movimiento_caja_1 = require("@drewrest/shared-domain/movimiento-caja");
 const transferencia_pedido_1 = require("@drewrest/shared-domain/transferencia-pedido");
+const agrupacion_mesas_1 = require("@drewrest/shared-domain/agrupacion-mesas");
 const mazorca_pedido_1 = require("@drewrest/shared-domain/mazorca-pedido");
 const cocina_vista_1 = require("@drewrest/shared-domain/cocina-vista");
 const cocina_prioridad_1 = require("./cocina-prioridad");
@@ -124,6 +125,46 @@ let PedidosService = class PedidosService {
     }
     emit(pedidoId, mesaId, idUsuario, tenantId = tenant_constants_1.DEFAULT_TENANT_ID) {
         this.gateway.emitPedidoActualizado(pedidoId, mesaId, idUsuario, tenantId);
+    }
+    async numerosMesasAnexas(idPedido) {
+        const rows = await this.prisma.pedidoMesaAnexa.findMany({
+            where: { idPedido },
+            include: { mesa: { select: { numero: true } } },
+            orderBy: { mesa: { numero: 'asc' } },
+        });
+        return rows.map((r) => r.mesa.numero);
+    }
+    async liberarMesasAnexasDePedidoTx(tx, idPedido) {
+        const anexas = await tx.pedidoMesaAnexa.findMany({
+            where: { idPedido },
+            select: { idMesa: true },
+        });
+        if (anexas.length === 0)
+            return [];
+        await tx.pedidoMesaAnexa.deleteMany({ where: { idPedido } });
+        for (const { idMesa } of anexas) {
+            await tx.mesa.update({
+                where: { idMesa },
+                data: { estado: 'libre' },
+            });
+        }
+        return anexas.map((a) => a.idMesa);
+    }
+    async resolverMesaDestinoAgrupacion(dto, tenantId) {
+        if (dto.mesa_numero == null && dto.id_mesa == null) {
+            throw new common_1.BadRequestException('Debes enviar mesa_numero o id_mesa');
+        }
+        const mesa = dto.mesa_numero
+            ? await this.prisma.mesa.findFirst({
+                where: { numero: dto.mesa_numero, idRestaurante: tenantId },
+            })
+            : await this.prisma.mesa.findFirst({
+                where: { idMesa: dto.id_mesa, idRestaurante: tenantId },
+            });
+        if (!mesa) {
+            throw new common_1.NotFoundException('Mesa no encontrada');
+        }
+        return mesa;
     }
     async notificarCompaneroModificoPedido(pedido, idUsuarioActor, lineas, accion = 'agregado') {
         if (idUsuarioActor === pedido.idUsuario || lineas.length === 0) {
@@ -2980,40 +3021,8 @@ let PedidosService = class PedidosService {
         return this.marcarDetalleRecogido(idDetalle, dto);
     }
     async pedidoActivoPorMesa(idMesa, tenantId = tenant_constants_1.DEFAULT_TENANT_ID) {
-        await (0, tenant_scope_1.assertMesaDelTenant)(this.prisma, idMesa, tenantId);
-        const previo = await this.prisma.pedido.findFirst({
-            where: {
-                idMesa,
-                idRestaurante: tenantId,
-                estado: { in: ABIERTOS },
-            },
-            orderBy: { idPedido: 'desc' },
-            select: { idPedido: true },
-        });
-        if (!previo) {
-            return null;
-        }
-        const p = await this.prisma.pedido.findFirst({
-            where: {
-                idMesa,
-                idRestaurante: tenantId,
-                estado: { in: ABIERTOS },
-            },
-            orderBy: { idPedido: 'desc' },
-            include: {
-                mesa: true,
-                usuario: { include: { rol: true } },
-                detalles: {
-                    include: detalleInclude,
-                    orderBy: { idDetalle: 'asc' },
-                },
-                facturas: facturasInclude,
-            },
-        });
-        if (!p) {
-            return null;
-        }
-        return this.serializarPedido(p);
+        const rows = await this.pedidosActivosPorMesa(idMesa, tenantId);
+        return rows[0] ?? null;
     }
     async pedidosActivosPorMesa(idMesa, tenantId = tenant_constants_1.DEFAULT_TENANT_ID) {
         await (0, tenant_scope_1.assertMesaDelTenant)(this.prisma, idMesa, tenantId);
@@ -3035,7 +3044,40 @@ let PedidosService = class PedidosService {
                 facturas: facturasInclude,
             },
         });
-        return rows.map((row) => this.serializarPedido(row));
+        if (rows.length > 0) {
+            return Promise.all(rows.map((row) => this.serializarPedidoConAnexas(row)));
+        }
+        const anexa = await this.prisma.pedidoMesaAnexa.findUnique({
+            where: { idMesa },
+            include: {
+                pedido: {
+                    include: {
+                        mesa: true,
+                        usuario: { include: { rol: true } },
+                        detalles: {
+                            include: detalleInclude,
+                            orderBy: { idDetalle: 'asc' },
+                        },
+                        facturas: facturasInclude,
+                    },
+                },
+            },
+        });
+        if (anexa?.pedido &&
+            anexa.pedido.idRestaurante === tenantId &&
+            ABIERTOS.includes(anexa.pedido.estado)) {
+            return [await this.serializarPedidoConAnexas(anexa.pedido, idMesa)];
+        }
+        return [];
+    }
+    async serializarPedidoConAnexas(p, idMesaVista) {
+        const op = await this.ctxOperativa(p.idRestaurante);
+        const mesas_anexas = await this.numerosMesasAnexas(p.idPedido);
+        return {
+            ...this.serializarPedido(p, this.prioridadOptsFromOperativa(op)),
+            mesas_anexas,
+            mesa_es_anexa: idMesaVista != null ? idMesaVista !== p.idMesa : false,
+        };
     }
     async consolidarFragmentosPrecioPendientesPedido(idPedido) {
         const detalles = await this.prisma.detallePedido.findMany({
@@ -3181,7 +3223,12 @@ let PedidosService = class PedidosService {
                 throw new common_1.NotFoundException('Pedido no encontrado');
             }
         }
-        const serialized = this.serializarPedido(p, this.prioridadOptsFromOperativa(op));
+        const mesas_anexas = await this.numerosMesasAnexas(idPedido);
+        const serialized = {
+            ...this.serializarPedido(p, this.prioridadOptsFromOperativa(op)),
+            mesas_anexas,
+            mesa_es_anexa: false,
+        };
         const historialCuotas = await this.prisma.pedidoHistorial.findMany({
             where: { idPedido },
             select: { tipo: true, detalleJson: true },
@@ -5402,6 +5449,7 @@ let PedidosService = class PedidosService {
                         where: { idMesa: pedidoTx.idMesa, estado: { in: ABIERTOS } },
                     });
                     if (abiertosRest === 0) {
+                        await this.liberarMesasAnexasDePedidoTx(tx, idPedido);
                         await tx.mesa.update({
                             where: { idMesa: pedidoTx.idMesa },
                             data: { estado: 'libre' },
@@ -5918,6 +5966,7 @@ let PedidosService = class PedidosService {
                 where: { idMesa: idMesaPedido, estado: { in: ABIERTOS } },
             });
             if (abiertosRest === 0) {
+                await this.liberarMesasAnexasDePedidoTx(tx, idPedido);
                 await tx.mesa.update({
                     where: { idMesa: idMesaPedido },
                     data: { estado: 'libre' },
@@ -6271,6 +6320,7 @@ let PedidosService = class PedidosService {
         }
         const idMesaPedido = pedido.idMesa;
         await this.prisma.$transaction(async (tx) => {
+            await this.liberarMesasAnexasDePedidoTx(tx, idPedido);
             const detalles = await tx.detallePedido.findMany({
                 where: { idPedido },
                 include: { producto: { include: { categoria: true } } },
@@ -6291,6 +6341,136 @@ let PedidosService = class PedidosService {
         });
         this.emit(idPedido, pedido.idMesa, pedido.idUsuario, pedido.idRestaurante);
         return { ok: true };
+    }
+    async agruparMesa(idPedido, dto, actor) {
+        await this.exigirPermisoMesero(actor, 'agrupar_mesas');
+        const pedido = await this.prisma.pedido.findUnique({
+            where: { idPedido },
+            include: {
+                mesa: true,
+                facturas: facturasInclude,
+                detalles: { select: { enviadoCocina: true } },
+            },
+        });
+        if (!pedido) {
+            throw new common_1.NotFoundException('Pedido no encontrado');
+        }
+        if (pedido.estado === 'facturado' || pedido.facturas.length > 0) {
+            throw new common_1.ConflictException('No se puede agrupar mesas en un pedido con cobros');
+        }
+        if (!ABIERTOS.includes(pedido.estado)) {
+            throw new common_1.ConflictException('El pedido no admite agrupación de mesas');
+        }
+        const mesaAnexa = await this.resolverMesaDestinoAgrupacion(dto, pedido.idRestaurante);
+        if (mesaAnexa.idMesa === pedido.idMesa) {
+            throw new common_1.BadRequestException('La mesa ya es la principal del pedido');
+        }
+        if (!(0, mesa_dia_1.mesaDisponibleHoyBogota)(mesaAnexa)) {
+            throw new common_1.ConflictException('La mesa adicional no está disponible hoy');
+        }
+        const yaAnexa = await this.prisma.pedidoMesaAnexa.findUnique({
+            where: { idMesa: mesaAnexa.idMesa },
+        });
+        if (yaAnexa) {
+            throw new common_1.ConflictException('Esa mesa ya está agrupada a otro pedido');
+        }
+        const pedidoEnAnexa = await this.prisma.pedido.findFirst({
+            where: { idMesa: mesaAnexa.idMesa, estado: { in: ABIERTOS } },
+        });
+        const anexaLibre = mesaAnexa.estado === 'libre' && pedidoEnAnexa == null;
+        const opRow = await this.obtenerConfigOperativaRow(pedido.idRestaurante);
+        const validacion = (0, agrupacion_mesas_1.validarAgruparMesaAlPedido)({
+            mesa_principal_numero: pedido.mesa.numero,
+            mesa_anexa_numero: mesaAnexa.numero,
+            mesa_anexa_libre: anexaLibre,
+            mesas_virtuales: opRow,
+        });
+        if (validacion.accion === 'rechazar') {
+            throw new common_1.ConflictException(validacion.mensaje);
+        }
+        await this.prisma.$transaction(async (tx) => {
+            const idsOrdenados = [pedido.idMesa, mesaAnexa.idMesa].sort((a, b) => a - b);
+            for (const idMesa of idsOrdenados) {
+                await (0, prisma_lock_1.lockMesaEnTx)(tx, idMesa);
+            }
+            const mesaTx = await tx.mesa.findUnique({ where: { idMesa: mesaAnexa.idMesa } });
+            if (!mesaTx || mesaTx.estado !== 'libre') {
+                throw new common_1.ConflictException('La mesa adicional ya no está libre');
+            }
+            const otroPedido = await tx.pedido.findFirst({
+                where: { idMesa: mesaAnexa.idMesa, estado: { in: ABIERTOS } },
+            });
+            if (otroPedido) {
+                throw new common_1.ConflictException('La mesa adicional ya tiene un pedido abierto');
+            }
+            await tx.pedidoMesaAnexa.create({
+                data: { idPedido, idMesa: mesaAnexa.idMesa },
+            });
+            await tx.mesa.update({
+                where: { idMesa: mesaAnexa.idMesa },
+                data: { estado: 'ocupada' },
+            });
+        });
+        this.emit(idPedido, pedido.idMesa, pedido.idUsuario, pedido.idRestaurante);
+        this.emit(idPedido, mesaAnexa.idMesa, pedido.idUsuario, pedido.idRestaurante);
+        return this.obtenerPorIdTrasEscritura(idPedido);
+    }
+    async desagruparMesa(idPedido, dto, actor) {
+        await this.exigirPermisoMesero(actor, 'agrupar_mesas');
+        const pedido = await this.prisma.pedido.findUnique({
+            where: { idPedido },
+            include: {
+                mesa: true,
+                facturas: facturasInclude,
+                detalles: { select: { enviadoCocina: true } },
+                mesasAnexas: { include: { mesa: true } },
+            },
+        });
+        if (!pedido) {
+            throw new common_1.NotFoundException('Pedido no encontrado');
+        }
+        if (pedido.mesasAnexas.length === 0) {
+            throw new common_1.BadRequestException('Este pedido no tiene mesas agrupadas');
+        }
+        if ((0, agrupacion_mesas_1.pedidoTieneLineasEnviadasCocina)(pedido.detalles)) {
+            throw new common_1.ConflictException('Ya hay ítems enviados a cocina. No se puede separar el grupo de mesas.');
+        }
+        const opRow = await this.obtenerConfigOperativaRow(pedido.idRestaurante);
+        const destino = dto.mesa_numero != null || dto.id_mesa != null
+            ? await this.resolverMesaDestinoAgrupacion(dto, pedido.idRestaurante)
+            : null;
+        const anexasObjetivo = destino
+            ? pedido.mesasAnexas.filter((a) => a.idMesa === destino.idMesa)
+            : pedido.mesasAnexas;
+        if (anexasObjetivo.length === 0) {
+            throw new common_1.NotFoundException('La mesa indicada no está agrupada a este pedido');
+        }
+        for (const anexa of anexasObjetivo) {
+            const validacion = (0, agrupacion_mesas_1.validarDesagruparMesa)({
+                mesa_principal_numero: pedido.mesa.numero,
+                mesa_anexa_numero: anexa.mesa.numero,
+                detalles: pedido.detalles,
+                mesas_virtuales: opRow,
+            });
+            if (validacion.accion === 'rechazar') {
+                throw new common_1.ConflictException(validacion.mensaje);
+            }
+        }
+        await this.prisma.$transaction(async (tx) => {
+            for (const anexa of anexasObjetivo) {
+                await (0, prisma_lock_1.lockMesaEnTx)(tx, anexa.idMesa);
+                await tx.pedidoMesaAnexa.delete({ where: { idMesa: anexa.idMesa } });
+                await tx.mesa.update({
+                    where: { idMesa: anexa.idMesa },
+                    data: { estado: 'libre' },
+                });
+            }
+        });
+        for (const anexa of anexasObjetivo) {
+            this.emit(idPedido, anexa.idMesa, pedido.idUsuario, pedido.idRestaurante);
+        }
+        this.emit(idPedido, pedido.idMesa, pedido.idUsuario, pedido.idRestaurante);
+        return this.obtenerPorIdTrasEscritura(idPedido);
     }
     async transferir(idPedido, dto, actor) {
         await this.exigirPermisoMesero(actor, 'transferir_mesa');
@@ -6319,6 +6499,12 @@ let PedidosService = class PedidosService {
         }
         if (!ABIERTOS.includes(pedido.estado)) {
             throw new common_1.ConflictException('El pedido no se puede transferir');
+        }
+        const anexasCount = await this.prisma.pedidoMesaAnexa.count({
+            where: { idPedido },
+        });
+        if (anexasCount > 0) {
+            throw new common_1.ConflictException('Desagrupa las mesas adicionales antes de transferir el pedido.');
         }
         const mesaNueva = mesaNumero
             ? await this.prisma.mesa.findFirst({
@@ -6619,6 +6805,8 @@ let PedidosService = class PedidosService {
                 items: pendientesComida.length,
                 subtotal: totalPendiente,
             },
+            mesas_anexas: [],
+            mesa_es_anexa: false,
         };
     }
 };

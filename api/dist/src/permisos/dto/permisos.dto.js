@@ -24,6 +24,7 @@ class PatchPermisosMeseroDto {
     reimprimir_factura;
     cancelar_pedido;
     transferir_mesa;
+    agrupar_mesas;
     ayuda_companeros;
 }
 exports.PatchPermisosMeseroDto = PatchPermisosMeseroDto;
@@ -77,6 +78,11 @@ __decorate([
     (0, class_validator_1.IsBoolean)(),
     __metadata("design:type", Boolean)
 ], PatchPermisosMeseroDto.prototype, "transferir_mesa", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], PatchPermisosMeseroDto.prototype, "agrupar_mesas", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsBoolean)(),

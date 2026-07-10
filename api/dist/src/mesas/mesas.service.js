@@ -139,10 +139,43 @@ let MesasService = class MesasService {
                 });
             }
         }
-        return mesas.map((m) => ({
-            ...this.mapMesaPublic(m),
-            mesero: meseroPorMesa.get(m.idMesa) ?? null,
-        }));
+        const anexasActivas = await this.prisma.pedidoMesaAnexa.findMany({
+            where: {
+                pedido: { estado: { in: [...PEDIDOS_ABIERTOS] } },
+                mesa: { idRestaurante: tenantId },
+            },
+            include: {
+                mesa: { select: { idMesa: true, numero: true } },
+                pedido: { include: { mesa: { select: { idMesa: true, numero: true } } } },
+            },
+        });
+        const anexasPorMesaPrincipal = new Map();
+        const pedidoPrincipalPorAnexa = new Map();
+        for (const row of anexasActivas) {
+            const principal = row.pedido.mesa.numero;
+            const lista = anexasPorMesaPrincipal.get(row.pedido.idMesa) ?? [];
+            lista.push(row.mesa.numero);
+            anexasPorMesaPrincipal.set(row.pedido.idMesa, lista);
+            pedidoPrincipalPorAnexa.set(row.idMesa, {
+                principal,
+                anexas: lista,
+            });
+            if (!meseroPorMesa.has(row.idMesa)) {
+                const mesero = meseroPorMesa.get(row.pedido.idMesa);
+                if (mesero)
+                    meseroPorMesa.set(row.idMesa, mesero);
+            }
+        }
+        return mesas.map((m) => {
+            const anexas = anexasPorMesaPrincipal.get(m.idMesa) ?? [];
+            const comoAnexa = pedidoPrincipalPorAnexa.get(m.idMesa);
+            return {
+                ...this.mapMesaPublic(m),
+                mesero: meseroPorMesa.get(m.idMesa) ?? null,
+                mesas_anexas: anexas.length > 0 ? [...anexas].sort((a, b) => a - b) : undefined,
+                mesa_principal_numero: comoAnexa?.principal,
+            };
+        });
     }
     async listarTodasAdmin(tenantId = tenant_constants_1.DEFAULT_TENANT_ID) {
         const mesas = await this.prisma.mesa.findMany({

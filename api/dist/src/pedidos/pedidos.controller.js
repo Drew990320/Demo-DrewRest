@@ -41,6 +41,7 @@ const patch_etiquetas_promocion_dto_1 = require("./dto/patch-etiquetas-promocion
 const patch_mazorcas_pedido_dto_1 = require("./dto/patch-mazorcas-pedido.dto");
 const patch_estado_dto_1 = require("./dto/patch-estado.dto");
 const transferir_dto_1 = require("./dto/transferir.dto");
+const agrupar_mesa_dto_1 = require("./dto/agrupar-mesa.dto");
 const cerrar_anulando_pendiente_dto_1 = require("./dto/cerrar-anulando-pendiente.dto");
 const cancelar_reabiertos_dto_1 = require("./dto/cancelar-reabiertos.dto");
 const reabrir_cobro_dto_1 = require("./dto/reabrir-cobro.dto");
@@ -244,6 +245,12 @@ let PedidosController = class PedidosController {
     }
     revertirTandaCobro(id, dto, req) {
         return this.pedidos.revertirTandaCobro(id, dto, req.user);
+    }
+    agruparMesa(id, dto, req) {
+        return this.pedidos.agruparMesa(id, dto, req.user);
+    }
+    desagruparMesa(id, dto, req) {
+        return this.pedidos.desagruparMesa(id, dto, req.user);
     }
     transferir(id, dto, req) {
         return this.pedidos.transferir(id, dto, req.user);
@@ -830,6 +837,28 @@ __decorate([
     __metadata("design:paramtypes", [Number, revertir_tanda_cobro_dto_1.RevertirTandaCobroDto, Object]),
     __metadata("design:returntype", void 0)
 ], PedidosController.prototype, "revertirTandaCobro", null);
+__decorate([
+    (0, common_1.Post)(':id/agrupar-mesa'),
+    (0, common_1.UseGuards)(pedido_tenant_guard_1.PedidoTenantGuard, roles_guard_1.RolesGuard),
+    (0, roles_decorator_1.Roles)('admin', 'mesero'),
+    __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
+    __param(1, (0, common_1.Body)()),
+    __param(2, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number, agrupar_mesa_dto_1.AgruparMesaDto, Object]),
+    __metadata("design:returntype", void 0)
+], PedidosController.prototype, "agruparMesa", null);
+__decorate([
+    (0, common_1.Post)(':id/desagrupar-mesa'),
+    (0, common_1.UseGuards)(pedido_tenant_guard_1.PedidoTenantGuard, roles_guard_1.RolesGuard),
+    (0, roles_decorator_1.Roles)('admin', 'mesero'),
+    __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
+    __param(1, (0, common_1.Body)()),
+    __param(2, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number, agrupar_mesa_dto_1.DesagruparMesaDto, Object]),
+    __metadata("design:returntype", void 0)
+], PedidosController.prototype, "desagruparMesa", null);
 __decorate([
     (0, common_1.Post)(':id/transferir'),
     (0, common_1.UseGuards)(pedido_tenant_guard_1.PedidoTenantGuard, roles_guard_1.RolesGuard),

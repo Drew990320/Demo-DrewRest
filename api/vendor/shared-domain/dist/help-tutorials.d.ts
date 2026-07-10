@@ -1,8 +1,22 @@
 export type HelpRol = 'mesero' | 'chef' | 'admin' | 'superadmin';
 export type HelpTutorialStep = {
     title: string;
-    body: string;
+    body?: string;
     tip?: string;
+    /** Qué hacer ahora en la interfaz (imperativo). */
+    accion?: string;
+    /** Dónde encontrar el botón o sección. */
+    buscar?: string;
+    /** ID del elemento UI para resaltar en modo guía activa. */
+    target?: string;
+    /** Señal(es) que confirman el paso (OR con |). Ver help-coach HELP_SIGNAL. */
+    listoSi?: string;
+    /** Pantalla help-context donde aplica este paso. */
+    pantalla?: string;
+    /** Ruta expo-router si el mesero no está en la pantalla correcta. */
+    irARuta?: string;
+    /** El mesero puede marcar el paso como entendido sin completar la acción (flujos variables). */
+    confirmarEntendido?: boolean;
 };
 export type HelpTutorialModule = {
     id: string;
@@ -22,6 +36,8 @@ export type HelpTutorialAction = {
     roles: HelpRol[];
     steps: HelpTutorialStep[];
     routeHints: string[];
+    /** Pantallas donde esta guía es especialmente relevante. */
+    screenIds?: string[];
 };
 export declare const HELP_TUTORIAL_MODULES: HelpTutorialModule[];
 export declare const HELP_TUTORIAL_ACTIONS: HelpTutorialAction[];

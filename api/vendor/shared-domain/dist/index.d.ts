@@ -1,3 +1,7 @@
+export * from './agrupacion-mesas';
+export * from './help-coach';
+export * from './help-context';
+export * from './help-navigation';
 export * from './help-tutorials';
 export * from './asignar-cobro-por-monto';
 export * from './categoria-reglas';

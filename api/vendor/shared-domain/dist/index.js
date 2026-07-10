@@ -14,6 +14,10 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+__exportStar(require("./agrupacion-mesas"), exports);
+__exportStar(require("./help-coach"), exports);
+__exportStar(require("./help-context"), exports);
+__exportStar(require("./help-navigation"), exports);
 __exportStar(require("./help-tutorials"), exports);
 __exportStar(require("./asignar-cobro-por-monto"), exports);
 __exportStar(require("./categoria-reglas"), exports);

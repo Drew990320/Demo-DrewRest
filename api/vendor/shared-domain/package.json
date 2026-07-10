@@ -9,10 +9,26 @@
                               "types":  "./dist/index.d.ts",
                               "default":  "./dist/index.js"
                           },
+                    "./agrupacion-mesas":  {
+                                               "types":  "./dist/agrupacion-mesas.d.ts",
+                                               "default":  "./dist/agrupacion-mesas.js"
+                                           },
+                    "./help-context":  {
+                                           "types":  "./dist/help-context.d.ts",
+                                           "default":  "./dist/help-context.js"
+                                       },
                     "./help-tutorials":  {
                                              "types":  "./dist/help-tutorials.d.ts",
                                              "default":  "./dist/help-tutorials.js"
                                          },
+                    "./help-coach":  {
+                                         "types":  "./dist/help-coach.d.ts",
+                                         "default":  "./dist/help-coach.js"
+                                     },
+                    "./help-navigation":  {
+                                              "types":  "./dist/help-navigation.d.ts",
+                                              "default":  "./dist/help-navigation.js"
+                                          },
                     "./asignar-cobro-por-monto":  {
                                                       "types":  "./dist/asignar-cobro-por-monto.d.ts",
                                                       "default":  "./dist/asignar-cobro-por-monto.js"

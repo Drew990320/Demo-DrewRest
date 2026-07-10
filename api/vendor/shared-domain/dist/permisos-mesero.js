@@ -14,6 +14,7 @@ exports.PERMISOS_MESERO_KEYS = [
     'reimprimir_factura',
     'cancelar_pedido',
     'transferir_mesa',
+    'agrupar_mesas',
     'ayuda_companeros',
 ];
 exports.PERMISOS_MESERO_DEFAULTS = {
@@ -27,6 +28,7 @@ exports.PERMISOS_MESERO_DEFAULTS = {
     reimprimir_factura: true,
     cancelar_pedido: true,
     transferir_mesa: true,
+    agrupar_mesas: true,
     ayuda_companeros: true,
 };
 exports.PERMISOS_MESERO_META = {
@@ -69,6 +71,10 @@ exports.PERMISOS_MESERO_META = {
     transferir_mesa: {
         titulo: 'Transferir mesa',
         detalle: 'Mover el pedido a otra mesa libre',
+    },
+    agrupar_mesas: {
+        titulo: 'Agrupar mesas',
+        detalle: 'Unir mesas libres al mismo pedido o separarlas antes de cocina',
     },
     ayuda_companeros: {
         titulo: 'Ayuda a compañeros',
