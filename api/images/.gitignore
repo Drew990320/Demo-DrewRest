@@ -1,6 +1,8 @@
-# Coloca aquí el logo del restaurante (logo.png). No versionar assets del cliente.
-*.png
-*.jpg
-*.jpeg
-*.webp
-*.gif
+# Demo Render: versionar logos de fábrica; ignorar otras imágenes subidas en runtime.
+*
+!logo.png
+!logo-login.png
+!logo-factura.png
+!logo-ticket.png
+!favicon.png
+!.gitignore
