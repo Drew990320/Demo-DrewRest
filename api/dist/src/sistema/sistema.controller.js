@@ -56,6 +56,7 @@ const jwt_auth_guard_1 = require("../auth/jwt-auth.guard");
 const roles_decorator_1 = require("../auth/roles.decorator");
 const roles_guard_1 = require("../auth/roles.guard");
 const red_local_1 = require("./red-local");
+const instalacion_on_prem_1 = require("./instalacion-on-prem");
 const cors_origins_1 = require("../common/cors-origins");
 let SistemaController = class SistemaController {
     configRestaurante;
@@ -85,6 +86,9 @@ let SistemaController = class SistemaController {
         res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
         res.setHeader('Cache-Control', 'public, max-age=300');
         res.send(fs.readFileSync(logoPath));
+    }
+    instalacion() {
+        return (0, instalacion_on_prem_1.leerInstalacionOnPrem)();
     }
     conexionCelulares() {
         const red = (0, red_local_1.detectarRedLocal)();
@@ -142,6 +146,13 @@ __decorate([
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", Promise)
 ], SistemaController.prototype, "logo", null);
+__decorate([
+    (0, throttler_1.SkipThrottle)(),
+    (0, common_1.Get)('instalacion'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], SistemaController.prototype, "instalacion", null);
 __decorate([
     (0, throttler_1.SkipThrottle)(),
     (0, common_1.Get)('conexion-celulares'),
