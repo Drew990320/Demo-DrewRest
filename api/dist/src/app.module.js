@@ -30,6 +30,7 @@ const pedidos_module_1 = require("./pedidos/pedidos.module");
 const permisos_module_1 = require("./permisos/permisos.module");
 const platform_module_1 = require("./platform/platform.module");
 const prisma_module_1 = require("./prisma/prisma.module");
+const print_agent_module_1 = require("./print-agent/print-agent.module");
 const productos_module_1 = require("./productos/productos.module");
 const proveedores_module_1 = require("./proveedores/proveedores.module");
 const restaurante_module_1 = require("./restaurante/restaurante.module");
@@ -81,6 +82,7 @@ exports.AppModule = AppModule = __decorate([
             integracion_module_1.IntegracionModule,
             platform_module_1.PlatformModule,
             superadmin_module_1.SuperadminModule,
+            print_agent_module_1.PrintAgentModule,
         ],
         controllers: [app_controller_1.AppController, sistema_controller_1.SistemaController, rendimiento_controller_1.RendimientoController],
         providers: [
