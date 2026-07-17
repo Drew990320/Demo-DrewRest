@@ -7,5 +7,5 @@ DrewRest â€” paquete para Render (generado, no editar a mano)
 3. En el dashboard del API configura CORS_ORIGINS con la URL de la web estatica.
 4. Actualizar version: vuelve a ejecutar npm run Render:Empaquetar y push al repo.
 
-Generado: 2026-07-17 11:08
-API URL web compilada: https://drewrest-demo-api.onrender.com
+Generado: 2026-07-17 11:22
+API URL web compilada: https://drewrest-demo-web.onrender.com/api
