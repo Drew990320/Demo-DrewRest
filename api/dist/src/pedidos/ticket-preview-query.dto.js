@@ -12,7 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.TicketFechaPreviewQueryDto = exports.TicketFacturaPreviewQueryDto = exports.TicketComandaPreviewQueryDto = void 0;
 const class_validator_1 = require("class-validator");
 class TicketComandaPreviewQueryDto {
-    modo;
+    modo = 'ultimo_envio';
     detalles;
 }
 exports.TicketComandaPreviewQueryDto = TicketComandaPreviewQueryDto;
