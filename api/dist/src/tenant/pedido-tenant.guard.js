@@ -28,7 +28,7 @@ let PedidoTenantGuard = class PedidoTenantGuard {
         if (!Number.isFinite(idPedido))
             return true;
         const tenantId = req.user?.idRestaurante ?? tenant_constants_1.DEFAULT_TENANT_ID;
-        await (0, tenant_scope_1.assertPedidoDelTenant)(this.prisma, idPedido, tenantId);
+        req.pedidoTenant = await (0, tenant_scope_1.assertPedidoDelTenant)(this.prisma, idPedido, tenantId);
         return true;
     }
 };

@@ -29,6 +29,30 @@
                                               "types":  "./dist/help-navigation.d.ts",
                                               "default":  "./dist/help-navigation.js"
                                           },
+                    "./help-coach-copy":  {
+                                              "types":  "./dist/help-coach-copy.d.ts",
+                                              "default":  "./dist/help-coach-copy.js"
+                                          },
+                    "./help-tutorials-recorrido":  {
+                                                       "types":  "./dist/help-tutorials-recorrido.d.ts",
+                                                       "default":  "./dist/help-tutorials-recorrido.js"
+                                                   },
+                    "./help-manifest":  {
+                                            "types":  "./dist/help-manifest.d.ts",
+                                            "default":  "./dist/help-manifest.js"
+                                        },
+                    "./help-coach-engine":  {
+                                                "types":  "./dist/help-coach-engine.d.ts",
+                                                "default":  "./dist/help-coach-engine.js"
+                                            },
+                    "./help-coach-validator":  {
+                                                   "types":  "./dist/help-coach-validator.d.ts",
+                                                   "default":  "./dist/help-coach-validator.js"
+                                               },
+                    "./help-knowledge":  {
+                                             "types":  "./dist/help-knowledge.d.ts",
+                                             "default":  "./dist/help-knowledge.js"
+                                         },
                     "./asignar-cobro-por-monto":  {
                                                       "types":  "./dist/asignar-cobro-por-monto.d.ts",
                                                       "default":  "./dist/asignar-cobro-por-monto.js"
@@ -185,13 +209,77 @@
                                                     "types":  "./dist/resumen-diario-ventas.d.ts",
                                                     "default":  "./dist/resumen-diario-ventas.js"
                                                 },
+                    "./resumen-periodo":  {
+                                              "types":  "./dist/resumen-periodo.d.ts",
+                                              "default":  "./dist/resumen-periodo.js"
+                                          },
                     "./stock-producto":  {
                                              "types":  "./dist/stock-producto.d.ts",
                                              "default":  "./dist/stock-producto.js"
                                          },
+                    "./inventario-comportamiento":  {
+                                                        "types":  "./dist/inventario-comportamiento.d.ts",
+                                                        "default":  "./dist/inventario-comportamiento.js"
+                                                    },
+                    "./inventario-unidades":  {
+                                                  "types":  "./dist/inventario-unidades.d.ts",
+                                                  "default":  "./dist/inventario-unidades.js"
+                                              },
+                    "./inventario-movimientos":  {
+                                                     "types":  "./dist/inventario-movimientos.d.ts",
+                                                     "default":  "./dist/inventario-movimientos.js"
+                                                 },
+                    "./inventario-deduccion":  {
+                                                   "types":  "./dist/inventario-deduccion.d.ts",
+                                                   "default":  "./dist/inventario-deduccion.js"
+                                               },
+                    "./inventario-receta":  {
+                                                "types":  "./dist/inventario-receta.d.ts",
+                                                "default":  "./dist/inventario-receta.js"
+                                            },
+                    "./inventario-motor":  {
+                                               "types":  "./dist/inventario-motor.d.ts",
+                                               "default":  "./dist/inventario-motor.js"
+                                           },
+                    "./producto-menu-inventario":  {
+                                                       "types":  "./dist/producto-menu-inventario.d.ts",
+                                                       "default":  "./dist/producto-menu-inventario.js"
+                                                   },
+                    "./recurso-comportamiento":  {
+                                                     "types":  "./dist/recurso-comportamiento.d.ts",
+                                                     "default":  "./dist/recurso-comportamiento.js"
+                                                 },
+                    "./recurso-movimientos":  {
+                                                  "types":  "./dist/recurso-movimientos.d.ts",
+                                                  "default":  "./dist/recurso-movimientos.js"
+                                              },
+                    "./contabilidad-tipos":  {
+                                                 "types":  "./dist/contabilidad-tipos.d.ts",
+                                                 "default":  "./dist/contabilidad-tipos.js"
+                                             },
+                    "./contabilidad-asiento":  {
+                                                   "types":  "./dist/contabilidad-asiento.d.ts",
+                                                   "default":  "./dist/contabilidad-asiento.js"
+                                               },
+                    "./contabilidad-reglas":  {
+                                                  "types":  "./dist/contabilidad-reglas.d.ts",
+                                                  "default":  "./dist/contabilidad-reglas.js"
+                                              },
+                    "./contabilidad-reportes":  {
+                                                    "types":  "./dist/contabilidad-reportes.d.ts",
+                                                    "default":  "./dist/contabilidad-reportes.js"
+                                                },
                     "./transferencia-pedido":  {
                                                    "types":  "./dist/transferencia-pedido.d.ts",
                                                    "default":  "./dist/transferencia-pedido.js"
-                                               }
+                                               },
+                    "./drewtech-soporte":  {
+                                               "types":  "./dist/drewtech-soporte.d.ts",
+                                               "default":  "./dist/drewtech-soporte.js"
+                                           },
+                    "./subitems-pendientes":  {
+                                                  "types":  "./dist/subitems-pendientes.d.ts",
+                                                  "default":  "./dist/subitems-pendientes.js"
+                                              }
                 }
 }

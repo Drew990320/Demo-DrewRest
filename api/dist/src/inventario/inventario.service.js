@@ -11,9 +11,12 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.InventarioService = void 0;
 const common_1 = require("@nestjs/common");
+const inventario_comportamiento_1 = require("@drewrest/shared-domain/inventario-comportamiento");
 const client_1 = require("@prisma/client");
 const prisma_service_1 = require("../prisma/prisma.service");
 const tenant_constants_1 = require("../tenant/tenant.constants");
+const inventario_stock_producto_1 = require("./inventario-stock-producto");
+const deduccion_contexto_cache_1 = require("./deduccion-contexto-cache");
 let InventarioService = class InventarioService {
     prisma;
     constructor(prisma) {
@@ -25,6 +28,9 @@ let InventarioService = class InventarioService {
     mapItem(row) {
         const cantidad_actual = this.qty(row.cantidadActual);
         const cantidad_minima = this.qty(row.cantidadMinima);
+        const clase = (0, inventario_comportamiento_1.esClaseInventario)(row.claseInventario)
+            ? row.claseInventario
+            : 'produccion';
         return {
             id_inventario: row.idInventario,
             ingrediente: row.ingrediente,
@@ -32,7 +38,22 @@ let InventarioService = class InventarioService {
             unidad: row.unidad,
             cantidad_minima,
             bajo_minimo: cantidad_actual <= cantidad_minima,
+            clase_inventario: clase,
+            comportamiento: (0, inventario_comportamiento_1.parseComportamientoJson)(row.comportamiento, clase),
+            ubicacion: row.ubicacion,
+            estado_activo: row.estadoActivo,
+            costo_unitario: row.costoUnitario != null ? Number(row.costoUnitario) : null,
+            id_producto: row.idProducto,
         };
+    }
+    resolverClase(raw) {
+        if (raw == null)
+            return 'produccion';
+        const c = raw.trim();
+        if (!(0, inventario_comportamiento_1.esClaseInventario)(c)) {
+            throw new common_1.BadRequestException('Clase de inventario no válida');
+        }
+        return c;
     }
     async listar(soloBajoMinimo = false, tenantId = tenant_constants_1.DEFAULT_TENANT_ID) {
         const rows = await this.prisma.inventario.findMany({
@@ -54,6 +75,15 @@ let InventarioService = class InventarioService {
         if (!unidad) {
             throw new common_1.BadRequestException('Indica la unidad (ej. kg, u, L)');
         }
+        const clase = this.resolverClase(dto.clase_inventario);
+        if (dto.id_producto != null) {
+            const prod = await this.prisma.producto.findUnique({
+                where: { idProducto: dto.id_producto },
+            });
+            if (!prod?.activo) {
+                throw new common_1.BadRequestException('Producto del menú no encontrado');
+            }
+        }
         try {
             const row = await this.prisma.inventario.create({
                 data: {
@@ -62,6 +92,9 @@ let InventarioService = class InventarioService {
                     unidad,
                     cantidadActual: dto.cantidad_actual,
                     cantidadMinima: dto.cantidad_minima,
+                    claseInventario: clase,
+                    comportamiento: dto.comportamiento ?? {},
+                    idProducto: dto.id_producto ?? null,
                 },
             });
             if (dto.cantidad_actual > 0) {
@@ -74,6 +107,12 @@ let InventarioService = class InventarioService {
                     },
                 });
             }
+            if (row.idProducto != null && clase === 'comercial') {
+                await this.prisma.$transaction(async (tx) => {
+                    await (0, inventario_stock_producto_1.syncStockProductoDesdeInventarioTx)(tx, row.idProducto, tenantId);
+                });
+            }
+            (0, deduccion_contexto_cache_1.invalidateDeduccionEstructuraCache)(tenantId);
             return this.mapItem(row);
         }
         catch (e) {
@@ -99,6 +138,9 @@ let InventarioService = class InventarioService {
         if (dto.unidad != null && !unidad) {
             throw new common_1.BadRequestException('La unidad no puede quedar vacía');
         }
+        const clase = dto.clase_inventario != null
+            ? this.resolverClase(dto.clase_inventario)
+            : undefined;
         try {
             const row = await this.prisma.inventario.update({
                 where: { idInventario },
@@ -108,8 +150,28 @@ let InventarioService = class InventarioService {
                     ...(dto.cantidad_minima != null
                         ? { cantidadMinima: dto.cantidad_minima }
                         : {}),
+                    ...(clase != null ? { claseInventario: clase } : {}),
+                    ...(dto.comportamiento != null
+                        ? { comportamiento: dto.comportamiento }
+                        : {}),
+                    ...(dto.ubicacion !== undefined ? { ubicacion: dto.ubicacion } : {}),
+                    ...(dto.estado_activo !== undefined
+                        ? { estadoActivo: dto.estado_activo }
+                        : {}),
+                    ...(dto.costo_unitario !== undefined
+                        ? { costoUnitario: dto.costo_unitario }
+                        : {}),
+                    ...(dto.id_producto !== undefined
+                        ? { idProducto: dto.id_producto }
+                        : {}),
                 },
             });
+            if (row.idProducto != null && row.claseInventario === 'comercial') {
+                await this.prisma.$transaction(async (tx) => {
+                    await (0, inventario_stock_producto_1.syncStockProductoDesdeInventarioTx)(tx, row.idProducto, tenantId);
+                });
+            }
+            (0, deduccion_contexto_cache_1.invalidateDeduccionEstructuraCache)(tenantId);
             return this.mapItem(row);
         }
         catch (e) {
@@ -140,9 +202,6 @@ let InventarioService = class InventarioService {
             if (cantidad <= 0) {
                 throw new common_1.BadRequestException('El consumo debe ser mayor que cero');
             }
-            if (cantidad > actual) {
-                throw new common_1.BadRequestException('No hay suficiente stock para ese consumo');
-            }
             nuevo = this.qty(actual - cantidad);
         }
         else {
@@ -158,10 +217,63 @@ let InventarioService = class InventarioService {
                     observacion: dto.observacion?.trim() || null,
                 },
             });
-            return tx.inventario.update({
+            const updated = await tx.inventario.update({
                 where: { idInventario },
                 data: { cantidadActual: nuevo },
             });
+            if (updated.idProducto != null && updated.claseInventario === 'comercial') {
+                await (0, inventario_stock_producto_1.syncStockProductoDesdeInventarioTx)(tx, updated.idProducto, tenantId);
+            }
+            return updated;
+        });
+        return this.mapItem(row);
+    }
+    async vincularProductoComercial(idProducto, tenantId = tenant_constants_1.DEFAULT_TENANT_ID) {
+        const producto = await this.prisma.producto.findUnique({
+            where: { idProducto },
+            include: { categoria: true },
+        });
+        if (!producto?.activo) {
+            throw new common_1.NotFoundException('Producto no encontrado');
+        }
+        const existente = await this.prisma.inventario.findFirst({
+            where: { idProducto, idRestaurante: tenantId },
+        });
+        if (existente) {
+            return this.mapItem(existente);
+        }
+        const stock = producto.controlStock
+            ? Math.max(0, producto.stockDisponible)
+            : 0;
+        const row = await this.prisma.$transaction(async (tx) => {
+            const created = await tx.inventario.create({
+                data: {
+                    idRestaurante: tenantId,
+                    ingrediente: producto.nombre,
+                    unidad: 'u',
+                    cantidadActual: stock,
+                    cantidadMinima: 0,
+                    claseInventario: 'comercial',
+                    idProducto,
+                    costoUnitario: null,
+                },
+            });
+            if (stock > 0) {
+                await tx.movInventario.create({
+                    data: {
+                        idInventario: created.idInventario,
+                        tipoMov: 'entrada',
+                        cantidad: stock,
+                        observacion: 'Migración desde stock de menú',
+                    },
+                });
+            }
+            await tx.producto.update({
+                where: { idProducto },
+                data: { controlStock: true },
+            });
+            await (0, inventario_stock_producto_1.syncStockProductoDesdeInventarioTx)(tx, idProducto, tenantId);
+            return created;
         });
         return this.mapItem(row);
     }

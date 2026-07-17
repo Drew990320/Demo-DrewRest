@@ -44,7 +44,7 @@ let PermisosController = class PermisosController {
 exports.PermisosController = PermisosController;
 __decorate([
     (0, common_1.Get)('efectivos'),
-    (0, roles_decorator_1.Roles)('admin', 'mesero', 'chef'),
+    (0, roles_decorator_1.Roles)('admin', 'mesero', 'chef', 'superadmin'),
     __param(0, (0, common_1.Req)()),
     __param(1, (0, current_tenant_decorator_1.CurrentTenantId)()),
     __metadata("design:type", Function),

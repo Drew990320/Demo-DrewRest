@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.printEncabezadoDrewRest = exports.DREWTECH_CREDITO_LINEA = exports.DREWTECH_TELEFONO_LABEL = exports.DREWTECH_TELEFONO = exports.DEFAULT_ESC_POS_WIDTH = void 0;
+exports.printEncabezadoDrewRest = exports.DREWTECH_CREDITO_LINEA = exports.DEFAULT_ESC_POS_WIDTH = exports.DREWTECH_TELEFONO_LABEL = exports.DREWTECH_TELEFONO = void 0;
 exports.ticketNombreLocal = ticketNombreLocal;
 exports.ticketTelefono = ticketTelefono;
 exports.ticketDireccion = ticketDireccion;
@@ -48,6 +48,9 @@ exports.printEncabezadoRestaurante = printEncabezadoRestaurante;
 exports.bufferFromPrinter = bufferFromPrinter;
 const os = __importStar(require("os"));
 const path = __importStar(require("path"));
+const drewtech_soporte_1 = require("@drewrest/shared-domain/drewtech-soporte");
+Object.defineProperty(exports, "DREWTECH_TELEFONO", { enumerable: true, get: function () { return drewtech_soporte_1.DREWTECH_TELEFONO; } });
+Object.defineProperty(exports, "DREWTECH_TELEFONO_LABEL", { enumerable: true, get: function () { return drewtech_soporte_1.DREWTECH_TELEFONO_LABEL; } });
 const restaurant_branding_1 = require("../common/restaurant-branding");
 const visual_assets_util_1 = require("../visual/visual-assets.util");
 exports.DEFAULT_ESC_POS_WIDTH = 32;
@@ -84,8 +87,6 @@ function anchoEscPosPx(width, maxWidth) {
     const capped = Math.min(width, maxWidth);
     return Math.max(8, Math.floor(capped / 8) * 8);
 }
-exports.DREWTECH_TELEFONO = '3207964367';
-exports.DREWTECH_TELEFONO_LABEL = 'Tel: 320 796 4367';
 exports.DREWTECH_CREDITO_LINEA = 'Sistema interno del restaurante elaborado por DrewTech POS';
 function sampleRgbaBilinear(src, fx, fy) {
     const x = Math.min(src.width - 1, Math.max(0, fx));
@@ -184,7 +185,7 @@ async function printPieDrewTechFactura(printer, charWidth = exports.DEFAULT_ESC_
     for (const line of wrapEscPos(exports.DREWTECH_CREDITO_LINEA, charWidth)) {
         await printer.println(line);
     }
-    await printer.println(exports.DREWTECH_TELEFONO_LABEL);
+    await printer.println(drewtech_soporte_1.DREWTECH_TELEFONO_LABEL);
 }
 function formatCopEscPos(value) {
     const n = Math.round(Number(value) || 0);

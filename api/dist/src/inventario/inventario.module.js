@@ -9,17 +9,31 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.InventarioModule = void 0;
 const common_1 = require("@nestjs/common");
 const tenant_module_1 = require("../tenant/tenant.module");
+const recursos_module_1 = require("../recursos/recursos.module");
 const inventario_controller_1 = require("./inventario.controller");
+const inventario_deduccion_service_1 = require("./inventario-deduccion.service");
+const inventario_receta_service_1 = require("./inventario-receta.service");
 const inventario_service_1 = require("./inventario.service");
+const producto_inventario_vinculo_service_1 = require("./producto-inventario-vinculo.service");
 let InventarioModule = class InventarioModule {
 };
 exports.InventarioModule = InventarioModule;
 exports.InventarioModule = InventarioModule = __decorate([
     (0, common_1.Module)({
-        imports: [tenant_module_1.TenantModule],
+        imports: [tenant_module_1.TenantModule, recursos_module_1.RecursosModule],
         controllers: [inventario_controller_1.InventarioController],
-        providers: [inventario_service_1.InventarioService],
-        exports: [inventario_service_1.InventarioService],
+        providers: [
+            inventario_service_1.InventarioService,
+            inventario_receta_service_1.InventarioRecetaService,
+            inventario_deduccion_service_1.InventarioDeduccionService,
+            producto_inventario_vinculo_service_1.ProductoInventarioVinculoService,
+        ],
+        exports: [
+            inventario_service_1.InventarioService,
+            inventario_receta_service_1.InventarioRecetaService,
+            inventario_deduccion_service_1.InventarioDeduccionService,
+            producto_inventario_vinculo_service_1.ProductoInventarioVinculoService,
+        ],
     })
 ], InventarioModule);
 //# sourceMappingURL=inventario.module.js.map

@@ -58,6 +58,62 @@ enum TipoMovInventario {
   entrada
   consumo
   ajuste
+  compra
+  venta
+  produccion
+  consumo_receta
+  consumo_manual
+  ajuste_manual
+  perdida
+  dano
+  vencimiento
+  transferencia
+  devolucion
+  inventario_fisico
+  prestamo
+  reposicion
+  mantenimiento
+}
+
+enum ClaseInventario {
+  comercial
+  produccion
+  activo_interno
+  consumible_interno
+}
+
+enum EventoDeduccionInventario {
+  al_crear_pedido
+  al_confirmar_pedido
+  cocina_acepta
+  cocina_en_preparacion
+  cocina_listo
+  al_facturar
+  al_entregar
+}
+
+enum EstadoRecurso {
+  activo
+  agotado
+  mantenimiento
+  baja
+  prestado
+}
+
+enum TipoMovimientoRecurso {
+  compra
+  consumo
+  venta
+  produccion
+  transferencia
+  ajuste
+  devolucion
+  perdida
+  dano
+  robo
+  mantenimiento
+  baja
+  consumo_receta
 }
 
 enum EstadoCuentaPorPagar {
@@ -137,8 +193,73 @@ model Restaurante {
   permisosChef      PermisosChefConfig?
   permisosMesero    PermisosMeseroConfig?
   proveedores       Proveedor[]
+  configInventario  ConfigInventario?
+  inventario        Inventario[]
+  conversionesUnidad ConversionUnidad[]
+  recetas           RecetaProducto[]
+  impresorasPos     ImpresoraPos[]
+  categoriasRecurso CategoriaRecurso[]
+  ubicacionesRecurso UbicacionRecurso[]
+  recursos          Recurso[]
+  configContabilidad ConfigContabilidad?
+  categoriasContablesSimple CategoriaContableSimple[]
+  reglasContables   ReglaContable[]
+  asientosContables AsientoContable[]
+  centrosCosto      CentroCosto[]
 
   @@map("restaurante")
+}
+
+enum RolImpresoraPos {
+  cocina
+  factura
+  caja
+}
+
+enum AlcanceReglaImpresion {
+  categoria
+  producto
+}
+
+/// Impresoras POS térmicas (Windows spooler o COM) con roles de ticket.
+model ImpresoraPos {
+  idImpresora     Int               @id @default(autoincrement()) @map("id_impresora")
+  idRestaurante   Int               @default(1) @map("id_restaurante")
+  nombre          String            @db.VarChar(120)
+  /// Destino ESC/POS: printer:NombreWindows | COM3 | \\.\COM4
+  destino         String            @db.VarChar(200)
+  activa          Boolean           @default(true)
+  orden           Int               @default(0)
+  baudRate        Int?              @map("baud_rate")
+  roles           RolImpresoraPos[]
+  /// Si true y tiene rol cocina: imprime comanda completa (además de estaciones filtradas).
+  esCocinaMaestra Boolean           @default(false) @map("es_cocina_maestra")
+  creadoEn        DateTime          @default(now()) @map("creado_en")
+  actualizadoEn   DateTime          @updatedAt @map("actualizado_en")
+  restaurante     Restaurante       @relation(fields: [idRestaurante], references: [idRestaurante])
+  reglasCocina    ReglaImpresionCocina[]
+
+  @@index([idRestaurante, activa, orden])
+  @@unique([idRestaurante, destino])
+  @@map("impresora_pos")
+}
+
+/// Enruta líneas de comanda a una estación (categoría o producto del menú).
+model ReglaImpresionCocina {
+  idRegla     Int                   @id @default(autoincrement()) @map("id_regla")
+  idImpresora Int                   @map("id_impresora")
+  alcance     AlcanceReglaImpresion
+  idCategoria Int?                  @map("id_categoria")
+  idProducto  Int?                  @map("id_producto")
+  orden       Int                   @default(0)
+  impresora   ImpresoraPos          @relation(fields: [idImpresora], references: [idImpresora], onDelete: Cascade)
+  categoria   Categoria?            @relation(fields: [idCategoria], references: [idCategoria], onDelete: Cascade)
+  producto    Producto?             @relation(fields: [idProducto], references: [idProducto], onDelete: Cascade)
+
+  @@index([idImpresora, orden])
+  @@index([idCategoria])
+  @@index([idProducto])
+  @@map("regla_impresion_cocina")
 }
 
 model Rol {
@@ -174,6 +295,11 @@ model Usuario {
   cuentasCredito                CuentaCredito[]
   cuentasPorPagar               CuentaPorPagar[]
   pagosProveedor                PagoProveedor[]
+  movimientosInventario         MovInventario[]
+  recursosResponsable           Recurso[]              @relation("RecursoResponsable")
+  movimientosRecurso            MovimientoRecurso[]
+  mantenimientosRecurso         MantenimientoRecurso[]
+  asientosContables             AsientoContable[]
 
   @@unique([idRestaurante, email])
   @@index([idRestaurante])
@@ -253,6 +379,7 @@ model Categoria {
   activo                   Boolean              @default(true)
   restaurante              Restaurante          @relation(fields: [idRestaurante], references: [idRestaurante])
   productos                Producto[]
+  reglasImpresionCocina    ReglaImpresionCocina[]
 
   @@unique([idRestaurante, nombre])
   @@index([idRestaurante])
@@ -292,6 +419,10 @@ model Producto {
   configOperativaSoda      ConfigOperativa[]       @relation("ProductoSodaAlmuerzoConfig")
   configOperativaCuotaPendiente ConfigOperativa[]  @relation("ProductoCuotaPendienteConfig")
   registrosBeneficioMesero RegistroBeneficioMesero[]
+  inventarioItems    Inventario[]
+  recursos           Recurso[]
+  receta             RecetaProducto?
+  reglasImpresionCocina ReglaImpresionCocina[]
 
   @@map("producto")
 }
@@ -343,6 +474,7 @@ model Pedido {
   facturas                   Factura[]
   movimientosCaja            MovimientoCaja[]
   movsInventario            MovInventario[]
+  movimientosRecurso        MovimientoRecurso[]
   historial                  PedidoHistorial[]
   cuentasCredito             CuentaCredito[]
   mesasAnexas                PedidoMesaAnexa[]
@@ -719,10 +851,24 @@ model Inventario {
   cantidadActual Decimal         @map("cantidad_actual") @db.Decimal(10, 3)
   unidad         String          @db.VarChar(20)
   cantidadMinima Decimal         @map("cantidad_minima") @db.Decimal(10, 3)
+  claseInventario ClaseInventario @default(produccion) @map("clase_inventario")
+  /// Overrides de ComportamientoInventario (JSON); el preset viene de claseInventario.
+  comportamiento Json            @default("{}") @map("comportamiento")
+  idProducto     Int?            @map("id_producto")
+  ubicacion      String?         @db.VarChar(120)
+  estadoActivo   String?         @map("estado_activo") @db.VarChar(40)
+  costoUnitario  Decimal?        @map("costo_unitario") @db.Decimal(12, 4)
+  unidadCompra   String?         @map("unidad_compra") @db.VarChar(20)
+  /// 1 unidad_compra = factorCompra × unidad base del artículo.
+  factorCompra   Decimal?        @map("factor_compra") @db.Decimal(14, 6)
+  restaurante    Restaurante     @relation(fields: [idRestaurante], references: [idRestaurante])
+  producto       Producto?       @relation(fields: [idProducto], references: [idProducto], onDelete: SetNull)
   movimientos    MovInventario[]
+  lineasReceta   RecetaLinea[]
 
   @@unique([idRestaurante, ingrediente])
-  @@index([idRestaurante])
+  @@index([idRestaurante, claseInventario])
+  @@index([idProducto])
   @@map("inventario")
 }
 
@@ -730,14 +876,230 @@ model MovInventario {
   idMov        Int                 @id @default(autoincrement()) @map("id_mov")
   idInventario Int                 @map("id_inventario")
   idPedido     Int?                @map("id_pedido")
+  idDetallePedido Int?             @map("id_detalle_pedido")
+  idUsuario    Int?                @map("id_usuario")
   tipoMov      TipoMovInventario   @map("tipo_mov")
   cantidad     Decimal             @db.Decimal(10, 3)
   fecha        DateTime            @default(now())
   observacion  String?             @db.Text
+  moduloOrigen String?             @map("modulo_origen") @db.VarChar(40)
+  idDocumento  String?             @map("id_documento") @db.VarChar(64)
+  costoUnitario Decimal?           @map("costo_unitario") @db.Decimal(12, 4)
+  costoTotal   Decimal?             @map("costo_total") @db.Decimal(12, 2)
   inventario   Inventario          @relation(fields: [idInventario], references: [idInventario])
   pedido       Pedido?             @relation(fields: [idPedido], references: [idPedido])
+  usuario      Usuario?            @relation(fields: [idUsuario], references: [idUsuario], onDelete: SetNull)
 
+  @@index([idInventario, fecha])
+  @@index([idPedido])
   @@map("mov_inventario")
+}
+
+/// Política de deducción automática por tenant (genérica, configurable en BD).
+model ConfigInventario {
+  idRestaurante            Int                       @id @map("id_restaurante")
+  eventoDeduccionReceta    EventoDeduccionInventario @default(cocina_en_preparacion) @map("evento_deduccion_receta")
+  eventoDeduccionComercial EventoDeduccionInventario @default(al_crear_pedido) @map("evento_deduccion_comercial")
+  eventoDeduccionConsumible EventoDeduccionInventario? @map("evento_deduccion_consumible")
+  actualizadoEn            DateTime                  @updatedAt @map("actualizado_en")
+  restaurante              Restaurante               @relation(fields: [idRestaurante], references: [idRestaurante])
+
+  @@map("config_inventario")
+}
+
+/// BOM / receta de un producto preparado (un producto de menú → una receta activa).
+model RecetaProducto {
+  idReceta       Int           @id @default(autoincrement()) @map("id_receta")
+  idRestaurante  Int           @default(1) @map("id_restaurante")
+  idProducto     Int           @unique @map("id_producto")
+  version        Int           @default(1)
+  activa         Boolean       @default(true)
+  costoCalculado Decimal?      @map("costo_calculado") @db.Decimal(12, 2)
+  creadoEn       DateTime      @default(now()) @map("creado_en")
+  actualizadoEn  DateTime      @updatedAt @map("actualizado_en")
+  restaurante    Restaurante   @relation(fields: [idRestaurante], references: [idRestaurante])
+  producto       Producto      @relation(fields: [idProducto], references: [idProducto], onDelete: Cascade)
+  lineas         RecetaLinea[]
+  usadaComoSubreceta RecetaLinea[] @relation("SubrecetaLinea")
+
+  @@index([idRestaurante, activa])
+  @@map("receta_producto")
+}
+
+model RecetaLinea {
+  idLinea      Int            @id @default(autoincrement()) @map("id_linea")
+  idReceta     Int            @map("id_receta")
+  idInventario Int?           @map("id_inventario")
+  /// Fuente preferida post-migración; el motor de deducción usa idRecurso cuando está presente.
+  idRecurso    Int?           @map("id_recurso")
+  idSubreceta  Int?           @map("id_subreceta")
+  cantidad     Decimal        @db.Decimal(12, 6)
+  unidad       String         @db.VarChar(20)
+  opcional     Boolean        @default(false)
+  orden        Int            @default(0)
+  /// Sustituciones posibles: [{ id_articulo, factor? }]
+  sustituciones Json?         @map("sustituciones")
+  receta       RecetaProducto @relation(fields: [idReceta], references: [idReceta], onDelete: Cascade)
+  inventario   Inventario?    @relation(fields: [idInventario], references: [idInventario], onDelete: SetNull)
+  recurso      Recurso?       @relation(fields: [idRecurso], references: [idRecurso], onDelete: SetNull)
+  subreceta    RecetaProducto? @relation("SubrecetaLinea", fields: [idSubreceta], references: [idReceta], onDelete: SetNull)
+
+  @@index([idReceta, orden])
+  @@index([idRecurso])
+  @@map("receta_linea")
+}
+
+/// Categoría configurable del Resource Management Engine (flags de comportamiento).
+model CategoriaRecurso {
+  idCategoria    Int         @id @default(autoincrement()) @map("id_categoria")
+  idRestaurante  Int         @default(1) @map("id_restaurante")
+  codigo         String      @db.VarChar(40)
+  nombre         String      @db.VarChar(120)
+  descripcion    String?     @db.Text
+  activa         Boolean     @default(true)
+  orden          Int         @default(0)
+  controlaStock          Boolean @default(true)  @map("controla_stock")
+  seConsumeAuto          Boolean @default(false) @map("se_consume_auto")
+  puedeVenderse          Boolean @default(false) @map("puede_venderse")
+  requiereReceta         Boolean @default(false) @map("requiere_receta")
+  controlaVencimiento    Boolean @default(false) @map("controla_vencimiento")
+  controlaLote           Boolean @default(false) @map("controla_lote")
+  manejaSerie            Boolean @default(false) @map("maneja_serie")
+  requiereMantenimiento  Boolean @default(false) @map("requiere_mantenimiento")
+  esActivoFijo           Boolean @default(false) @map("es_activo_fijo")
+  permiteDepreciacion    Boolean @default(false) @map("permite_depreciacion")
+  tieneResponsable       Boolean @default(false) @map("tiene_responsable")
+  tieneUbicacion         Boolean @default(false) @map("tiene_ubicacion")
+  permitePrestamo        Boolean @default(false) @map("permite_prestamo")
+  creadoEn       DateTime    @default(now()) @map("creado_en")
+  actualizadoEn  DateTime    @updatedAt @map("actualizado_en")
+  restaurante    Restaurante @relation(fields: [idRestaurante], references: [idRestaurante])
+  recursos       Recurso[]
+
+  @@unique([idRestaurante, codigo])
+  @@index([idRestaurante, activa, orden])
+  @@map("categoria_recurso")
+}
+
+model UbicacionRecurso {
+  idUbicacion   Int         @id @default(autoincrement()) @map("id_ubicacion")
+  idRestaurante Int         @default(1) @map("id_restaurante")
+  nombre        String      @db.VarChar(120)
+  codigo        String?     @db.VarChar(40)
+  activa        Boolean     @default(true)
+  creadoEn      DateTime    @default(now()) @map("creado_en")
+  restaurante   Restaurante @relation(fields: [idRestaurante], references: [idRestaurante])
+  recursos      Recurso[]
+  movsOrigen    MovimientoRecurso[] @relation("MovRecursoUbicOrigen")
+  movsDestino   MovimientoRecurso[] @relation("MovRecursoUbicDestino")
+
+  @@unique([idRestaurante, nombre])
+  @@index([idRestaurante, activa])
+  @@map("ubicacion_recurso")
+}
+
+model Recurso {
+  idRecurso          Int            @id @default(autoincrement()) @map("id_recurso")
+  idRestaurante      Int            @default(1) @map("id_restaurante")
+  codigo             String         @db.VarChar(60)
+  nombre             String         @db.VarChar(150)
+  descripcion        String?        @db.Text
+  idCategoria        Int            @map("id_categoria")
+  unidad             String         @db.VarChar(20)
+  costo              Decimal        @default(0) @db.Decimal(12, 4)
+  precio             Decimal?       @db.Decimal(12, 2)
+  stock              Decimal        @default(0) @db.Decimal(12, 3)
+  stockMin           Decimal        @default(0) @map("stock_min") @db.Decimal(12, 3)
+  stockMax           Decimal?       @map("stock_max") @db.Decimal(12, 3)
+  estado             EstadoRecurso  @default(activo)
+  idProveedor        Int?           @map("id_proveedor")
+  idUbicacion        Int?           @map("id_ubicacion")
+  idResponsable      Int?           @map("id_responsable")
+  codigoBarras       String?        @map("codigo_barras") @db.VarChar(80)
+  codigoQr           String?        @map("codigo_qr") @db.VarChar(120)
+  numeroSerie        String?        @map("numero_serie") @db.VarChar(80)
+  fechaCompra        DateTime?      @map("fecha_compra") @db.Date
+  fechaVencimiento   DateTime?      @map("fecha_vencimiento") @db.Date
+  observaciones      String?        @db.Text
+  idProducto         Int?           @map("id_producto")
+  /// Puente de migración desde Inventario (idempotencia).
+  idInventarioLegacy Int?           @unique @map("id_inventario_legacy")
+  creadoEn           DateTime       @default(now()) @map("creado_en")
+  actualizadoEn      DateTime       @updatedAt @map("actualizado_en")
+  restaurante        Restaurante    @relation(fields: [idRestaurante], references: [idRestaurante])
+  categoria          CategoriaRecurso @relation(fields: [idCategoria], references: [idCategoria])
+  proveedor          Proveedor?     @relation(fields: [idProveedor], references: [idProveedor], onDelete: SetNull)
+  ubicacion          UbicacionRecurso? @relation(fields: [idUbicacion], references: [idUbicacion], onDelete: SetNull)
+  responsable        Usuario?       @relation("RecursoResponsable", fields: [idResponsable], references: [idUsuario], onDelete: SetNull)
+  producto           Producto?      @relation(fields: [idProducto], references: [idProducto], onDelete: SetNull)
+  movimientos        MovimientoRecurso[]
+  mantenimientos     MantenimientoRecurso[]
+  lineasReceta       RecetaLinea[]
+
+  @@unique([idRestaurante, codigo])
+  @@index([idRestaurante, idCategoria])
+  @@index([idRestaurante, estado])
+  @@index([idRestaurante, idUbicacion])
+  @@index([idProducto])
+  @@index([idRestaurante, stockMin])
+  @@index([fechaVencimiento])
+  @@map("recurso")
+}
+
+model MovimientoRecurso {
+  idMovimiento       Int                   @id @default(autoincrement()) @map("id_movimiento")
+  idRecurso          Int                   @map("id_recurso")
+  tipo               TipoMovimientoRecurso
+  cantidad           Decimal               @db.Decimal(12, 3)
+  costoUnitario      Decimal?              @map("costo_unitario") @db.Decimal(12, 4)
+  costoTotal         Decimal?              @map("costo_total") @db.Decimal(12, 2)
+  observacion        String?               @db.Text
+  moduloOrigen       String?               @map("modulo_origen") @db.VarChar(40)
+  idDocumento        String?               @map("id_documento") @db.VarChar(64)
+  idPedido           Int?                  @map("id_pedido")
+  idDetallePedido    Int?                  @map("id_detalle_pedido")
+  idUsuario          Int?                  @map("id_usuario")
+  idUbicacionOrigen  Int?                  @map("id_ubicacion_origen")
+  idUbicacionDestino Int?                  @map("id_ubicacion_destino")
+  fecha              DateTime              @default(now())
+  recurso            Recurso               @relation(fields: [idRecurso], references: [idRecurso], onDelete: Cascade)
+  pedido             Pedido?               @relation(fields: [idPedido], references: [idPedido], onDelete: SetNull)
+  usuario            Usuario?              @relation(fields: [idUsuario], references: [idUsuario], onDelete: SetNull)
+  ubicacionOrigen    UbicacionRecurso?     @relation("MovRecursoUbicOrigen", fields: [idUbicacionOrigen], references: [idUbicacion], onDelete: SetNull)
+  ubicacionDestino   UbicacionRecurso?     @relation("MovRecursoUbicDestino", fields: [idUbicacionDestino], references: [idUbicacion], onDelete: SetNull)
+
+  @@index([idRecurso, fecha])
+  @@index([idDocumento])
+  @@index([idPedido])
+  @@index([fecha])
+  @@map("movimiento_recurso")
+}
+
+model MantenimientoRecurso {
+  idMantenimiento Int       @id @default(autoincrement()) @map("id_mantenimiento")
+  idRecurso       Int       @map("id_recurso")
+  fecha           DateTime  @default(now())
+  descripcion     String    @db.Text
+  costo           Decimal?  @db.Decimal(12, 2)
+  idUsuario       Int?      @map("id_usuario")
+  recurso         Recurso   @relation(fields: [idRecurso], references: [idRecurso], onDelete: Cascade)
+  usuario         Usuario?  @relation(fields: [idUsuario], references: [idUsuario], onDelete: SetNull)
+
+  @@index([idRecurso, fecha])
+  @@map("mantenimiento_recurso")
+}
+
+/// Conversiones de unidades definidas por el negocio (ej. 1 bulto = 25 kg).
+model ConversionUnidad {
+  idConversion  Int         @id @default(autoincrement()) @map("id_conversion")
+  idRestaurante Int         @default(1) @map("id_restaurante")
+  unidadOrigen  String      @map("unidad_origen") @db.VarChar(20)
+  unidadDestino String      @map("unidad_destino") @db.VarChar(20)
+  factor        Decimal     @db.Decimal(14, 6)
+  restaurante   Restaurante @relation(fields: [idRestaurante], references: [idRestaurante])
+
+  @@unique([idRestaurante, unidadOrigen, unidadDestino])
+  @@map("conversion_unidad")
 }
 
 model ReporteVenta {
@@ -764,6 +1126,7 @@ model Proveedor {
   creadoEn        DateTime         @default(now()) @map("creado_en")
   restaurante     Restaurante      @relation(fields: [idRestaurante], references: [idRestaurante])
   cuentasPorPagar CuentaPorPagar[]
+  recursos        Recurso[]
 
   @@index([idRestaurante])
   @@map("proveedor")
@@ -806,4 +1169,294 @@ model PagoProveedor {
 
   @@index([idCuentaPorPagar])
   @@map("pago_proveedor")
+}
+
+// ─── Motor Contable Inteligente ─────────────────────────────────────────────
+
+enum NaturalezaCuenta {
+  debito
+  credito
+}
+
+enum TipoCuentaContable {
+  activo
+  pasivo
+  patrimonio
+  ingreso
+  gasto
+  orden
+}
+
+enum GrupoCategoriaContable {
+  entro_dinero
+  salio_dinero
+  me_deben
+  debo
+  interno
+}
+
+enum LadoAsiento {
+  debito
+  credito
+}
+
+enum FormulaMontoRegla {
+  total
+  porcentaje
+  fijo
+}
+
+enum EstadoAsiento {
+  publicado
+  reversado
+}
+
+enum ModoUiContabilidad {
+  simplificado
+  profesional
+}
+
+/// País / norma contable (CO=PUC, MX=…); el motor no hardcodea Colombia.
+model PaisContable {
+  idPais  Int      @id @default(autoincrement()) @map("id_pais")
+  codigo  String   @unique @db.VarChar(8)
+  nombre  String   @db.VarChar(80)
+  norma   String   @db.VarChar(40)
+  planes  PlanCuentasVersion[]
+
+  @@map("pais_contable")
+}
+
+model PlanCuentasVersion {
+  idPlan        Int      @id @default(autoincrement()) @map("id_plan")
+  idPais        Int      @map("id_pais")
+  codigoVersion String   @map("codigo_version") @db.VarChar(40)
+  vigenteDesde  DateTime @default(now()) @map("vigente_desde") @db.Date
+  activa        Boolean  @default(true)
+  pais          PaisContable @relation(fields: [idPais], references: [idPais])
+  cuentas       CuentaContable[]
+  configs       ConfigContabilidad[]
+
+  @@unique([idPais, codigoVersion])
+  @@index([idPais, activa])
+  @@map("plan_cuentas_version")
+}
+
+model CuentaContable {
+  idCuenta         Int                 @id @default(autoincrement()) @map("id_cuenta")
+  idPlan           Int                 @map("id_plan")
+  codigo           String              @db.VarChar(32)
+  nombre           String              @db.VarChar(160)
+  nivel            Int                 @default(1)
+  naturaleza       NaturalezaCuenta
+  tipo             TipoCuentaContable
+  idPadre          Int?                @map("id_padre")
+  aceptaMovimiento Boolean             @default(true) @map("acepta_movimiento")
+  activa           Boolean             @default(true)
+  esAuxiliar       Boolean             @default(false) @map("es_auxiliar")
+  plan             PlanCuentasVersion  @relation(fields: [idPlan], references: [idPlan], onDelete: Cascade)
+  padre            CuentaContable?     @relation("CuentaJerarquia", fields: [idPadre], references: [idCuenta], onDelete: SetNull)
+  hijas            CuentaContable[]    @relation("CuentaJerarquia")
+  lineasRegla      ReglaContableLinea[]
+  lineasAsiento    AsientoLinea[]
+
+  @@unique([idPlan, codigo])
+  @@index([idPlan, tipo])
+  @@index([idPadre])
+  @@map("cuenta_contable")
+}
+
+model ConfigContabilidad {
+  idRestaurante      Int               @id @map("id_restaurante")
+  idPlanActivo       Int               @map("id_plan_activo")
+  modoUiDefault      ModoUiContabilidad @default(simplificado) @map("modo_ui_default")
+  periodoAbiertoDesde DateTime?        @map("periodo_abierto_desde") @db.Date
+  /// En tenants existentes se deja false al migrar; nuevos pueden activarlo.
+  posteoAutomatico   Boolean           @default(false) @map("posteo_automatico")
+  actualizadoEn      DateTime          @updatedAt @map("actualizado_en")
+  restaurante        Restaurante       @relation(fields: [idRestaurante], references: [idRestaurante])
+  planActivo         PlanCuentasVersion @relation(fields: [idPlanActivo], references: [idPlan])
+
+  @@map("config_contabilidad")
+}
+
+model CategoriaContableSimple {
+  idCategoria    Int                     @id @default(autoincrement()) @map("id_categoria")
+  idRestaurante Int                     @default(1) @map("id_restaurante")
+  codigo        String                  @db.VarChar(40)
+  nombre        String                  @db.VarChar(120)
+  grupo         GrupoCategoriaContable
+  icono         String?                 @db.VarChar(40)
+  activa        Boolean                 @default(true)
+  orden         Int                     @default(0)
+  restaurante   Restaurante             @relation(fields: [idRestaurante], references: [idRestaurante])
+  reglas        ReglaContable[]
+
+  @@unique([idRestaurante, codigo])
+  @@index([idRestaurante, grupo, activa])
+  @@map("categoria_contable_simple")
+}
+
+model ReglaContable {
+  idRegla       Int                      @id @default(autoincrement()) @map("id_regla")
+  idRestaurante Int                      @default(1) @map("id_restaurante")
+  codigo        String                   @db.VarChar(60)
+  nombre        String                   @db.VarChar(160)
+  idCategoria    Int?                     @map("id_categoria")
+  /// Evento operativo: venta_contado_efectivo, abono_cliente, etc.
+  eventoOrigen  String?                  @map("evento_origen") @db.VarChar(60)
+  activa        Boolean                  @default(true)
+  prioridad     Int                      @default(100)
+  restaurante   Restaurante              @relation(fields: [idRestaurante], references: [idRestaurante])
+  categoria     CategoriaContableSimple? @relation(fields: [idCategoria], references: [idCategoria], onDelete: SetNull)
+  lineas        ReglaContableLinea[]
+
+  @@unique([idRestaurante, codigo])
+  @@index([idRestaurante, eventoOrigen, activa])
+  @@index([idCategoria])
+  @@map("regla_contable")
+}
+
+model ReglaContableLinea {
+  idLineaRegla   Int               @id @default(autoincrement()) @map("id_linea_regla")
+  idRegla        Int               @map("id_regla")
+  lado           LadoAsiento
+  idCuenta       Int               @map("id_cuenta")
+  formulaMonto   FormulaMontoRegla @default(total) @map("formula_monto")
+  porcentaje     Decimal?          @db.Decimal(8, 4)
+  montoFijo      Decimal?          @map("monto_fijo") @db.Decimal(12, 2)
+  orden          Int               @default(0)
+  regla          ReglaContable     @relation(fields: [idRegla], references: [idRegla], onDelete: Cascade)
+  cuenta         CuentaContable    @relation(fields: [idCuenta], references: [idCuenta])
+
+  @@index([idRegla, orden])
+  @@map("regla_contable_linea")
+}
+
+model CentroCosto {
+  idCentro      Int         @id @default(autoincrement()) @map("id_centro")
+  idRestaurante Int         @default(1) @map("id_restaurante")
+  codigo        String      @db.VarChar(40)
+  nombre        String      @db.VarChar(120)
+  activo        Boolean     @default(true)
+  restaurante   Restaurante @relation(fields: [idRestaurante], references: [idRestaurante])
+  lineasAsiento AsientoLinea[]
+
+  @@unique([idRestaurante, codigo])
+  @@map("centro_costo")
+}
+
+model AsientoContable {
+  idAsiento         Int            @id @default(autoincrement()) @map("id_asiento")
+  idRestaurante     Int            @default(1) @map("id_restaurante")
+  numero            Int
+  fecha             DateTime       @db.Date
+  descripcion       String         @db.VarChar(255)
+  origenModulo      String         @map("origen_modulo") @db.VarChar(40)
+  origenTipo        String         @map("origen_tipo") @db.VarChar(40)
+  origenId          Int?           @map("origen_id")
+  idDocumento       String         @map("id_documento") @db.VarChar(80)
+  estado            EstadoAsiento  @default(publicado)
+  idAsientoReverso  Int?           @unique @map("id_asiento_reverso")
+  idUsuario         Int            @map("id_usuario")
+  idCajaDiaria      Int?           @map("id_caja_diaria")
+  equipo            String?        @db.VarChar(80)
+  motivo            String?        @db.VarChar(255)
+  idCategoriaSimple  Int?           @map("id_categoria_simple")
+  creadoEn          DateTime       @default(now()) @map("creado_en")
+  restaurante       Restaurante    @relation(fields: [idRestaurante], references: [idRestaurante])
+  usuario           Usuario        @relation(fields: [idUsuario], references: [idUsuario])
+  asientoReverso    AsientoContable? @relation("AsientoReverso", fields: [idAsientoReverso], references: [idAsiento], onDelete: SetNull)
+  asientoOriginal   AsientoContable? @relation("AsientoReverso")
+  lineas            AsientoLinea[]
+
+  @@unique([idRestaurante, idDocumento])
+  @@unique([idRestaurante, numero])
+  @@index([idRestaurante, fecha])
+  @@index([idRestaurante, estado])
+  @@index([origenModulo, origenTipo, origenId])
+  @@map("asiento_contable")
+}
+
+model AsientoLinea {
+  idLinea       Int             @id @default(autoincrement()) @map("id_linea")
+  idAsiento     Int             @map("id_asiento")
+  idCuenta      Int             @map("id_cuenta")
+  debito        Decimal         @default(0) @db.Decimal(14, 2)
+  credito       Decimal         @default(0) @db.Decimal(14, 2)
+  idCentroCosto Int?            @map("id_centro_costo")
+  detalle       String?         @db.VarChar(255)
+  orden         Int             @default(0)
+  asiento       AsientoContable @relation(fields: [idAsiento], references: [idAsiento], onDelete: Cascade)
+  cuenta        CuentaContable  @relation(fields: [idCuenta], references: [idCuenta])
+  centroCosto   CentroCosto?    @relation(fields: [idCentroCosto], references: [idCentro], onDelete: SetNull)
+
+  @@index([idAsiento, orden])
+  @@index([idCuenta])
+  @@map("asiento_linea")
+}
+
+/// Auditoría del ciclo de vida (launcher). No reemplaza _prisma_migrations.
+enum LifecycleSystemStatus {
+  healthy
+  updating
+  recovery
+}
+
+model LifecycleMigrationRun {
+  id            Int      @id @default(autoincrement())
+  nombre        String   @db.VarChar(200)
+  versionApp    String?  @map("version_app") @db.VarChar(40)
+  schemaVersion Int?     @map("schema_version")
+  fecha         DateTime @default(now())
+  duracionMs    Int      @map("duracion_ms")
+  estado        String   @db.VarChar(40)
+  usuario       String   @default("launcher") @db.VarChar(80)
+  resultado     String?  @db.Text
+  error         String?  @db.Text
+
+  @@index([fecha])
+  @@map("lifecycle_migration_run")
+}
+
+model LifecycleBackupEvent {
+  id            Int      @id @default(autoincrement())
+  backupId      String   @map("backup_id") @db.VarChar(80)
+  fecha         DateTime @default(now())
+  appVersion    String?  @map("app_version") @db.VarChar(40)
+  schemaVersion Int?     @map("schema_version")
+  ruta          String   @db.VarChar(500)
+  tamanoBytes   BigInt?  @map("tamano_bytes")
+  estado        String   @db.VarChar(40)
+  checksumSha256 String? @map("checksum_sha256") @db.VarChar(64)
+  error         String?  @db.Text
+
+  @@index([fecha])
+  @@unique([backupId])
+  @@map("lifecycle_backup_event")
+}
+
+model LifecycleUpdateEvent {
+  id            Int      @id @default(autoincrement())
+  fecha         DateTime @default(now())
+  fromVersion   String?  @map("from_version") @db.VarChar(40)
+  toVersion     String?  @map("to_version") @db.VarChar(40)
+  canal         String?  @db.VarChar(40)
+  backupId      String?  @map("backup_id") @db.VarChar(80)
+  estado        String   @db.VarChar(40)
+  detalle       String?  @db.Text
+  error         String?  @db.Text
+
+  @@index([fecha])
+  @@map("lifecycle_update_event")
+}
+
+model LifecycleSystemState {
+  id     Int                   @id @default(1)
+  estado LifecycleSystemStatus @default(healthy)
+  detalle String?              @db.Text
+  backupIdActivo String?       @map("backup_id_activo") @db.VarChar(80)
+  actualizadoEn DateTime       @default(now()) @updatedAt @map("actualizado_en")
+
+  @@map("lifecycle_system_state")
 }

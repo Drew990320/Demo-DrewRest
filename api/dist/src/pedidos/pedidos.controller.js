@@ -51,6 +51,7 @@ const patch_detalle_cocina_dto_1 = require("./dto/patch-detalle-cocina.dto");
 const patch_listo_para_recoger_dto_1 = require("./dto/patch-listo-para-recoger.dto");
 const falta_en_cocina_dto_1 = require("./dto/falta-en-cocina.dto");
 const patch_detalle_cantidad_dto_1 = require("./dto/patch-detalle-cantidad.dto");
+const patch_detalle_subitems_dto_1 = require("./dto/patch-detalle-subitems.dto");
 const patch_prioridad_cocina_dto_1 = require("./dto/patch-prioridad-cocina.dto");
 let PedidosController = class PedidosController {
     pedidos;
@@ -108,8 +109,8 @@ let PedidosController = class PedidosController {
     resumenDiarioLineasFactura(idFactura) {
         return this.pedidos.resumenDiarioLineasFactura(idFactura);
     }
-    resumenDiario(fecha, tenantId) {
-        return this.pedidos.resumenDiario(fecha, undefined, tenantId);
+    resumenDiario(fecha, periodo, tenantId) {
+        return this.pedidos.resumenDiario(fecha, { periodo }, tenantId);
     }
     vaciarResumenDiario(dto, fecha, req) {
         return this.pedidos.vaciarResumenDiario(req.user, dto, fecha);
@@ -179,6 +180,9 @@ let PedidosController = class PedidosController {
     }
     actualizarCantidadDetalle(idDetalle, dto, req) {
         return this.pedidos.actualizarCantidadDetalle(idDetalle, dto, req.user);
+    }
+    asignarSubitemsDetalle(idDetalle, dto, req) {
+        return this.pedidos.asignarSubitemsDetalle(idDetalle, dto, req.user);
     }
     eliminarDetalle(idDetalle, req) {
         return this.pedidos.eliminarDetalle(idDetalle, req.user);
@@ -396,9 +400,10 @@ __decorate([
     (0, common_1.UseGuards)(pedido_tenant_guard_1.PedidoTenantGuard, roles_guard_1.RolesGuard),
     (0, roles_decorator_1.Roles)('admin', 'superadmin'),
     __param(0, (0, common_1.Query)('fecha')),
-    __param(1, (0, current_tenant_decorator_1.CurrentTenantId)()),
+    __param(1, (0, common_1.Query)('periodo')),
+    __param(2, (0, current_tenant_decorator_1.CurrentTenantId)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, Number]),
+    __metadata("design:paramtypes", [String, String, Number]),
     __metadata("design:returntype", void 0)
 ], PedidosController.prototype, "resumenDiario", null);
 __decorate([
@@ -629,6 +634,17 @@ __decorate([
     __metadata("design:paramtypes", [Number, patch_detalle_cantidad_dto_1.PatchDetalleCantidadDto, Object]),
     __metadata("design:returntype", void 0)
 ], PedidosController.prototype, "actualizarCantidadDetalle", null);
+__decorate([
+    (0, common_1.Patch)('detalles/:idDetalle/subitems'),
+    (0, common_1.UseGuards)(detalle_tenant_guard_1.DetalleTenantGuard, roles_guard_1.RolesGuard),
+    (0, roles_decorator_1.Roles)('admin', 'mesero'),
+    __param(0, (0, common_1.Param)('idDetalle', common_1.ParseIntPipe)),
+    __param(1, (0, common_1.Body)()),
+    __param(2, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number, patch_detalle_subitems_dto_1.PatchDetalleSubitemsDto, Object]),
+    __metadata("design:returntype", void 0)
+], PedidosController.prototype, "asignarSubitemsDetalle", null);
 __decorate([
     (0, common_1.Delete)('detalles/:idDetalle'),
     (0, common_1.UseGuards)(detalle_tenant_guard_1.DetalleTenantGuard, roles_guard_1.RolesGuard),

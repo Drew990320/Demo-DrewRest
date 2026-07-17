@@ -51,6 +51,7 @@ const tenant_constants_1 = require("../tenant/tenant.constants");
 const tenant_service_1 = require("../tenant/tenant.service");
 const tenant_access_1 = require("../tenant/tenant-access");
 const usuario_display_1 = require("../usuarios/usuario-display");
+const SETUP_SUPERADMIN_EMAIL_DEFAULT = 'superadmin@drewrest.local';
 let AuthService = class AuthService {
     prisma;
     jwt;
@@ -59,6 +60,63 @@ let AuthService = class AuthService {
         this.prisma = prisma;
         this.jwt = jwt;
         this.tenant = tenant;
+    }
+    async setupStatus() {
+        const count = await this.prisma.usuario.count({
+            where: { rol: { nombre: 'superadmin' } },
+        });
+        return { necesita_definir_superadmin: count === 0 };
+    }
+    async setupSuperadmin(dto) {
+        const status = await this.setupStatus();
+        if (!status.necesita_definir_superadmin) {
+            throw new common_1.ConflictException('El superadmin ya está definido. Usa el inicio de sesión normal.');
+        }
+        const email = (dto.email?.trim().toLowerCase() || SETUP_SUPERADMIN_EMAIL_DEFAULT).trim();
+        const nombre = dto.nombre?.trim() || 'Superadmin';
+        const rol = await this.prisma.rol.upsert({
+            where: { nombre: 'superadmin' },
+            create: {
+                nombre: 'superadmin',
+                descripcion: 'Operación oculta del sistema',
+            },
+            update: {},
+        });
+        await this.prisma.restaurante.upsert({
+            where: { idRestaurante: tenant_constants_1.DEFAULT_TENANT_ID },
+            create: {
+                idRestaurante: tenant_constants_1.DEFAULT_TENANT_ID,
+                slug: 'principal',
+                nombre: 'Restaurante',
+            },
+            update: {},
+        });
+        const emailTaken = await this.prisma.usuario.findUnique({
+            where: {
+                idRestaurante_email: {
+                    idRestaurante: tenant_constants_1.DEFAULT_TENANT_ID,
+                    email,
+                },
+            },
+        });
+        if (emailTaken) {
+            throw new common_1.ConflictException('Ya existe un usuario con ese correo');
+        }
+        const passwordHash = await bcrypt.hash(dto.password, 10);
+        const user = await this.prisma.usuario.create({
+            data: {
+                idRestaurante: tenant_constants_1.DEFAULT_TENANT_ID,
+                idRol: rol.idRol,
+                nombre,
+                apellido: '',
+                email,
+                passwordHash,
+                passwordCambiadoEn: new Date(),
+                activo: true,
+            },
+            include: { rol: true },
+        });
+        return this.issueSession(user);
     }
     async login(dto) {
         const tenantId = dto.tenant_slug?.trim()
@@ -77,6 +135,24 @@ let AuthService = class AuthService {
             throw new common_1.UnauthorizedException('Credenciales inválidas');
         }
         await (0, tenant_access_1.assertTenantAccessForUser)(this.prisma, user);
+        return this.issueSession(user);
+    }
+    async refresh(actor) {
+        const user = await this.prisma.usuario.findUnique({
+            where: { idUsuario: actor.idUsuario },
+            include: { rol: true },
+        });
+        if (!user?.activo) {
+            throw new common_1.UnauthorizedException('Sesión inválida');
+        }
+        await (0, tenant_access_1.assertTenantAccessForUser)(this.prisma, user);
+        const session = await this.issueSession(user);
+        return {
+            access_token: session.access_token,
+            expires_in: session.expires_in,
+        };
+    }
+    async issueSession(user) {
         const pwdAt = (user.passwordCambiadoEn ?? user.creadoEn).getTime();
         const payload = {
             sub: user.idUsuario,
@@ -97,28 +173,6 @@ let AuthService = class AuthService {
                 rol: user.rol.nombre,
                 id_restaurante: user.idRestaurante,
             },
-        };
-    }
-    async refresh(actor) {
-        const user = await this.prisma.usuario.findUnique({
-            where: { idUsuario: actor.idUsuario },
-            include: { rol: true },
-        });
-        if (!user?.activo) {
-            throw new common_1.UnauthorizedException('Sesión inválida');
-        }
-        await (0, tenant_access_1.assertTenantAccessForUser)(this.prisma, user);
-        const pwdAt = (user.passwordCambiadoEn ?? user.creadoEn).getTime();
-        const payload = {
-            sub: user.idUsuario,
-            email: user.email,
-            rol: user.rol.nombre,
-            pwdAt,
-            tid: user.idRestaurante,
-        };
-        return {
-            access_token: await this.jwt.signAsync(payload),
-            expires_in: this.jwtExpiresSeconds(),
         };
     }
     jwtExpiresSeconds() {

@@ -16,6 +16,9 @@ class CrearInventarioDto {
     unidad;
     cantidad_actual;
     cantidad_minima;
+    clase_inventario;
+    comportamiento;
+    id_producto;
 }
 exports.CrearInventarioDto = CrearInventarioDto;
 __decorate([
@@ -38,4 +41,19 @@ __decorate([
     (0, class_validator_1.Min)(0),
     __metadata("design:type", Number)
 ], CrearInventarioDto.prototype, "cantidad_minima", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], CrearInventarioDto.prototype, "clase_inventario", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsObject)(),
+    __metadata("design:type", Object)
+], CrearInventarioDto.prototype, "comportamiento", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsNumber)(),
+    __metadata("design:type", Number)
+], CrearInventarioDto.prototype, "id_producto", void 0);
 //# sourceMappingURL=crear-inventario.dto.js.map

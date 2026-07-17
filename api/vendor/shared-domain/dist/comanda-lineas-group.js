@@ -36,6 +36,8 @@ function lineasComandaParaTicket(detalles) {
                 nombre_producto: d.nombre_producto,
                 nota_cocina: d.nota_cocina ?? null,
                 personalizaciones: (d.personalizaciones ?? []).map((p) => p.descripcion),
+                id_producto: d.id_producto,
+                id_categoria: d.id_categoria,
                 _ids: [d.id_detalle],
             });
             continue;
@@ -51,6 +53,8 @@ function lineasComandaParaTicket(detalles) {
             nombre_producto: row.nombre_producto,
             nota_cocina: row.nota_cocina,
             personalizaciones: row.personalizaciones,
+            ...(row.id_producto != null ? { id_producto: row.id_producto } : {}),
+            ...(row.id_categoria != null ? { id_categoria: row.id_categoria } : {}),
         };
     });
 }

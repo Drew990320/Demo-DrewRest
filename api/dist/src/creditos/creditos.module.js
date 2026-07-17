@@ -9,6 +9,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CreditosModule = void 0;
 const common_1 = require("@nestjs/common");
 const tenant_module_1 = require("../tenant/tenant.module");
+const contabilidad_module_1 = require("../contabilidad/contabilidad.module");
 const creditos_controller_1 = require("./creditos.controller");
 const creditos_service_1 = require("./creditos.service");
 let CreditosModule = class CreditosModule {
@@ -16,7 +17,7 @@ let CreditosModule = class CreditosModule {
 exports.CreditosModule = CreditosModule;
 exports.CreditosModule = CreditosModule = __decorate([
     (0, common_1.Module)({
-        imports: [tenant_module_1.TenantModule],
+        imports: [tenant_module_1.TenantModule, contabilidad_module_1.ContabilidadModule],
         controllers: [creditos_controller_1.CreditosController],
         providers: [creditos_service_1.CreditosService],
         exports: [creditos_service_1.CreditosService],

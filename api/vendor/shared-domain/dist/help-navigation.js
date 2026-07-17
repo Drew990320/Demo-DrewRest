@@ -5,6 +5,7 @@ exports.destinoDesdePantalla = destinoDesdePantalla;
 exports.destinoModuloCoach = destinoModuloCoach;
 exports.destinoAccionCoach = destinoAccionCoach;
 exports.usuarioEnPantallaAyuda = usuarioEnPantallaAyuda;
+exports.usuarioEnZonaTutorial = usuarioEnZonaTutorial;
 exports.construirPreludioNavegacion = construirPreludioNavegacion;
 exports.pasosCoachAccion = pasosCoachAccion;
 exports.pasosCoachModulo = pasosCoachModulo;
@@ -370,6 +371,26 @@ function usuarioEnPantallaAyuda(pathname, screenId, rol) {
         return false;
     return false;
 }
+/** Ya estás en una pantalla donde puede ejecutarse esta guía (no hace falta preludio de navegación). */
+function usuarioEnZonaTutorial(pathname, action, rol) {
+    const ctx = (0, help_context_1.resolverPantallaAyuda)(pathname, rol);
+    const pantallas = new Set();
+    for (const sid of action.screenIds ?? [])
+        pantallas.add(sid);
+    for (const step of action.steps) {
+        if (step.pantalla)
+            pantallas.add(step.pantalla);
+    }
+    if (pantallas.has(ctx.screenId))
+        return true;
+    if (pantallas.has('pedido_menu') && ctx.screenId === 'pedido_raiz')
+        return true;
+    if (pantallas.has('pedido_raiz') && ctx.screenId === 'pedido_menu')
+        return true;
+    if (pantallas.has('mesa_detalle') && ctx.screenId === 'mesas_lista')
+        return false;
+    return false;
+}
 function pasoAbrirMas(dest, moduloLabel) {
     return {
         title: '1. Abre el menú «Más»',
@@ -422,7 +443,7 @@ function pasosCoachAccion(actionId, pathname, rol, opts) {
         return [];
     const base = (0, help_tutorials_1.pasosDeAccion)(actionId);
     const dest = destinoAccionCoach(actionId, rol);
-    const prelude = opts?.skipPrelude || !dest
+    const prelude = opts?.skipPrelude || !dest || usuarioEnZonaTutorial(pathname, action, rol)
         ? []
         : construirPreludioNavegacion(pathname, dest, action.title, rol);
     return [...prelude, ...base];

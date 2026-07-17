@@ -7,6 +7,7 @@ exports.resumenCoachGuia = resumenCoachGuia;
 exports.pasosPendientesTitulos = pasosPendientesTitulos;
 exports.resolverTargetCoachPaso = resolverTargetCoachPaso;
 exports.senalesDesdeRuta = senalesDesdeRuta;
+const help_manifest_1 = require("./help-manifest");
 exports.HELP_SIGNAL = {
     mesasEnMapa: 'mesas.en_mapa',
     mesaEnDetalle: 'mesa.en_detalle',
@@ -88,36 +89,5 @@ function resolverTargetCoachPaso(step, signals) {
     return step.target;
 }
 function senalesDesdeRuta(pathname) {
-    const path = pathname.replace(/\/$/, '').replace(/^\/\([^)]+\)/, '') || '/';
-    return {
-        [exports.HELP_SIGNAL.mesasEnMapa]: /\/mesas$/.test(path) || path.endsWith('/mesas'),
-        [exports.HELP_SIGNAL.mesaEnDetalle]: /\/mesa\/\d+/.test(path),
-        [exports.HELP_SIGNAL.pedidoEnMenu]: /\/pedido\/\d+\/(menu|producto)/.test(path),
-        [exports.HELP_SIGNAL.pedidoEnFactura]: /\/pedido\/\d+\/factura/.test(path),
-        'pedido.en_activo': /\/pedido\/\d+/.test(path),
-        [exports.HELP_SIGNAL.inventarioEnPantalla]: /\/inventario(?:\/|$)/.test(path),
-        [exports.HELP_SIGNAL.vistaPreviaEnPantalla]: /\/vista-previa-impresion(?:\/|$)/.test(path),
-        [exports.HELP_SIGNAL.conexionEnPantalla]: /\/conexion-movil(?:\/|$)/.test(path),
-        'cocina.en_pantalla': /\/cocina(?:\/|$)/.test(path),
-        'mis_pedidos.en_pantalla': /\/mis-pedidos(?:\/|$)/.test(path),
-        'ayuda_companeros.en_pantalla': /\/ayuda-companeros(?:\/|$)/.test(path),
-        'mostrador.en_pantalla': /\/mostrador(?:\/|$)/.test(path),
-        'para_llevar.en_pantalla': /\/para-llevar(?:\/|$)/.test(path),
-        'resumen_diario.en_pantalla': /\/resumen-diario(?:\/|$)/.test(path),
-        'menu_admin.en_pantalla': /\/menu-admin(?:\/|$)/.test(path),
-        'categorias_admin.en_pantalla': /\/categorias-admin(?:\/|$)/.test(path),
-        'descuentos.en_pantalla': /\/descuentos-promociones(?:\/|$)/.test(path),
-        'mesas_admin.en_pantalla': /\/mesas-admin(?:\/|$)/.test(path),
-        'lugares_mesa.en_pantalla': /\/lugares-mesa(?:\/|$)/.test(path),
-        'configuracion.en_pantalla': /\/configuracion(?:\/|$)/.test(path),
-        'permisos.en_pantalla': /\/permisos(?:\/|$)/.test(path),
-        'personalizacion.en_pantalla': /\/personalizacion-visual(?:\/|$)/.test(path),
-        'superadmin.en_pantalla': /\/superadmin(?:\/|$)/.test(path),
-        'usuarios.en_pantalla': /\/usuarios(?:\/|$)/.test(path),
-        'contabilidad.en_pantalla': /\/contabilidad(?:\/|$)/.test(path),
-        'proveedores.en_pantalla': /\/proveedores(?:\/|$)/.test(path),
-        'cuentas_por_pagar.en_pantalla': /\/cuentas-por-pagar(?:\/|$)/.test(path),
-        'creditos.en_pantalla': /\/creditos(?:\/|$)/.test(path),
-        'meseros_operativos.en_pantalla': /\/meseros-operativos(?:\/|$)/.test(path),
-    };
+    return (0, help_manifest_1.senalesDesdeManifest)(pathname);
 }

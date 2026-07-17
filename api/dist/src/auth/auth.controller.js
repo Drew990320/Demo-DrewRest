@@ -17,6 +17,7 @@ const common_1 = require("@nestjs/common");
 const throttler_1 = require("@nestjs/throttler");
 const auth_service_1 = require("./auth.service");
 const login_dto_1 = require("./dto/login.dto");
+const setup_superadmin_dto_1 = require("./dto/setup-superadmin.dto");
 const verify_password_dto_1 = require("./dto/verify-password.dto");
 const jwt_auth_guard_1 = require("./jwt-auth.guard");
 const roles_guard_1 = require("./roles.guard");
@@ -26,6 +27,12 @@ let AuthController = class AuthController {
     auth;
     constructor(auth) {
         this.auth = auth;
+    }
+    setupStatus() {
+        return this.auth.setupStatus();
+    }
+    setupSuperadmin(dto) {
+        return this.auth.setupSuperadmin(dto);
     }
     login(dto) {
         return this.auth.login(dto);
@@ -49,6 +56,21 @@ let AuthController = class AuthController {
     }
 };
 exports.AuthController = AuthController;
+__decorate([
+    (0, throttler_1.SkipThrottle)(),
+    (0, common_1.Get)('setup-status'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], AuthController.prototype, "setupStatus", null);
+__decorate([
+    (0, throttler_1.Throttle)({ default: { limit: 5, ttl: 60_000 } }),
+    (0, common_1.Post)('setup-superadmin'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [setup_superadmin_dto_1.SetupSuperadminDto]),
+    __metadata("design:returntype", void 0)
+], AuthController.prototype, "setupSuperadmin", null);
 __decorate([
     (0, throttler_1.Throttle)({ default: { limit: 12, ttl: 60_000 } }),
     (0, common_1.Post)('login'),

@@ -29,11 +29,12 @@ let DetalleTenantGuard = class DetalleTenantGuard {
         const tenantId = req.user?.idRestaurante ?? tenant_constants_1.DEFAULT_TENANT_ID;
         const det = await this.prisma.detallePedido.findFirst({
             where: { idDetalle, pedido: { idRestaurante: tenantId } },
-            select: { idDetalle: true },
+            select: { idDetalle: true, idPedido: true },
         });
         if (!det) {
             throw new common_1.NotFoundException('Detalle no encontrado');
         }
+        req.detalleTenant = det;
         return true;
     }
 };

@@ -18,7 +18,9 @@ const jwt_auth_guard_1 = require("../auth/jwt-auth.guard");
 const roles_decorator_1 = require("../auth/roles.decorator");
 const roles_guard_1 = require("../auth/roles.guard");
 const current_tenant_decorator_1 = require("../tenant/current-tenant.decorator");
+const crear_usuario_dto_1 = require("./dto/crear-usuario.dto");
 const patch_acceso_dto_1 = require("./dto/patch-acceso.dto");
+const patch_distribucion_enlaces_dto_1 = require("./dto/patch-distribucion-enlaces.dto");
 const purgar_dto_1 = require("./dto/purgar.dto");
 const superadmin_service_1 = require("./superadmin.service");
 let SuperadminController = class SuperadminController {
@@ -32,8 +34,17 @@ let SuperadminController = class SuperadminController {
     patchAcceso(dto, tenantId) {
         return this.superadmin.patchAcceso(tenantId ?? 1, dto);
     }
+    obtenerDistribucionEnlaces() {
+        return this.superadmin.obtenerDistribucionEnlaces();
+    }
+    guardarDistribucionEnlaces(dto) {
+        return this.superadmin.guardarDistribucionEnlaces(dto);
+    }
     eliminarAdmin(tenantId) {
         return this.superadmin.eliminarAdmin(tenantId ?? 1);
+    }
+    crearUsuario(dto, tenantId) {
+        return this.superadmin.crearUsuario(tenantId ?? 1, dto);
     }
     purgarMenu(dto, tenantId) {
         return this.superadmin.purgarMenu(tenantId ?? 1, dto.confirmar);
@@ -43,6 +54,9 @@ let SuperadminController = class SuperadminController {
     }
     purgarLugares(dto, tenantId) {
         return this.superadmin.purgarLugares(tenantId ?? 1, dto.confirmar);
+    }
+    purgarInventario(dto, tenantId) {
+        return this.superadmin.purgarInventario(tenantId ?? 1, dto.confirmar);
     }
 };
 exports.SuperadminController = SuperadminController;
@@ -62,12 +76,33 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], SuperadminController.prototype, "patchAcceso", null);
 __decorate([
+    (0, common_1.Get)('distribucion-enlaces'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], SuperadminController.prototype, "obtenerDistribucionEnlaces", null);
+__decorate([
+    (0, common_1.Patch)('distribucion-enlaces'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [patch_distribucion_enlaces_dto_1.PatchDistribucionEnlacesDto]),
+    __metadata("design:returntype", void 0)
+], SuperadminController.prototype, "guardarDistribucionEnlaces", null);
+__decorate([
     (0, common_1.Delete)('admin'),
     __param(0, (0, current_tenant_decorator_1.CurrentTenantId)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", void 0)
 ], SuperadminController.prototype, "eliminarAdmin", null);
+__decorate([
+    (0, common_1.Post)('usuarios'),
+    __param(0, (0, common_1.Body)()),
+    __param(1, (0, current_tenant_decorator_1.CurrentTenantId)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [crear_usuario_dto_1.CrearUsuarioSuperadminDto, Object]),
+    __metadata("design:returntype", void 0)
+], SuperadminController.prototype, "crearUsuario", null);
 __decorate([
     (0, common_1.Post)('purgar/menu'),
     __param(0, (0, common_1.Body)()),
@@ -92,6 +127,14 @@ __decorate([
     __metadata("design:paramtypes", [purgar_dto_1.PurgarSuperadminDto, Object]),
     __metadata("design:returntype", void 0)
 ], SuperadminController.prototype, "purgarLugares", null);
+__decorate([
+    (0, common_1.Post)('purgar/inventario'),
+    __param(0, (0, common_1.Body)()),
+    __param(1, (0, current_tenant_decorator_1.CurrentTenantId)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [purgar_dto_1.PurgarSuperadminDto, Object]),
+    __metadata("design:returntype", void 0)
+], SuperadminController.prototype, "purgarInventario", null);
 exports.SuperadminController = SuperadminController = __decorate([
     (0, common_1.Controller)('superadmin'),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),

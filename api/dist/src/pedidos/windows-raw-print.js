@@ -40,20 +40,20 @@ const fs = __importStar(require("fs"));
 const os = __importStar(require("os"));
 const path = __importStar(require("path"));
 const execFileAsync = (0, util_1.promisify)(child_process_1.execFile);
-async function printRawWindows(printerName, data) {
-    const tmpDir = os.tmpdir();
-    const binPath = path.join(tmpDir, `drewrest-comanda-${Date.now()}.bin`);
-    await fs.promises.writeFile(binPath, data);
-    const ps = `
+const SCRIPT_PATH = path.join(os.tmpdir(), 'drewrest-raw-print-v2.ps1');
+let scriptReady = null;
+const SCRIPT_BODY = `
+param(
+  [Parameter(Mandatory=$true)][string]$PrinterName,
+  [Parameter(Mandatory=$true)][string]$FilePath
+)
 $ErrorActionPreference = 'Stop'
-$printerName = ${JSON.stringify(printerName)}
-$filePath = ${JSON.stringify(binPath.replace(/\\/g, '\\\\'))}
-$bytes = [System.IO.File]::ReadAllBytes($filePath)
-
-Add-Type -TypeDefinition @"
+$bytes = [System.IO.File]::ReadAllBytes($FilePath)
+if (-not ([System.Management.Automation.PSTypeName]'DrewRestRawPrinter').Type) {
+  Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
-public class RawPrinterHelper {
+public class DrewRestRawPrinter {
   [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
   public struct DOCINFO {
     [MarshalAs(UnmanagedType.LPWStr)] public string pDocName;
@@ -91,15 +91,42 @@ public class RawPrinterHelper {
   }
 }
 "@
-
-if (-not [RawPrinterHelper]::SendBytes($printerName, $bytes)) {
-  throw "WritePrinter falló para impresora: $printerName"
 }
-Remove-Item -LiteralPath $filePath -Force -ErrorAction SilentlyContinue
+$ok = [DrewRestRawPrinter]::SendBytes($PrinterName, $bytes)
+$err = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+if (-not $ok) {
+  throw "WritePrinter falló para impresora: $PrinterName (Win32=$err)"
+}
 Write-Output "OK"
 `.trim();
+function ensureScript() {
+    if (!scriptReady) {
+        scriptReady = fs.promises
+            .writeFile(SCRIPT_PATH, SCRIPT_BODY, 'utf8')
+            .catch((e) => {
+            scriptReady = null;
+            throw e;
+        });
+    }
+    return scriptReady;
+}
+async function printRawWindows(printerName, data) {
+    await ensureScript();
+    const binPath = path.join(os.tmpdir(), `drewrest-comanda-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.bin`);
+    await fs.promises.writeFile(binPath, data);
     try {
-        await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', ps], { timeout: 15000, windowsHide: true });
+        await execFileAsync('powershell.exe', [
+            '-NoProfile',
+            '-NonInteractive',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-File',
+            SCRIPT_PATH,
+            '-PrinterName',
+            printerName,
+            '-FilePath',
+            binPath,
+        ], { timeout: 15000, windowsHide: true });
     }
     finally {
         await fs.promises.unlink(binPath).catch(() => undefined);

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.HELP_TUTORIAL_ACTIONS = exports.HELP_TUTORIAL_MODULES = void 0;
+exports.HELP_TUTORIAL_ACTIONS = exports.HELP_TUTORIAL_MODULES = exports.HELP_RECORRIDO_ACTIONS = exports.esAccionRecorrido = exports.idRecorridoCompleto = void 0;
 exports.normalizarRolHelp = normalizarRolHelp;
 exports.modulosHelpParaRol = modulosHelpParaRol;
 exports.accionesHelpParaRol = accionesHelpParaRol;
@@ -9,6 +9,11 @@ exports.accionSugeridaPorRuta = accionSugeridaPorRuta;
 exports.pasosTourCompleto = pasosTourCompleto;
 exports.pasosDeModulo = pasosDeModulo;
 exports.pasosDeAccion = pasosDeAccion;
+const help_tutorials_recorrido_1 = require("./help-tutorials-recorrido");
+var help_tutorials_recorrido_2 = require("./help-tutorials-recorrido");
+Object.defineProperty(exports, "idRecorridoCompleto", { enumerable: true, get: function () { return help_tutorials_recorrido_2.idRecorridoCompleto; } });
+Object.defineProperty(exports, "esAccionRecorrido", { enumerable: true, get: function () { return help_tutorials_recorrido_2.esAccionRecorrido; } });
+Object.defineProperty(exports, "HELP_RECORRIDO_ACTIONS", { enumerable: true, get: function () { return help_tutorials_recorrido_2.HELP_RECORRIDO_ACTIONS; } });
 exports.HELP_TUTORIAL_MODULES = [
     {
         id: 'inicio',
@@ -220,7 +225,11 @@ exports.HELP_TUTORIAL_MODULES = [
             },
             {
                 title: 'Purgar datos',
-                body: 'Las acciones destructivas (menú, mesas, lugares) son solo para entornos de prueba. Siempre confirma antes.',
+                body: 'Menú, inventario (ítems, recursos y recetas), mesas y lugares: úsalos para dejar el producto limpio antes de entregar al admin. Siempre confirma.',
+            },
+            {
+                title: 'Crear equipo',
+                body: 'Desde Equipo del restaurante puedes crear el administrador, cocinero y meseros con contraseña, listos para entregar el local.',
             },
         ],
     },
@@ -333,8 +342,8 @@ exports.HELP_TUTORIAL_ACTIONS = [
             {
                 title: '3. Inicia el pedido',
                 body: 'Si no hay pedido abierto, el sistema te pedirá comensales o abrirá el menú.',
-                buscar: 'Botón «Abrir mesa» o «Nuevo pedido»',
-                accion: 'Pulsa el botón grande para abrir el pedido.',
+                buscar: 'Botón «Abrir mesa» (subtítulo «Nuevo pedido en el salón»)',
+                accion: 'Pulsa «Abrir mesa».',
                 target: 'mesa.abrir_pedido',
                 listoSi: 'mesa.tiene_pedido',
                 pantalla: 'mesa_detalle',
@@ -383,8 +392,8 @@ exports.HELP_TUTORIAL_ACTIONS = [
             {
                 title: '2. Abre el menú',
                 body: 'Desde aquí agregas platos y bebidas nuevas.',
-                buscar: 'Icono o botón «Menú» / «Agregar» en la barra de acciones',
-                accion: 'Toca para ir al menú del pedido.',
+                buscar: 'Botón «Agregar del menú» en la barra de íconos (o columna PEDIDO en tablet)',
+                accion: 'Pulsa «Agregar del menú».',
                 target: 'mesa.accion_menu',
                 listoSi: 'pedido.en_menu',
                 pantalla: 'mesa_detalle',
@@ -392,7 +401,7 @@ exports.HELP_TUTORIAL_ACTIONS = [
             {
                 title: '3. Modos de selección',
                 body: '«Uno a uno»: el botón + agrega al instante; toca el plato para personalizar (proteína, subítems). «Varios»: marcas varios ítems y confirmas con la barra inferior.',
-                buscar: 'Dos botones bajo el título del menú',
+                buscar: '«Modos de selección» · botones «Uno a uno» y «Varios»',
                 accion: 'Prueba el modo que uses más en tu turno.',
                 target: 'pedido.modos_seleccion',
                 confirmarEntendido: true,
@@ -432,7 +441,7 @@ exports.HELP_TUTORIAL_ACTIONS = [
             {
                 title: '1. Modos de selección',
                 body: '«Uno a uno»: + agrega al instante; toca el plato para personalizar. «Varios»: marcas varios productos y confirmas abajo.',
-                buscar: 'Botones «Uno a uno» y «Varios» bajo el título',
+                buscar: 'Botones «Uno a uno» y «Varios» bajo «Modos de selección»',
                 accion: 'Lee el texto de ayuda bajo los modos.',
                 target: 'pedido.modos_seleccion',
                 confirmarEntendido: true,
@@ -515,8 +524,8 @@ exports.HELP_TUTORIAL_ACTIONS = [
             },
             {
                 title: '2. Envía a cocina',
-                buscar: 'Barra de herramientas del pedido (ícono llama / cocina)',
-                accion: 'Pulsa «Pasar a cocina» o equivalente.',
+                buscar: 'Botón «Pasar a cocina» en la barra de íconos (o columna PEDIDO en tablet)',
+                accion: 'Pulsa «Pasar a cocina».',
             },
         ],
     },
@@ -539,8 +548,8 @@ exports.HELP_TUTORIAL_ACTIONS = [
             },
             {
                 title: '2. Abre factura',
-                buscar: 'Botón «Cobrar» o «Factura»',
-                accion: 'Toca para abrir la pantalla de cobro.',
+                buscar: 'Botón «Cobrar / facturar» o ítem «Cobrar» en la barra de navegación del pedido',
+                accion: 'Pulsa para abrir «Cobrar pedido #…».',
                 target: 'mesa.accion_cobrar',
                 listoSi: 'pedido.en_factura',
                 pantalla: 'mesa_detalle',
@@ -568,8 +577,8 @@ exports.HELP_TUTORIAL_ACTIONS = [
             },
             {
                 title: '3. Confirma el cobro',
-                buscar: 'Botón «Cobrar» o «Facturar»',
-                accion: 'Confirma. La mesa se libera si no queda saldo.',
+                buscar: 'Botón verde «Confirmar cobro» al pie de la pantalla',
+                accion: 'Confirma el cobro. La mesa se libera si no queda saldo.',
                 tip: 'Si el cliente paga solo una parte, usa «Cobro parcial».',
             },
         ],
@@ -593,7 +602,7 @@ exports.HELP_TUTORIAL_ACTIONS = [
             },
             {
                 title: '2. Agregar mesa libre',
-                buscar: 'Botón «Agrupar mesas» en la barra de acciones',
+                buscar: 'Panel «Agrupar mesas» · botón «Agregar mesa libre»',
                 accion: 'Elige en el mapa una mesa libre adyacente.',
                 target: 'mesa.agrupar_mesas',
                 listoSi: 'mesa.mesas_agrupadas',
@@ -727,9 +736,9 @@ exports.HELP_TUTORIAL_ACTIONS = [
         title: 'Vista previa tickets',
         subtitle: 'PDF sin impresora física',
         moduleId: 'admin_operacion',
-        roles: ['admin'],
-        screenIds: ['vista_previa_tickets', 'configuracion'],
-        routeHints: ['/vista-previa-impresion', '/configuracion'],
+        roles: ['superadmin'],
+        screenIds: ['vista_previa_tickets', 'superadmin'],
+        routeHints: ['/vista-previa-impresion', '/superadmin'],
         steps: [
             {
                 title: '1. Elige un formato',
@@ -893,22 +902,8 @@ exports.HELP_TUTORIAL_ACTIONS = [
             },
         ],
     },
+    ...help_tutorials_recorrido_1.HELP_RECORRIDO_ACTIONS,
 ];
-const FULL_TOUR_ORDER = {
-    mesero: ['inicio', 'mesas', 'pedidos', 'cobro'],
-    chef: ['inicio', 'cocina'],
-    admin: [
-        'inicio',
-        'mesas',
-        'pedidos',
-        'cocina',
-        'cobro',
-        'admin_catalogo',
-        'admin_operacion',
-        'conexion_movil',
-    ],
-    superadmin: ['inicio', 'superadmin', 'cobro'],
-};
 function normalizarRolHelp(rol) {
     if (!rol)
         return null;
@@ -926,7 +921,7 @@ function modulosHelpParaRol(rol) {
     return exports.HELP_TUTORIAL_MODULES.filter((m) => m.roles.includes(rol));
 }
 function accionesHelpParaRol(rol) {
-    return exports.HELP_TUTORIAL_ACTIONS.filter((a) => a.roles.includes(rol));
+    return exports.HELP_TUTORIAL_ACTIONS.filter((a) => a.roles.includes(rol) && !(0, help_tutorials_recorrido_1.esAccionRecorrido)(a.id));
 }
 function coincideRuta(pathname, hints) {
     return hints.some((h) => pathname.includes(h));
@@ -949,22 +944,7 @@ function accionSugeridaPorRuta(pathname, rol) {
     return ranked[0]?.a ?? null;
 }
 function pasosTourCompleto(rol) {
-    const ids = FULL_TOUR_ORDER[rol] ?? ['inicio'];
-    const steps = [];
-    for (const id of ids) {
-        const mod = exports.HELP_TUTORIAL_MODULES.find((m) => m.id === id);
-        if (!mod)
-            continue;
-        steps.push({
-            title: mod.title,
-            body: mod.subtitle,
-            tip: `Módulo: ${mod.title}`,
-        });
-        for (const s of mod.steps) {
-            steps.push(s);
-        }
-    }
-    return steps;
+    return pasosDeAccion((0, help_tutorials_recorrido_1.idRecorridoCompleto)(rol));
 }
 function pasosDeModulo(moduleId) {
     const mod = exports.HELP_TUTORIAL_MODULES.find((m) => m.id === moduleId);

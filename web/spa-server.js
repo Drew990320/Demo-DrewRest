@@ -55,6 +55,31 @@ function safePath(urlPath) {
   return file;
 }
 
+/** Inyectado en index.html: bloquea Inspeccionar hasta que React autorice (superadmin). */
+const OPERATOR_GUARD_SNIPPET = `
+<script>
+(function(){
+  try { document.title = 'DrewRest'; } catch (e) {}
+  window.__DREWREST_ALLOW_DEVTOOLS__ = false;
+  function allowed(){ return !!window.__DREWREST_ALLOW_DEVTOOLS__; }
+  function blockKey(e){
+    if (allowed()) return;
+    var k = e.key;
+    var ctrl = e.ctrlKey || e.metaKey;
+    if (k === 'F12') { e.preventDefault(); e.stopPropagation(); return; }
+    if (ctrl && e.shiftKey && (k==='I'||k==='i'||k==='J'||k==='j'||k==='C'||k==='c')) {
+      e.preventDefault(); e.stopPropagation(); return;
+    }
+    if (ctrl && !e.shiftKey && (k==='U'||k==='u')) {
+      e.preventDefault(); e.stopPropagation();
+    }
+  }
+  document.addEventListener('contextmenu', function(e){ if (!allowed()) e.preventDefault(); }, true);
+  document.addEventListener('keydown', blockKey, true);
+})();
+</script>
+`;
+
 function sendFile(res, filePath) {
   const ext = path.extname(filePath).toLowerCase();
   res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' });
@@ -62,7 +87,38 @@ function sendFile(res, filePath) {
 }
 
 function sendIndex(res) {
-  sendFile(res, path.join(ROOT, 'index.html'));
+  const indexPath = path.join(ROOT, 'index.html');
+  fs.readFile(indexPath, 'utf8', (err, html) => {
+    if (err) {
+      res.writeHead(500);
+      res.end('index.html no encontrado');
+      return;
+    }
+    let out = html;
+    if (!/<title>\s*DrewRest\s*<\/title>/i.test(out)) {
+      if (/<title>[^<]*<\/title>/i.test(out)) {
+        out = out.replace(/<title>[^<]*<\/title>/i, '<title>DrewRest</title>');
+      } else if (/<head[^>]*>/i.test(out)) {
+        out = out.replace(/<head[^>]*>/i, (m) => `${m}<title>DrewRest</title>`);
+      }
+    }
+    if (!out.includes('__DREWREST_ALLOW_DEVTOOLS__')) {
+      if (/<\/head>/i.test(out)) {
+        out = out.replace(/<\/head>/i, `${OPERATOR_GUARD_SNIPPET}</head>`);
+      } else {
+        out = OPERATOR_GUARD_SNIPPET + out;
+      }
+    }
+    const buf = Buffer.from(out, 'utf8');
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Content-Length': buf.length,
+      'X-Content-Type-Options': 'nosniff',
+      'Referrer-Policy': 'no-referrer',
+      'X-Frame-Options': 'SAMEORIGIN',
+    });
+    res.end(buf);
+  });
 }
 
 function onRequest(req, res) {
@@ -85,6 +141,11 @@ function onRequest(req, res) {
         const ext = path.extname(filePath).toLowerCase();
         res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' });
         res.end();
+        return;
+      }
+      // index.html siempre pasa por inyección de título + guardia de operador
+      if (path.basename(filePath).toLowerCase() === 'index.html') {
+        sendIndex(res);
         return;
       }
       sendFile(res, filePath);

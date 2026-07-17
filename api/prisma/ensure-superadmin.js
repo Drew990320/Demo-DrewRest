@@ -1,6 +1,7 @@
 /**
- * Crea rol y usuario superadmin si no existen (sin borrar datos).
- * Ejecutar tras migrate deploy en Render.
+ * Asegura el rol superadmin. Solo crea el usuario si SUPERADMIN_PASSWORD está
+ * definido (Render dashboard). Sin eso, el primer arranque usa la app
+ * (POST /auth/setup-superadmin).
  */
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcrypt');
@@ -20,7 +21,7 @@ async function main() {
     const email =
       process.env.SUPERADMIN_EMAIL?.trim().toLowerCase() ||
       'superadmin@drewrest.local';
-    const password = process.env.SUPERADMIN_PASSWORD?.trim() || 'superadmin123';
+    const password = process.env.SUPERADMIN_PASSWORD?.trim();
     const tenantId = 1;
 
     const existing = await prisma.usuario.findUnique({
@@ -28,6 +29,13 @@ async function main() {
     });
     if (existing) {
       console.log(`Superadmin ya existe: ${email}`);
+      return;
+    }
+
+    if (!password) {
+      console.log(
+        'Superadmin no creado: define SUPERADMIN_PASSWORD o usa el login (primer arranque).',
+      );
       return;
     }
 

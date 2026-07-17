@@ -31,6 +31,7 @@ const timezone_1 = require("../common/timezone");
 const categoria_dia_1 = require("../common/categoria-dia");
 const cocina_producto_1 = require("@drewrest/shared-domain/cocina-producto");
 const resumen_diario_ventas_1 = require("@drewrest/shared-domain/resumen-diario-ventas");
+const resumen_periodo_1 = require("@drewrest/shared-domain/resumen-periodo");
 const movimiento_caja_1 = require("@drewrest/shared-domain/movimiento-caja");
 const transferencia_pedido_1 = require("@drewrest/shared-domain/transferencia-pedido");
 const agrupacion_mesas_1 = require("@drewrest/shared-domain/agrupacion-mesas");
@@ -41,6 +42,8 @@ const empaque_para_llevar_1 = require("./empaque-para-llevar");
 const empaque_para_llevar_2 = require("@drewrest/shared-domain/empaque-para-llevar");
 const comanda_printer_service_1 = require("./comanda-printer.service");
 const factura_email_service_1 = require("./factura-email.service");
+const inventario_deduccion_service_1 = require("../inventario/inventario-deduccion.service");
+const contabilidad_posting_service_1 = require("../contabilidad/contabilidad-posting.service");
 const stock_bebida_1 = require("../productos/stock-bebida");
 const comanda_ticket_1 = require("./comanda-ticket");
 const factura_mixto_1 = require("./factura-mixto");
@@ -57,6 +60,7 @@ const pedidos_vista_operativa_1 = require("./pedidos-vista-operativa");
 const mazorca_linea_pedido_1 = require("./mazorca-linea-pedido");
 const cuota_pendiente_linea_pedido_1 = require("./cuota-pendiente-linea-pedido");
 const cuota_pendiente_reparto_1 = require("@drewrest/shared-domain/cuota-pendiente-reparto");
+const subitems_pendientes_1 = require("@drewrest/shared-domain/subitems-pendientes");
 const ABIERTOS = ['abierto', 'en_cocina'];
 const detalleInclude = {
     producto: { include: { categoria: true } },
@@ -108,15 +112,19 @@ let PedidosService = class PedidosService {
     comandaPrinter;
     facturaEmail;
     permisos;
+    inventarioDeduccion;
+    contabilidadPosting;
     logger = new common_1.Logger(PedidosService_1.name);
     configDescuentosCache = new Map();
     static CONFIG_CACHE_TTL_MS = 60_000;
-    constructor(prisma, gateway, comandaPrinter, facturaEmail, permisos) {
+    constructor(prisma, gateway, comandaPrinter, facturaEmail, permisos, inventarioDeduccion, contabilidadPosting) {
         this.prisma = prisma;
         this.gateway = gateway;
         this.comandaPrinter = comandaPrinter;
         this.facturaEmail = facturaEmail;
         this.permisos = permisos;
+        this.inventarioDeduccion = inventarioDeduccion;
+        this.contabilidadPosting = contabilidadPosting;
     }
     async exigirPermisoMesero(actor, permiso, opts) {
         if (!actor)
@@ -452,19 +460,44 @@ let PedidosService = class PedidosService {
         });
         const fechaStr = base.toFormat('yyyy-LL-dd');
         const montoCierre = Number(row.montoBaseCierreEfectivo ?? 0);
+        const efectivoEsperado = resumen.efectivo_esperado_en_caja ?? 0;
         const impresion = await this.comandaPrinter.imprimirBaseCajaCierre({
             fecha: fechaStr,
             monto_base_cierre_efectivo: montoCierre,
-            efectivo_esperado_en_caja: resumen.efectivo_esperado_en_caja,
+            efectivo_esperado_en_caja: efectivoEsperado,
             emitida_en: new Date().toISOString(),
         });
         this.emitirAlertaImpresora(impresion, 'cierre');
         return {
             fecha: fechaStr,
             monto_base_cierre_efectivo: montoCierre,
-            efectivo_esperado_en_caja: resumen.efectivo_esperado_en_caja,
+            efectivo_esperado_en_caja: efectivoEsperado,
             impresion_cierre: impresion,
         };
+    }
+    async postearVentaContableEnTx(tx, input) {
+        const evento = input.metodoPago === 'efectivo'
+            ? 'venta_contado_efectivo'
+            : input.metodoPago === 'tarjeta'
+                ? 'venta_tarjeta'
+                : input.metodoPago === 'transferencia'
+                    ? 'venta_transferencia'
+                    : 'venta_fiado';
+        try {
+            await this.contabilidadPosting.postEvento(tx, {
+                tenantId: input.tenantId,
+                evento,
+                monto: Number(input.total),
+                fecha: new Date(),
+                origen: { modulo: 'pedidos', tipo: 'factura', id: input.idFactura },
+                idDocumento: `factura:${input.idFactura}:${evento}`,
+                idUsuario: input.idUsuario,
+                descripcion: `Venta factura #${input.idFactura}`,
+            });
+        }
+        catch (e) {
+            this.logger.warn(`Posteo contable factura ${input.idFactura}: ${e instanceof Error ? e.message : String(e)}`);
+        }
     }
     async registrarMovimientoCajaManual(actor, dto) {
         if (actor.rol.nombre !== 'admin') {
@@ -475,19 +508,49 @@ let PedidosService = class PedidosService {
         if (!motivo) {
             throw new common_1.BadRequestException('Indica el motivo del movimiento');
         }
-        const row = await this.prisma.movimientoCaja.create({
-            data: {
-                fecha: fechaOnly,
-                tipo: dto.tipo,
-                monto: dto.monto,
-                motivo,
-                idUsuario: actor.idUsuario,
-            },
-            include: {
-                usuario: { select: { nombre: true, apellido: true } },
-            },
-        });
         const fechaStr = base.toFormat('yyyy-LL-dd');
+        const row = await this.prisma.$transaction(async (tx) => {
+            const created = await tx.movimientoCaja.create({
+                data: {
+                    fecha: fechaOnly,
+                    tipo: dto.tipo,
+                    monto: dto.monto,
+                    motivo,
+                    idUsuario: actor.idUsuario,
+                },
+                include: {
+                    usuario: { select: { nombre: true, apellido: true } },
+                },
+            });
+            const evento = dto.tipo === 'entrada_manual'
+                ? 'caja_entrada_manual'
+                : dto.tipo === 'salida_manual'
+                    ? 'caja_salida_manual'
+                    : dto.tipo === 'devolucion_exceso_transferencia'
+                        ? 'exceso_devolucion'
+                        : 'caja_salida_manual';
+            try {
+                await this.contabilidadPosting.postEvento(tx, {
+                    tenantId: tenant_constants_1.DEFAULT_TENANT_ID,
+                    evento,
+                    monto: Number(dto.monto),
+                    fecha: fechaStr,
+                    origen: {
+                        modulo: 'caja',
+                        tipo: 'movimiento_caja',
+                        id: created.idMovimientoCaja,
+                    },
+                    idDocumento: `caja:${created.idMovimientoCaja}:${evento}`,
+                    idUsuario: actor.idUsuario,
+                    descripcion: motivo,
+                    motivo,
+                });
+            }
+            catch (e) {
+                this.logger.warn(`Posteo contable caja ${created.idMovimientoCaja}: ${e instanceof Error ? e.message : String(e)}`);
+            }
+            return created;
+        });
         const impresion = await this.comandaPrinter.imprimirMovimientoCaja(this.ticketMovimientoCajaDesdeRow(row, fechaStr));
         this.emitirAlertaImpresora(impresion, 'cierre');
         return {
@@ -1284,6 +1347,7 @@ let PedidosService = class PedidosService {
     }
     async resumenDiario(fecha, opts, tenantId = tenant_constants_1.DEFAULT_TENANT_ID) {
         const incluirLineas = opts?.incluirLineas === true;
+        const periodo = (0, resumen_periodo_1.parsePeriodoResumen)(opts?.periodo);
         let base = luxon_1.DateTime.now().setZone('America/Bogota');
         if (fecha) {
             const parsed = luxon_1.DateTime.fromISO(fecha, { zone: 'America/Bogota' });
@@ -1292,8 +1356,22 @@ let PedidosService = class PedidosService {
             }
             base = parsed;
         }
-        const start = base.startOf('day').toJSDate();
-        const end = base.endOf('day').plus({ millisecond: 1 }).toJSDate();
+        const ancla = base.toFormat('yyyy-LL-dd');
+        const rango = (0, resumen_periodo_1.rangoPeriodoResumen)(periodo, ancla);
+        const startDt = luxon_1.DateTime.fromISO(rango.fecha_desde, {
+            zone: 'America/Bogota',
+        }).startOf('day');
+        const endDt = luxon_1.DateTime.fromISO(rango.fecha_hasta, {
+            zone: 'America/Bogota',
+        })
+            .endOf('day')
+            .plus({ millisecond: 1 });
+        if (!startDt.isValid || !endDt.isValid) {
+            throw new common_1.BadRequestException('No se pudo calcular el rango del periodo');
+        }
+        const start = startDt.toJSDate();
+        const end = endDt.toJSDate();
+        const usaCaja = (0, resumen_periodo_1.periodoResumenUsaCaja)(periodo);
         const facturas = await this.prisma.factura.findMany({
             where: {
                 emitidaEn: { gte: start, lt: end },
@@ -1354,11 +1432,13 @@ let PedidosService = class PedidosService {
             orderBy: { emitidaEn: 'asc' },
         });
         const fechaOnly = this.fechaCalendarioBogota(base);
-        const cajaRow = await this.prisma.cajaDiaria.findUnique({
-            where: {
-                idRestaurante_fecha: { idRestaurante: tenantId, fecha: fechaOnly },
-            },
-        });
+        const cajaRow = usaCaja
+            ? await this.prisma.cajaDiaria.findUnique({
+                where: {
+                    idRestaurante_fecha: { idRestaurante: tenantId, fecha: fechaOnly },
+                },
+            })
+            : null;
         const montoBaseEfectivo = cajaRow ? Number(cajaRow.montoBaseEfectivo) : 0;
         const montoBaseCierreEfectivo = cajaRow?.montoBaseCierreEfectivo != null
             ? Number(cajaRow.montoBaseCierreEfectivo)
@@ -1460,9 +1540,11 @@ let PedidosService = class PedidosService {
             Number(f.descuentoSopas) +
             Number(f.descuentoMuleros) +
             Number(f.descuentoPromociones), 0);
+        const fechaDesdeDb = this.fechaCalendarioBogota(luxon_1.DateTime.fromISO(rango.fecha_desde, { zone: 'America/Bogota' }));
+        const fechaHastaDb = this.fechaCalendarioBogota(luxon_1.DateTime.fromISO(rango.fecha_hasta, { zone: 'America/Bogota' }));
         const pagosMeseroRows = await this.prisma.registroBeneficioMesero.findMany({
             where: {
-                fecha: fechaOnly,
+                fecha: { gte: fechaDesdeDb, lte: fechaHastaDb },
                 tipo: 'pago_turno',
                 monto: { not: null },
             },
@@ -1479,7 +1561,7 @@ let PedidosService = class PedidosService {
         }));
         const total_pagos_meseros = pagos_meseros.reduce((s, p) => s + p.monto, 0);
         const devolucionesRows = await this.prisma.movimientoCaja.findMany({
-            where: { fecha: fechaOnly },
+            where: { fecha: { gte: fechaDesdeDb, lte: fechaHastaDb } },
             include: {
                 usuario: { select: { nombre: true, apellido: true } },
                 pedido: { include: { mesa: { select: { numero: true } } } },
@@ -1521,7 +1603,12 @@ let PedidosService = class PedidosService {
             emitida_en: c.factura?.emitidaEn.toISOString() ?? c.creadoEn.toISOString(),
         }));
         return {
-            fecha: base.toFormat('yyyy-LL-dd'),
+            fecha: ancla,
+            periodo,
+            fecha_desde: rango.fecha_desde,
+            fecha_hasta: rango.fecha_hasta,
+            periodo_etiqueta: rango.etiqueta,
+            usa_caja: usaCaja,
             total_facturado: totalFacturado,
             total_facturas: facturas.length,
             total_mesas_atendidas: mesas.length,
@@ -1543,12 +1630,14 @@ let PedidosService = class PedidosService {
             total_pagos_mesero_exceso: cuadre.total_pagos_mesero_exceso,
             subtotal_entradas_caja: cuadre.subtotal_entradas_caja,
             subtotal_salidas_caja: cuadre.subtotal_salidas_caja,
-            efectivo_esperado_en_caja: cuadre.efectivo_esperado_en_caja,
+            efectivo_esperado_en_caja: usaCaja ? cuadre.efectivo_esperado_en_caja : null,
             platos_por_categoria: ventas.platos_por_categoria,
             items_menu: ventas.items_menu,
             subtotal_ventas_bruto,
             total_descuentos_dia,
-            pedidos_reabiertos_pendientes: await this.contarPedidosReabiertosPendientes(fecha),
+            pedidos_reabiertos_pendientes: usaCaja
+                ? await this.contarPedidosReabiertosPendientes(fecha)
+                : 0,
         };
     }
     async idsPedidosReabiertosPendientes(_fecha) {
@@ -2305,7 +2394,7 @@ let PedidosService = class PedidosService {
             total_pagos_mesero_exceso: resumen.total_pagos_mesero_exceso,
             subtotal_entradas_caja: resumen.subtotal_entradas_caja,
             subtotal_salidas_caja: resumen.subtotal_salidas_caja,
-            efectivo_esperado_en_caja: resumen.efectivo_esperado_en_caja,
+            efectivo_esperado_en_caja: resumen.efectivo_esperado_en_caja ?? 0,
             emitida_en: new Date().toISOString(),
         };
         const impresion = await this.comandaPrinter.runWithImpresionRapida(() => this.comandaPrinter.imprimirCierreCaja(ticket));
@@ -2316,7 +2405,7 @@ let PedidosService = class PedidosService {
             impresion_cierre: impresion,
             resumen: {
                 total_facturado: resumen.total_facturado,
-                efectivo_esperado_en_caja: resumen.efectivo_esperado_en_caja,
+                efectivo_esperado_en_caja: resumen.efectivo_esperado_en_caja ?? 0,
             },
         };
     }
@@ -2381,12 +2470,14 @@ let PedidosService = class PedidosService {
         if (!(0, mesa_dia_1.mesaDisponibleHoyBogota)(mesa)) {
             throw new common_1.ConflictException('Esta mesa no está disponible hoy');
         }
-        const virtual = await this.esMesaVirtualNumero(mesa.numero, tenantId);
-        const opRow = await this.obtenerConfigOperativaRow(tenantId);
+        const [virtual, opRow, op] = await Promise.all([
+            this.esMesaVirtualNumero(mesa.numero, tenantId),
+            this.obtenerConfigOperativaRow(tenantId),
+            this.ctxOperativa(tenantId),
+        ]);
         const modoServicio = (0, mesa_label_1.esMesaParaLlevarNumero)(mesa.numero, opRow)
             ? 'para_llevar'
             : 'en_mesa';
-        const op = await this.ctxOperativa(tenantId);
         const pedido = await this.prisma.$transaction(async (tx) => {
             if (!virtual) {
                 await (0, prisma_lock_1.lockMesaEnTx)(tx, dto.id_mesa);
@@ -2433,7 +2524,9 @@ let PedidosService = class PedidosService {
             return p;
         });
         this.emit(pedido.idPedido, pedido.idMesa, pedido.idUsuario, tenantId);
-        return this.obtenerPorIdTrasEscritura(pedido.idPedido, tenantId);
+        return this.obtenerPorIdTrasEscritura(pedido.idPedido, tenantId, {
+            consolidar: false,
+        });
     }
     async listar(estadosCsv, orden = 'desc', pagination, tenantId = tenant_constants_1.DEFAULT_TENANT_ID) {
         const estados = estadosCsv
@@ -3161,8 +3254,11 @@ let PedidosService = class PedidosService {
             facturas: p.facturas.map((f) => ({ id_factura: f.idFactura })),
         };
     }
-    async obtenerPorIdTrasEscritura(idPedido, tenantId = tenant_constants_1.DEFAULT_TENANT_ID) {
-        const reparo = await this.consolidarFragmentosPrecioPendientesPedido(idPedido);
+    async obtenerPorIdTrasEscritura(idPedido, tenantId = tenant_constants_1.DEFAULT_TENANT_ID, opts) {
+        const consolidar = opts?.consolidar !== false;
+        const reparo = consolidar
+            ? await this.consolidarFragmentosPrecioPendientesPedido(idPedido)
+            : false;
         return this.obtenerPorIdCore(idPedido, reparo, tenantId);
     }
     async obtenerPorIdCore(idPedido, reparo, tenantId = tenant_constants_1.DEFAULT_TENANT_ID) {
@@ -3223,21 +3319,23 @@ let PedidosService = class PedidosService {
                 throw new common_1.NotFoundException('Pedido no encontrado');
             }
         }
-        const mesas_anexas = await this.numerosMesasAnexas(idPedido);
+        const [mesas_anexas, historialCuotas, configRow] = await Promise.all([
+            this.numerosMesasAnexas(idPedido),
+            this.prisma.pedidoHistorial.findMany({
+                where: { idPedido },
+                select: { tipo: true, detalleJson: true },
+            }),
+            this.obtenerConfigDescuentosRow(p.idRestaurante),
+        ]);
         const serialized = {
             ...this.serializarPedido(p, this.prioridadOptsFromOperativa(op)),
             mesas_anexas,
             mesa_es_anexa: false,
         };
-        const historialCuotas = await this.prisma.pedidoHistorial.findMany({
-            where: { idPedido },
-            select: { tipo: true, detalleJson: true },
-        });
         const cuotas_plan_omitidas = (0, cuota_pendiente_reparto_1.listarCuotasPlanOmitidas)(serialized.detalles, historialCuotas.map((h) => ({
             tipo: h.tipo,
             detalle: h.detalleJson,
         })));
-        const configRow = await this.obtenerConfigDescuentosRow(p.idRestaurante);
         const config = this.mapConfigDescuentos(configRow);
         const saldoPendienteRow = p.detalles.find((d) => d.idFactura == null && (0, saldo_restante_1.esNotaSaldoRestantePendiente)(d.notaCocina));
         const poolSaldo = saldoPendienteRow
@@ -3259,7 +3357,8 @@ let PedidosService = class PedidosService {
                 return false;
             if (Math.round(Number(d.precioUnitario)) * d.cantidad <= 0)
                 return false;
-            if (saldoPendienteRow) {
+            if (saldoPendienteRow &&
+                !(0, saldo_restante_1.esNotaSaldoFragmentoHuerfano)(saldoPendienteRow.notaCocina)) {
                 if (idsPoolSaldo == null)
                     return false;
                 if (idsPoolSaldo.has(d.idDetalle))
@@ -3418,25 +3517,24 @@ let PedidosService = class PedidosService {
             if (!producto.usaSubitemsRepartibles) {
                 throw new common_1.BadRequestException('Este producto no acepta reparto por subítems');
             }
-            if (subitemsDto.length === 0) {
-                throw new common_1.BadRequestException('Debes asignar la cantidad entre los subítems del producto');
-            }
-            const sumaSubitems = subitemsDto.reduce((acc, item) => acc + item.cantidad, 0);
-            if (sumaSubitems !== dto.cantidad) {
-                throw new common_1.BadRequestException('La suma de subítems debe coincidir con la cantidad del producto');
-            }
-            const activos = new Map(producto.subitems.map((s) => [s.idSubitem, s]));
-            const merged = new Map();
-            for (const item of subitemsDto) {
-                if (!activos.has(item.id_subitem)) {
-                    throw new common_1.BadRequestException('Algún subítem no pertenece al producto');
+            if (subitemsDto.length > 0) {
+                const sumaSubitems = subitemsDto.reduce((acc, item) => acc + item.cantidad, 0);
+                if (sumaSubitems !== dto.cantidad) {
+                    throw new common_1.BadRequestException('La suma de subítems debe coincidir con la cantidad del producto');
                 }
-                merged.set(item.id_subitem, (merged.get(item.id_subitem) ?? 0) + item.cantidad);
+                const activos = new Map(producto.subitems.map((s) => [s.idSubitem, s]));
+                const merged = new Map();
+                for (const item of subitemsDto) {
+                    if (!activos.has(item.id_subitem)) {
+                        throw new common_1.BadRequestException('Algún subítem no pertenece al producto');
+                    }
+                    merged.set(item.id_subitem, (merged.get(item.id_subitem) ?? 0) + item.cantidad);
+                }
+                subitemsNormalizados = [...merged.entries()].map(([idSubitem, cantidad]) => ({
+                    idSubitem,
+                    cantidad,
+                }));
             }
-            subitemsNormalizados = [...merged.entries()].map(([idSubitem, cantidad]) => ({
-                idSubitem,
-                cantidad,
-            }));
         }
         const opcionIdsOrdenados = [...opcionIds].sort((a, b) => a - b);
         const candidatosFusion = producto.usaSubitemsRepartibles
@@ -3488,6 +3586,7 @@ let PedidosService = class PedidosService {
             !sinEmpaque;
         const lineasAgregadas = [];
         const op = await this.ctxOperativa(pedido.idRestaurante);
+        const invCfg = await this.inventarioDeduccion.obtenerConfig(pedido.idRestaurante);
         await this.prisma.$transaction(async (tx) => {
             await (0, stock_bebida_1.descontarStockBebidaTx)(tx, producto, dto.cantidad);
             const d = await tx.detallePedido.create({
@@ -3520,6 +3619,20 @@ let PedidosService = class PedidosService {
                 id_detalle: d.idDetalle,
                 nombre_producto: producto.nombre,
                 cantidad: dto.cantidad,
+            });
+            await this.inventarioDeduccion.aplicarEventoLineasEnTx(tx, {
+                tenantId: pedido.idRestaurante,
+                evento: invCfg.evento_deduccion_comercial,
+                idPedido,
+                lineas: [
+                    {
+                        id_detalle_pedido: d.idDetalle,
+                        id_producto: dto.id_producto,
+                        cantidad: dto.cantidad,
+                        nombre_producto: producto.nombre,
+                    },
+                ],
+                idUsuario,
             });
             if (debeAutoEmpaque) {
                 const emp = await tx.producto.findFirst({
@@ -3584,7 +3697,9 @@ let PedidosService = class PedidosService {
         });
         await this.notificarCompaneroModificoPedido(pedido, idUsuario, lineasAgregadas, 'agregado');
         this.emit(idPedido, pedido.idMesa, pedido.idUsuario, pedido.idRestaurante);
-        return this.obtenerPorIdTrasEscritura(idPedido);
+        return this.obtenerPorIdTrasEscritura(idPedido, pedido.idRestaurante, {
+            consolidar: false,
+        });
     }
     async eliminarDetalle(idDetalle, actor) {
         const idUsuario = actor.idUsuario;
@@ -3626,6 +3741,17 @@ let PedidosService = class PedidosService {
             })),
         ];
         await this.prisma.$transaction(async (tx) => {
+            await this.inventarioDeduccion.revertirLineaEnTx(tx, {
+                tenantId: det.pedido.idRestaurante,
+                idPedido: pedidoId,
+                linea: {
+                    id_detalle_pedido: det.idDetalle,
+                    id_producto: det.idProducto,
+                    cantidad: det.cantidad,
+                    nombre_producto: det.producto.nombre,
+                },
+                idUsuario,
+            });
             await (0, stock_bebida_1.reintegrarStockBebidaTx)(tx, det.producto, det.cantidad);
             await tx.pedidoHistorial.create({
                 data: {
@@ -3640,6 +3766,82 @@ let PedidosService = class PedidosService {
         await this.notificarCompaneroModificoPedido(det.pedido, idUsuario, [{ nombre_producto: det.producto.nombre, cantidad: det.cantidad }], 'quitado');
         this.emit(pedidoId, mesaId, det.pedido.idUsuario, det.pedido.idRestaurante);
         return this.obtenerPorIdTrasEscritura(pedidoId);
+    }
+    async asignarSubitemsDetalle(idDetalle, dto, actor) {
+        await this.exigirPermisoMesero(actor, 'editar_cantidades');
+        const det = await this.prisma.detallePedido.findUnique({
+            where: { idDetalle },
+            include: {
+                pedido: true,
+                producto: {
+                    include: {
+                        categoria: true,
+                        subitems: { where: { activo: true } },
+                    },
+                },
+                subitems: true,
+            },
+        });
+        if (!det) {
+            throw new common_1.NotFoundException('Línea no encontrada');
+        }
+        if (!ABIERTOS.includes(det.pedido.estado)) {
+            throw new common_1.ConflictException('El pedido no admite cambios en las líneas');
+        }
+        if (det.enviadoCocina) {
+            throw new common_1.ConflictException('No se puede cambiar el reparto de una línea ya enviada a cocina');
+        }
+        if (!det.producto.usaSubitemsRepartibles) {
+            throw new common_1.BadRequestException('Este producto no acepta reparto por subítems');
+        }
+        const subitemsDto = Array.isArray(dto.subitems) ? dto.subitems : [];
+        if (subitemsDto.length === 0) {
+            throw new common_1.BadRequestException('Debes asignar la cantidad entre los subítems del producto');
+        }
+        const suma = subitemsDto.reduce((acc, item) => acc + item.cantidad, 0);
+        if (suma !== det.cantidad) {
+            throw new common_1.BadRequestException('La suma de subítems debe coincidir con la cantidad del producto');
+        }
+        const activos = new Map(det.producto.subitems.map((s) => [s.idSubitem, s]));
+        const merged = new Map();
+        for (const item of subitemsDto) {
+            if (!activos.has(item.id_subitem)) {
+                throw new common_1.BadRequestException('Algún subítem no pertenece al producto');
+            }
+            merged.set(item.id_subitem, (merged.get(item.id_subitem) ?? 0) + item.cantidad);
+        }
+        const normalizados = [...merged.entries()].map(([idSubitem, cantidad]) => ({
+            idSubitem,
+            cantidad,
+        }));
+        await this.prisma.$transaction(async (tx) => {
+            await tx.detSubitemCantidad.deleteMany({ where: { idDetalle } });
+            await tx.detSubitemCantidad.createMany({
+                data: normalizados.map((item) => ({
+                    idDetalle,
+                    idSubitem: item.idSubitem,
+                    cantidad: item.cantidad,
+                })),
+            });
+            await tx.pedidoHistorial.create({
+                data: {
+                    idPedido: det.pedido.idPedido,
+                    idUsuario: actor.idUsuario,
+                    tipo: 'cantidad_actualizada',
+                    detalleJson: {
+                        id_detalle: idDetalle,
+                        nombre_producto: det.producto.nombre,
+                        subitems_asignados: true,
+                        subitems: normalizados.map((item) => ({
+                            id_subitem: item.idSubitem,
+                            cantidad: item.cantidad,
+                        })),
+                    },
+                },
+            });
+        });
+        this.emit(det.pedido.idPedido, det.pedido.idMesa, det.pedido.idUsuario, det.pedido.idRestaurante);
+        return this.obtenerPorIdTrasEscritura(det.pedido.idPedido);
     }
     async actualizarCantidadDetalle(idDetalle, dto, actor) {
         await this.exigirPermisoMesero(actor, 'editar_cantidades');
@@ -3709,6 +3911,7 @@ let PedidosService = class PedidosService {
             const personalizaciones = await this.prisma.detPersonalizacion.findMany({
                 where: { idDetalle },
             });
+            const invCfg = await this.inventarioDeduccion.obtenerConfig(det.pedido.idRestaurante);
             await this.prisma.$transaction(async (tx) => {
                 await (0, stock_bebida_1.descontarStockBebidaTx)(tx, det.producto, delta);
                 const nuevo = await tx.detallePedido.create({
@@ -3731,6 +3934,20 @@ let PedidosService = class PedidosService {
                         })),
                     });
                 }
+                await this.inventarioDeduccion.aplicarEventoLineasEnTx(tx, {
+                    tenantId: det.pedido.idRestaurante,
+                    evento: invCfg.evento_deduccion_comercial,
+                    idPedido: det.pedido.idPedido,
+                    lineas: [
+                        {
+                            id_detalle_pedido: nuevo.idDetalle,
+                            id_producto: det.idProducto,
+                            cantidad: delta,
+                            nombre_producto: det.producto.nombre,
+                        },
+                    ],
+                    idUsuario,
+                });
                 for (const h of hijosEmpaque) {
                     await tx.detallePedido.create({
                         data: {
@@ -3792,6 +4009,18 @@ let PedidosService = class PedidosService {
             : [];
         await this.prisma.$transaction(async (tx) => {
             await (0, stock_bebida_1.ajustarStockBebidaTx)(tx, det.producto, cantidad - det.cantidad);
+            await this.inventarioDeduccion.ajustarCantidadLineaEnTx(tx, {
+                tenantId: det.pedido.idRestaurante,
+                idPedido: det.pedido.idPedido,
+                linea: {
+                    id_detalle_pedido: idDetalle,
+                    id_producto: det.idProducto,
+                    cantidad,
+                    nombre_producto: det.producto.nombre,
+                },
+                deltaCantidad: cantidad - det.cantidad,
+                idUsuario,
+            });
             await tx.detallePedido.update({
                 where: { idDetalle },
                 data: { cantidad },
@@ -3829,7 +4058,7 @@ let PedidosService = class PedidosService {
             });
         });
         this.emit(det.pedido.idPedido, det.pedido.idMesa, det.pedido.idUsuario, det.pedido.idRestaurante);
-        return this.obtenerPorIdTrasEscritura(det.pedido.idPedido);
+        return this.obtenerPorIdTrasEscritura(det.pedido.idPedido, det.pedido.idRestaurante, { consolidar: false });
     }
     async asegurarEmpaqueAutoParaDetallePadreTx(tx, idDetallePadre, precioEmpaque, idUsuario) {
         const padre = await tx.detallePedido.findUnique({
@@ -4087,9 +4316,22 @@ let PedidosService = class PedidosService {
         if (pendientes.length === 0) {
             throw new common_1.BadRequestException('No hay platos nuevos para cocina (las bebidas solo se cobran al final)');
         }
+        const conSubitemsSinDefinir = pendientes.filter((d) => (0, subitems_pendientes_1.detalleSubitemsPendientes)({
+            usa_subitems_repartibles: d.producto.usaSubitemsRepartibles,
+            cantidad: d.cantidad,
+            subitems: d.subitems.map((s) => ({ cantidad: s.cantidad })),
+        }));
+        if (conSubitemsSinDefinir.length > 0) {
+            const nombres = conSubitemsSinDefinir
+                .map((d) => d.producto.nombre)
+                .slice(0, 3)
+                .join(', ');
+            throw new common_1.BadRequestException(`Define el reparto de subítems antes de pasar a cocina (${nombres}${conSubitemsSinDefinir.length > 3 ? '…' : ''}).`);
+        }
         const esAdicional = pedido.detalles.some((d) => productoDebePasarCocina(d.producto) && d.enviadoCocina);
         const idsPendientes = pendientes.map((d) => d.idDetalle);
         const emitidaEn = new Date();
+        const invCfg = await this.inventarioDeduccion.obtenerConfig(pedido.idRestaurante);
         await this.prisma.$transaction(async (tx) => {
             await tx.detallePedido.updateMany({
                 where: { idDetalle: { in: idsPendientes } },
@@ -4101,6 +4343,18 @@ let PedidosService = class PedidosService {
                     data: { estado: 'en_cocina' },
                 });
             }
+            await this.inventarioDeduccion.aplicarEventoLineasEnTx(tx, {
+                tenantId: pedido.idRestaurante,
+                evento: invCfg.evento_deduccion_receta,
+                idPedido,
+                lineas: pendientes.map((d) => ({
+                    id_detalle_pedido: d.idDetalle,
+                    id_producto: d.idProducto,
+                    cantidad: d.cantidad,
+                    nombre_producto: d.producto.nombre,
+                })),
+                idUsuario: actor?.idUsuario,
+            });
         });
         const lineas = pendientes.map((d) => ({
             id_detalle: d.idDetalle,
@@ -4351,7 +4605,7 @@ let PedidosService = class PedidosService {
             total_pagos_mesero_exceso: resumen.total_pagos_mesero_exceso,
             subtotal_entradas_caja: resumen.subtotal_entradas_caja,
             subtotal_salidas_caja: resumen.subtotal_salidas_caja,
-            efectivo_esperado_en_caja: resumen.efectivo_esperado_en_caja,
+            efectivo_esperado_en_caja: resumen.efectivo_esperado_en_caja ?? 0,
             emitida_en: new Date().toISOString(),
         };
     }
@@ -4369,7 +4623,7 @@ let PedidosService = class PedidosService {
         return {
             fecha: resumen.fecha,
             monto_base_cierre_efectivo: caja.monto_base_cierre_efectivo ?? resumen.monto_base_cierre_efectivo ?? 0,
-            efectivo_esperado_en_caja: resumen.efectivo_esperado_en_caja,
+            efectivo_esperado_en_caja: resumen.efectivo_esperado_en_caja ?? 0,
             emitida_en: new Date().toISOString(),
         };
     }
@@ -4451,6 +4705,7 @@ let PedidosService = class PedidosService {
         const lineas = (0, comanda_lineas_group_1.lineasComandaParaTicket)(detalles.map((d) => ({
             id_detalle: d.idDetalle,
             id_producto: d.idProducto,
+            id_categoria: d.producto.categoria.idCategoria,
             id_detalle_padre: d.idDetallePadre,
             nombre_producto: d.producto.nombre,
             categoria_nombre: d.producto.categoria.nombre,
@@ -5346,12 +5601,22 @@ let PedidosService = class PedidosService {
         if (dto.cobro_mixto_grupo != null && !dto.detalles_cobro?.length) {
             throw new common_1.BadRequestException('El pago mixto requiere detalles_cobro en cada parte (efectivo y transferencia). Recarga la app.');
         }
+        const invCfg = await this.inventarioDeduccion.obtenerConfig(pedido.idRestaurante);
+        const eventoFactura = (invCfg.evento_deduccion_consumible ??
+            invCfg.evento_deduccion_comercial);
         try {
             await this.prisma.$transaction(async (tx) => {
                 await (0, prisma_lock_1.lockPedidoEnTx)(tx, idPedido);
                 const pedidoTx = await tx.pedido.findUnique({
                     where: { idPedido },
-                    select: { estado: true, idMesa: true },
+                    select: {
+                        estado: true,
+                        idMesa: true,
+                        detalles: {
+                            include: detalleInclude,
+                            orderBy: { idDetalle: 'asc' },
+                        },
+                    },
                 });
                 if (!pedidoTx) {
                     throw new common_1.NotFoundException('Pedido no encontrado');
@@ -5362,13 +5627,7 @@ let PedidosService = class PedidosService {
                 if (!ABIERTOS.includes(pedidoTx.estado)) {
                     throw new common_1.ConflictException('El pedido no se puede facturar');
                 }
-                const pedidoDetalles = await tx.pedido.findUnique({
-                    where: { idPedido },
-                    include: {
-                        detalles: { include: detalleInclude, orderBy: { idDetalle: 'asc' } },
-                    },
-                });
-                const detallesPorId = new Map((pedidoDetalles?.detalles ?? []).map((d) => [d.idDetalle, d]));
+                const detallesPorId = new Map(pedidoTx.detalles.map((d) => [d.idDetalle, d]));
                 for (const s of solicitudes) {
                     const det = detallesPorId.get(s.id_detalle);
                     if (!det || det.idFactura != null) {
@@ -5414,6 +5673,28 @@ let PedidosService = class PedidosService {
                     }
                     await this.aplicarCobroDetalleEnTx(tx, det, s.cantidad, factura.idFactura);
                 }
+                await this.inventarioDeduccion.aplicarEventoLineasEnTx(tx, {
+                    tenantId: pedido.idRestaurante,
+                    evento: eventoFactura,
+                    idPedido,
+                    lineas: solicitudes.map((s) => {
+                        const det = detallesPorId.get(s.id_detalle);
+                        return {
+                            id_detalle_pedido: s.id_detalle,
+                            id_producto: det.idProducto,
+                            cantidad: s.cantidad,
+                            nombre_producto: det.producto.nombre,
+                        };
+                    }),
+                    idUsuario,
+                });
+                await this.postearVentaContableEnTx(tx, {
+                    tenantId: pedido.idRestaurante,
+                    idFactura: factura.idFactura,
+                    metodoPago: dto.metodo_pago,
+                    total,
+                    idUsuario,
+                });
                 await this.marcarPlatosRealesCobradosSiSaldoLiquidadoEnTx(tx, idPedido, factura.idFactura, {
                     sobreTotal: dto.plan_personas_sobre_total === true,
                     pool: dto.plan_combinado_sobre_seleccion === true
@@ -5659,6 +5940,9 @@ let PedidosService = class PedidosService {
             ? pedidoParaCobro.detalles.some((d) => d.idFactura == null && (0, saldo_restante_1.esNotaSaldoRestantePendiente)(d.notaCocina))
             : (0, cobro_parcial_1.quedaPendienteTrasCobro)(detallesSerial, solicitudes);
         const idsFacturas = [];
+        const invCfgMixto = await this.inventarioDeduccion.obtenerConfig(pedido.idRestaurante);
+        const eventoFacturaMixto = (invCfgMixto.evento_deduccion_consumible ??
+            invCfgMixto.evento_deduccion_comercial);
         const crearEnTx = async (tx, sol, metodo, grupo, importesForzados) => {
             const factura = await tx.factura.create({
                 data: {
@@ -5694,6 +5978,28 @@ let PedidosService = class PedidosService {
                 }
                 await this.aplicarCobroDetalleEnTx(tx, det, s.cantidad, factura.idFactura);
             }
+            await this.inventarioDeduccion.aplicarEventoLineasEnTx(tx, {
+                tenantId: pedido.idRestaurante,
+                evento: eventoFacturaMixto,
+                idPedido,
+                lineas: sol.map((s) => {
+                    const det = detallesPorId.get(s.id_detalle);
+                    return {
+                        id_detalle_pedido: s.id_detalle,
+                        id_producto: det.idProducto,
+                        cantidad: s.cantidad,
+                        nombre_producto: det.producto.nombre,
+                    };
+                }),
+                idUsuario,
+            });
+            await this.postearVentaContableEnTx(tx, {
+                tenantId: pedido.idRestaurante,
+                idFactura: factura.idFactura,
+                metodoPago: metodo,
+                total: importesForzados.total,
+                idUsuario,
+            });
             return factura.idFactura;
         };
         try {
@@ -6737,6 +7043,7 @@ let PedidosService = class PedidosService {
                 categoria_prioridad_cocina_baja: d.producto.categoria.prioridadCocinaBaja,
                 producto_prioridad_cocina_baja: d.producto.prioridadCocinaBaja,
                 es_cuota_pendiente_reparto: esCuotaPend,
+                usa_subitems_repartibles: d.producto.usaSubitemsRepartibles,
                 marcar_cocina: marcar,
                 enviado_cocina: d.enviadoCocina,
                 listo_para_recoger: d.listoParaRecoger,
@@ -6748,6 +7055,20 @@ let PedidosService = class PedidosService {
                 cobrado: d.idFactura != null ||
                     (!esCuotaPend && d.producto.esAcompanamientoMazorca),
                 id_factura: d.idFactura,
+                subitems: ('subitems' in d && Array.isArray(d.subitems)
+                    ? d.subitems
+                    : []).map((item) => ({
+                    id_subitem: item.subitem.idSubitem,
+                    nombre: item.subitem.nombre,
+                    cantidad: item.cantidad,
+                })),
+                subitems_pendientes: (0, subitems_pendientes_1.detalleSubitemsPendientes)({
+                    usa_subitems_repartibles: d.producto.usaSubitemsRepartibles,
+                    cantidad: d.cantidad,
+                    subitems: ('subitems' in d && Array.isArray(d.subitems)
+                        ? d.subitems
+                        : []).map((item) => ({ cantidad: item.cantidad })),
+                }),
                 personalizaciones: d.personalizaciones.map((dp) => ({
                     id_opcion: dp.opcion.idOpcion,
                     tipo: dp.opcion.tipo,
@@ -6817,6 +7138,8 @@ exports.PedidosService = PedidosService = PedidosService_1 = __decorate([
         pedidos_gateway_1.PedidosGateway,
         comanda_printer_service_1.ComandaPrinterService,
         factura_email_service_1.FacturaEmailService,
-        permisos_service_1.PermisosService])
+        permisos_service_1.PermisosService,
+        inventario_deduccion_service_1.InventarioDeduccionService,
+        contabilidad_posting_service_1.ContabilidadPostingService])
 ], PedidosService);
 //# sourceMappingURL=pedidos.service.js.map

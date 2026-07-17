@@ -12,7 +12,24 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AppController = void 0;
 const common_1 = require("@nestjs/common");
 const throttler_1 = require("@nestjs/throttler");
+const fs_1 = require("fs");
+const path_1 = require("path");
 const prisma_service_1 = require("./prisma/prisma.service");
+function resolveApiVersion() {
+    const fromEnv = process.env.npm_package_version?.trim();
+    if (fromEnv)
+        return fromEnv;
+    try {
+        const pkgPath = (0, path_1.join)(__dirname, '..', '..', 'package.json');
+        const pkg = JSON.parse((0, fs_1.readFileSync)(pkgPath, 'utf8'));
+        if (pkg.version)
+            return pkg.version;
+    }
+    catch {
+    }
+    return '0.0.0';
+}
+const API_VERSION = resolveApiVersion();
 let AppController = class AppController {
     prisma;
     constructor(prisma) {
@@ -23,20 +40,35 @@ let AppController = class AppController {
             ok: true,
             service: 'drewrest-api',
             health: '/health',
+            ping: '/ping',
             ready: '/health/ready',
         };
     }
     health() {
-        return { ok: true, service: 'drewrest-api' };
+        return {
+            ok: true,
+            status: 'ok',
+            service: 'drewrest-api',
+            serverTime: new Date().toISOString(),
+            version: API_VERSION,
+        };
     }
     async ready() {
         try {
             await this.prisma.$queryRaw `SELECT 1`;
-            return { ok: true, service: 'drewrest-api', db: true };
+            return {
+                ok: true,
+                status: 'ok',
+                service: 'drewrest-api',
+                db: true,
+                serverTime: new Date().toISOString(),
+                version: API_VERSION,
+            };
         }
         catch {
             throw new common_1.ServiceUnavailableException({
                 ok: false,
+                status: 'unavailable',
                 service: 'drewrest-api',
                 db: false,
                 message: 'Base de datos no disponible',
@@ -52,7 +84,7 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], AppController.prototype, "root", null);
 __decorate([
-    (0, common_1.Get)('health'),
+    (0, common_1.Get)(['health', 'ping']),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)

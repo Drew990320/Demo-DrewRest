@@ -358,12 +358,14 @@ exports.NAV_ICON_KEYS = [
     'descuentos_promociones',
     'creditos',
     'inventario',
+    'recursos',
     'contabilidad',
     'configuracion',
     'conexion',
     'permisos',
     'turno',
     'personalizacion',
+    'impresoras_pos',
     'vista_previa_tickets',
 ];
 exports.NAV_ICON_DEFAULTS = {
@@ -386,12 +388,14 @@ exports.NAV_ICON_DEFAULTS = {
     descuentos_promociones: 'pricetag-outline',
     creditos: 'card-outline',
     inventario: 'cube-outline',
+    recursos: 'cube-outline',
     contabilidad: 'calculator-outline',
     configuracion: 'settings-outline',
     conexion: 'phone-portrait-outline',
     permisos: 'shield-checkmark-outline',
     turno: 'wallet-outline',
     personalizacion: 'color-palette-outline',
+    impresoras_pos: 'print-outline',
     vista_previa_tickets: 'receipt-outline',
 };
 const ICON_SET = new Set(exports.NAV_APP_ICONOS.map((i) => i.id));

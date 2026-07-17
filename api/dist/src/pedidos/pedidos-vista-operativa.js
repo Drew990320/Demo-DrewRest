@@ -8,6 +8,7 @@ Object.defineProperty(exports, "detallePendienteRecogerMesero", { enumerable: tr
 Object.defineProperty(exports, "platosPendientesRecogerPedido", { enumerable: true, get: function () { return cocina_vista_1.platosPendientesRecogerPedido; } });
 Object.defineProperty(exports, "pedidoTieneRecogidaPendiente", { enumerable: true, get: function () { return cocina_vista_1.pedidoTieneRecogidaPendiente; } });
 const cocina_prioridad_1 = require("./cocina-prioridad");
+const subitems_pendientes_1 = require("@drewrest/shared-domain/subitems-pendientes");
 exports.pedidoVistaOperativaInclude = {
     mesa: { select: { numero: true } },
     usuario: {
@@ -37,6 +38,7 @@ exports.pedidoVistaOperativaInclude = {
                     esAcompanamientoMazorca: true,
                     tipoProteina: true,
                     prioridadCocinaBaja: true,
+                    usaSubitemsRepartibles: true,
                     categoria: {
                         select: {
                             nombre: true,
@@ -96,11 +98,17 @@ function serializarPedidoVistaOperativa(p, opts) {
             listo_cocina: d.listoCocina,
             cantidad: d.cantidad,
             nota_cocina: d.notaCocina,
+            usa_subitems_repartibles: d.producto.usaSubitemsRepartibles,
             subitems: d.subitems.map((item) => ({
                 id_subitem: item.subitem.idSubitem,
                 nombre: item.subitem.nombre,
                 cantidad: item.cantidad,
             })),
+            subitems_pendientes: (0, subitems_pendientes_1.detalleSubitemsPendientes)({
+                usa_subitems_repartibles: d.producto.usaSubitemsRepartibles,
+                cantidad: d.cantidad,
+                subitems: d.subitems.map((item) => ({ cantidad: item.cantidad })),
+            }),
             personalizaciones: d.personalizaciones.map((dp) => ({
                 id_opcion: dp.opcion.idOpcion,
                 tipo: dp.opcion.tipo,

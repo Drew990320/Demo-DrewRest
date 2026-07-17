@@ -13,10 +13,13 @@ exports.CuentasPorPagarService = void 0;
 const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../prisma/prisma.service");
 const tenant_constants_1 = require("../tenant/tenant.constants");
+const contabilidad_posting_service_1 = require("../contabilidad/contabilidad-posting.service");
 let CuentasPorPagarService = class CuentasPorPagarService {
     prisma;
-    constructor(prisma) {
+    contabilidadPosting;
+    constructor(prisma, contabilidadPosting) {
         this.prisma = prisma;
+        this.contabilidadPosting = contabilidadPosting;
     }
     money(v) {
         return Math.round(Number(v));
@@ -67,8 +70,8 @@ let CuentasPorPagarService = class CuentasPorPagarService {
         if (esContado && !dto.metodo_pago_contado) {
             throw new common_1.BadRequestException('Indica el método de pago para compras de contado');
         }
-        const fechaVenc = dto.fecha_vencimiento ?
-            new Date(`${dto.fecha_vencimiento.slice(0, 10)}T12:00:00.000Z`)
+        const fechaVenc = dto.fecha_vencimiento
+            ? new Date(`${dto.fecha_vencimiento.slice(0, 10)}T12:00:00.000Z`)
             : null;
         const row = await this.prisma.$transaction(async (tx) => {
             const cuenta = await tx.cuentaPorPagar.create({
@@ -97,6 +100,44 @@ let CuentasPorPagarService = class CuentasPorPagarService {
                         idUsuario,
                     },
                 });
+                try {
+                    await this.contabilidadPosting.postEvento(tx, {
+                        tenantId,
+                        evento: 'cxp_compra_contado',
+                        monto,
+                        fecha: new Date(),
+                        origen: {
+                            modulo: 'cuentas_por_pagar',
+                            tipo: 'compra_contado',
+                            id: cuenta.idCuentaPorPagar,
+                        },
+                        idDocumento: `cxp:${cuenta.idCuentaPorPagar}:contado`,
+                        idUsuario,
+                        descripcion: `Compra contado CxP #${cuenta.idCuentaPorPagar}`,
+                    });
+                }
+                catch {
+                }
+            }
+            else {
+                try {
+                    await this.contabilidadPosting.postEvento(tx, {
+                        tenantId,
+                        evento: 'cxp_compra_credito',
+                        monto,
+                        fecha: new Date(),
+                        origen: {
+                            modulo: 'cuentas_por_pagar',
+                            tipo: 'compra_credito',
+                            id: cuenta.idCuentaPorPagar,
+                        },
+                        idDocumento: `cxp:${cuenta.idCuentaPorPagar}:credito`,
+                        idUsuario,
+                        descripcion: `Compra crédito CxP #${cuenta.idCuentaPorPagar}`,
+                    });
+                }
+                catch {
+                }
             }
             return cuenta;
         });
@@ -126,7 +167,7 @@ let CuentasPorPagarService = class CuentasPorPagarService {
         }
         const nuevoSaldo = saldo - pago;
         const row = await this.prisma.$transaction(async (tx) => {
-            await tx.pagoProveedor.create({
+            const pagoRow = await tx.pagoProveedor.create({
                 data: {
                     idCuentaPorPagar: idCuenta,
                     monto: pago,
@@ -135,16 +176,35 @@ let CuentasPorPagarService = class CuentasPorPagarService {
                     idUsuario,
                 },
             });
-            return tx.cuentaPorPagar.update({
+            const updated = await tx.cuentaPorPagar.update({
                 where: { idCuentaPorPagar: idCuenta },
                 data: {
                     saldoPendiente: nuevoSaldo,
-                    ...(nuevoSaldo <= 0 ?
-                        { estado: 'pagada', pagadoEn: new Date(), saldoPendiente: 0 }
+                    ...(nuevoSaldo <= 0
+                        ? { estado: 'pagada', pagadoEn: new Date(), saldoPendiente: 0 }
                         : {}),
                 },
                 include: { proveedor: { select: { nombre: true, nit: true } } },
             });
+            try {
+                await this.contabilidadPosting.postEvento(tx, {
+                    tenantId,
+                    evento: 'pago_proveedor',
+                    monto: pago,
+                    fecha: new Date(),
+                    origen: {
+                        modulo: 'cuentas_por_pagar',
+                        tipo: 'pago',
+                        id: pagoRow.idPagoProveedor,
+                    },
+                    idDocumento: `cxp-pago:${pagoRow.idPagoProveedor}`,
+                    idUsuario,
+                    descripcion: `Pago proveedor CxP #${idCuenta}`,
+                });
+            }
+            catch {
+            }
+            return updated;
         });
         return this.mapCuenta(row);
     }
@@ -152,6 +212,7 @@ let CuentasPorPagarService = class CuentasPorPagarService {
 exports.CuentasPorPagarService = CuentasPorPagarService;
 exports.CuentasPorPagarService = CuentasPorPagarService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [prisma_service_1.PrismaService])
+    __metadata("design:paramtypes", [prisma_service_1.PrismaService,
+        contabilidad_posting_service_1.ContabilidadPostingService])
 ], CuentasPorPagarService);
 //# sourceMappingURL=cuentas-por-pagar.service.js.map

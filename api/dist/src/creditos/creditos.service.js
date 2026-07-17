@@ -13,10 +13,13 @@ exports.CreditosService = void 0;
 const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../prisma/prisma.service");
 const tenant_constants_1 = require("../tenant/tenant.constants");
+const contabilidad_posting_service_1 = require("../contabilidad/contabilidad-posting.service");
 let CreditosService = class CreditosService {
     prisma;
-    constructor(prisma) {
+    contabilidadPosting;
+    constructor(prisma, contabilidadPosting) {
         this.prisma = prisma;
+        this.contabilidadPosting = contabilidadPosting;
     }
     mapCuenta(row) {
         const n = (v) => Math.round(Number(v));
@@ -105,16 +108,35 @@ let CreditosService = class CreditosService {
                 .filter(Boolean)
                 .join('\n')
             : cuenta.notas;
-        const row = await this.prisma.cuentaCredito.update({
-            where: { idCredito },
-            data: {
-                saldoPendiente: nuevoSaldo,
-                notas,
-                ...(nuevoSaldo <= 0 ?
-                    { estado: 'pagado', pagadoEn: new Date(), saldoPendiente: 0 }
-                    : {}),
-            },
-            include: { pedido: { include: { mesa: { select: { numero: true } } } } },
+        const row = await this.prisma.$transaction(async (tx) => {
+            const updated = await tx.cuentaCredito.update({
+                where: { idCredito },
+                data: {
+                    saldoPendiente: nuevoSaldo,
+                    notas,
+                    ...(nuevoSaldo <= 0
+                        ? { estado: 'pagado', pagadoEn: new Date(), saldoPendiente: 0 }
+                        : {}),
+                },
+                include: {
+                    pedido: { include: { mesa: { select: { numero: true } } } },
+                },
+            });
+            try {
+                await this.contabilidadPosting.postEvento(tx, {
+                    tenantId,
+                    evento: 'abono_cliente',
+                    monto: abono,
+                    fecha: new Date(),
+                    origen: { modulo: 'creditos', tipo: 'abono', id: idCredito },
+                    idDocumento: `credito:${idCredito}:abono:${abono}:${Date.now()}`,
+                    idUsuario: cuenta.idUsuario,
+                    descripcion: `Abono crédito #${idCredito}`,
+                });
+            }
+            catch {
+            }
+            return updated;
         });
         return this.mapCuenta(row);
     }
@@ -122,6 +144,7 @@ let CreditosService = class CreditosService {
 exports.CreditosService = CreditosService;
 exports.CreditosService = CreditosService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [prisma_service_1.PrismaService])
+    __metadata("design:paramtypes", [prisma_service_1.PrismaService,
+        contabilidad_posting_service_1.ContabilidadPostingService])
 ], CreditosService);
 //# sourceMappingURL=creditos.service.js.map

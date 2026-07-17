@@ -17,6 +17,7 @@ const tenant_constants_1 = require("../tenant/tenant.constants");
 const empaque_para_llevar_1 = require("@drewrest/shared-domain/empaque-para-llevar");
 const cocina_producto_1 = require("@drewrest/shared-domain/cocina-producto");
 const mazorca_linea_pedido_1 = require("../pedidos/mazorca-linea-pedido");
+const producto_inventario_vinculo_service_1 = require("../inventario/producto-inventario-vinculo.service");
 function resolverFlagsProducto(cat, explicit, existing) {
     const auto = (0, empaque_para_llevar_1.flagsProductoMenuPorCategoria)(cat);
     let esEmpacable;
@@ -82,9 +83,11 @@ function mapProducto(p) {
 let ProductosService = class ProductosService {
     prisma;
     gateway;
-    constructor(prisma, gateway) {
+    vinculoInventario;
+    constructor(prisma, gateway, vinculoInventario) {
         this.prisma = prisma;
         this.gateway = gateway;
+        this.vinculoInventario = vinculoInventario;
     }
     async asegurarUnicoMazorca(idProducto, esMazorca, tenantId) {
         if (!esMazorca)
@@ -258,6 +261,9 @@ let ProductosService = class ProductosService {
         if (dto.es_acompanamiento_mazorca != null) {
             await this.asegurarUnicoMazorca(idProducto, esMazorca, tenantId);
         }
+        if (dto.nombre != null) {
+            await this.vinculoInventario.sincronizarNombreDesdeProducto(idProducto, dto.nombre, tenantId);
+        }
         this.gateway.emitConfigActualizada('menu', tenantId);
         return mapProducto(updated);
     }
@@ -276,6 +282,7 @@ let ProductosService = class ProductosService {
         if (existing._count.detalles > 0) {
             throw new common_1.ConflictException('Tiene historial de pedidos — no se puede eliminar; solo ocultar del menú');
         }
+        await this.vinculoInventario.validarEliminacionPermanenteProducto(idProducto, tenantId);
         const cfg = await this.prisma.configOperativa.findFirst({
             where: {
                 idRestaurante: tenantId,
@@ -305,6 +312,7 @@ exports.ProductosService = ProductosService;
 exports.ProductosService = ProductosService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
-        pedidos_gateway_1.PedidosGateway])
+        pedidos_gateway_1.PedidosGateway,
+        producto_inventario_vinculo_service_1.ProductoInventarioVinculoService])
 ], ProductosService);
 //# sourceMappingURL=productos.service.js.map

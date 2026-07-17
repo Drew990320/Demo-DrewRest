@@ -1,3 +1,4 @@
+export { idRecorridoCompleto, esAccionRecorrido, HELP_RECORRIDO_ACTIONS } from './help-tutorials-recorrido';
 export type HelpRol = 'mesero' | 'chef' | 'admin' | 'superadmin';
 export type HelpTutorialStep = {
     title: string;
@@ -17,6 +18,14 @@ export type HelpTutorialStep = {
     irARuta?: string;
     /** El mesero puede marcar el paso como entendido sin completar la acción (flujos variables). */
     confirmarEntendido?: boolean;
+    /** Textos alternos para móvil (barra inferior, barra de acciones en pantalla). */
+    bodyMovil?: string;
+    buscarMovil?: string;
+    accionMovil?: string;
+    /** Textos alternos para tablet/PC (nav lateral + rail derecho). */
+    bodyTablet?: string;
+    buscarTablet?: string;
+    accionTablet?: string;
 };
 export type HelpTutorialModule = {
     id: string;

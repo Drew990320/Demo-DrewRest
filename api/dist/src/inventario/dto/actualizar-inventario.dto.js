@@ -15,6 +15,12 @@ class ActualizarInventarioDto {
     ingrediente;
     unidad;
     cantidad_minima;
+    clase_inventario;
+    comportamiento;
+    ubicacion;
+    estado_activo;
+    costo_unitario;
+    id_producto;
 }
 exports.ActualizarInventarioDto = ActualizarInventarioDto;
 __decorate([
@@ -35,4 +41,35 @@ __decorate([
     (0, class_validator_1.Min)(0),
     __metadata("design:type", Number)
 ], ActualizarInventarioDto.prototype, "cantidad_minima", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], ActualizarInventarioDto.prototype, "clase_inventario", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsObject)(),
+    __metadata("design:type", Object)
+], ActualizarInventarioDto.prototype, "comportamiento", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", Object)
+], ActualizarInventarioDto.prototype, "ubicacion", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", Object)
+], ActualizarInventarioDto.prototype, "estado_activo", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.Min)(0),
+    __metadata("design:type", Object)
+], ActualizarInventarioDto.prototype, "costo_unitario", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsNumber)(),
+    __metadata("design:type", Object)
+], ActualizarInventarioDto.prototype, "id_producto", void 0);
 //# sourceMappingURL=actualizar-inventario.dto.js.map

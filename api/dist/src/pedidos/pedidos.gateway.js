@@ -216,6 +216,13 @@ let PedidosGateway = class PedidosGateway {
                 .emit('impresora:alerta', payload);
         }
     }
+    emitImpresionEstado(payload, tenantId = tenant_constants_1.DEFAULT_TENANT_ID) {
+        for (const rol of ['admin', 'mesero', 'chef']) {
+            this.server
+                .to((0, tenant_rooms_1.tenantRoom)(`rol:${rol}`, tenantId))
+                .emit('impresion:estado', payload);
+        }
+    }
 };
 exports.PedidosGateway = PedidosGateway;
 __decorate([

@@ -30,14 +30,21 @@ const DEMO_USERS = [
     email: 'admin@drewrest.local',
     password: 'admin123',
   },
-  {
+  // Superadmin: solo si SUPERADMIN_PASSWORD está en el entorno (no hardcodear).
+];
+
+const superPassword = process.env.SUPERADMIN_PASSWORD?.trim();
+if (superPassword) {
+  DEMO_USERS.push({
     rol: 'superadmin',
     nombre: 'Superadmin',
     apellido: '',
-    email: 'superadmin@drewrest.local',
-    password: 'superadmin123',
-  },
-];
+    email:
+      process.env.SUPERADMIN_EMAIL?.trim().toLowerCase() ||
+      'superadmin@drewrest.local',
+    password: superPassword,
+  });
+}
 
 async function resolveRestauranteId(prisma) {
   const nombre = process.env.RESTAURANT_NAME?.trim() || 'Restaurante';
