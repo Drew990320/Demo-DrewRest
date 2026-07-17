@@ -176,6 +176,126 @@ let TicketPreviewService = class TicketPreviewService {
         const buffer = await (0, cierre_caja_escpos_builder_1.buildBaseCajaCierreEscPos)(ticket, this.charWidth());
         return this.bufferToHtml(buffer, `Arqueo cierre ${ticket.fecha} · datos reales`);
     }
+    async escposForAgentSource(source, tenantId) {
+        this.assertEnabled();
+        const w = this.charWidth();
+        let buffer;
+        let label = source.label?.trim() || 'Ticket demo';
+        switch (source.type) {
+            case 'demo': {
+                const tipo = source.demoTipo?.trim();
+                if (!tipo)
+                    throw new common_1.NotFoundException('Falta demoTipo');
+                const item = (0, ticket_preview_samples_1.catalogItemForTipo)(tipo);
+                if (!item)
+                    throw new common_1.NotFoundException(`Tipo demo no válido: ${tipo}`);
+                buffer = await (0, ticket_preview_samples_1.buildSampleEscPosBuffer)(tipo, w);
+                label = source.label?.trim() || item.label;
+                break;
+            }
+            case 'comanda': {
+                if (!source.idPedido)
+                    throw new common_1.NotFoundException('Falta idPedido');
+                const ticket = await this.pedidos.ticketComandaParaVistaPrevia(source.idPedido, {
+                    modo: source.modo ?? 'ultimo_envio',
+                    idDetalles: parseIdDetalles(source.detalles),
+                });
+                buffer = await (0, comanda_escpos_builder_1.buildComandaEscPos)(ticket, w);
+                label =
+                    source.label?.trim() ||
+                        (ticket.es_reimpresion
+                            ? `Reimpresión comanda #${source.idPedido}`
+                            : ticket.es_adicional
+                                ? `Comanda adicional #${source.idPedido}`
+                                : `Comanda #${source.idPedido}`);
+                break;
+            }
+            case 'factura': {
+                if (!source.idFactura)
+                    throw new common_1.NotFoundException('Falta idFactura');
+                const ticket = await this.pedidos.ticketFacturaParaVistaPrevia(source.idFactura, Boolean(source.reimpresion));
+                buffer = await (0, factura_escpos_builder_1.buildFacturaEscPos)(ticket, w);
+                label =
+                    source.label?.trim() ||
+                        (source.reimpresion
+                            ? `Reimpresión factura #${source.idFactura}`
+                            : `Factura #${source.idFactura}`);
+                break;
+            }
+            case 'precuenta': {
+                if (!source.idPedido)
+                    throw new common_1.NotFoundException('Falta idPedido');
+                const dto = (source.precuentaBody ?? {});
+                const ticket = await this.pedidos.ticketPrecuentaParaVistaPrevia(source.idPedido, dto);
+                buffer = await (0, factura_escpos_builder_1.buildFacturaEscPos)(ticket, w);
+                label = source.label?.trim() || `Pre-cuenta #${source.idPedido}`;
+                break;
+            }
+            case 'pedido_total': {
+                if (!source.idPedido)
+                    throw new common_1.NotFoundException('Falta idPedido');
+                const ticket = await this.pedidos.ticketPedidoTotalParaVistaPrevia(source.idPedido);
+                buffer = await (0, factura_escpos_builder_1.buildFacturaEscPos)(ticket, w);
+                label = source.label?.trim() || `Total pedido #${source.idPedido}`;
+                break;
+            }
+            case 'movimiento_caja': {
+                if (!source.idMovimiento) {
+                    throw new common_1.NotFoundException('Falta idMovimiento');
+                }
+                const ticket = await this.pedidos.ticketMovimientoCajaParaVistaPrevia(source.idMovimiento);
+                buffer = await (0, cierre_caja_escpos_builder_1.buildMovimientoCajaEscPos)(ticket, w);
+                label =
+                    source.label?.trim() || `Movimiento caja #${source.idMovimiento}`;
+                break;
+            }
+            case 'cierre_caja': {
+                const ticket = await this.pedidos.ticketCierreCajaParaVistaPrevia(source.fecha, tenantId);
+                buffer = await (0, cierre_caja_escpos_builder_1.buildCierreCajaEscPos)(ticket, w);
+                label = source.label?.trim() || `Cierre ${ticket.fecha}`;
+                break;
+            }
+            case 'base_caja': {
+                const ticket = await this.pedidos.ticketBaseCajaParaVistaPrevia(source.fecha, tenantId);
+                buffer = await (0, cierre_caja_escpos_builder_1.buildBaseCajaEscPos)(ticket, w);
+                label = source.label?.trim() || `Base caja ${ticket.fecha}`;
+                break;
+            }
+            case 'base_caja_cierre': {
+                const ticket = await this.pedidos.ticketBaseCajaCierreParaVistaPrevia(source.fecha, tenantId);
+                buffer = await (0, cierre_caja_escpos_builder_1.buildBaseCajaCierreEscPos)(ticket, w);
+                label = source.label?.trim() || `Arqueo ${ticket.fecha}`;
+                break;
+            }
+            case 'test':
+            default: {
+                const lines = [
+                    '================================',
+                    '         DREWREST',
+                    '   Ticket desde la nube',
+                    '================================',
+                    `Fecha: ${new Date().toLocaleString('es-CO')}`,
+                    '--------------------------------',
+                    'Demo cloud -> agente local -> POS',
+                    'Si lees esto, el puente funciona.',
+                    '--------------------------------',
+                    'DrewTech',
+                    '================================',
+                    '',
+                    '',
+                ];
+                const body = Buffer.from(lines.join('\n'), 'latin1');
+                buffer = Buffer.concat([
+                    Buffer.from([0x1b, 0x40]),
+                    body,
+                    Buffer.from([0x1d, 0x56, 0x00]),
+                ]);
+                label = source.label?.trim() || 'Prueba puente POS';
+                break;
+            }
+        }
+        return { label, escposBase64: buffer.toString('base64') };
+    }
 };
 exports.TicketPreviewService = TicketPreviewService;
 exports.TicketPreviewService = TicketPreviewService = __decorate([

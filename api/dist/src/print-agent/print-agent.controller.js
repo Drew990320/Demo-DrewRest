@@ -18,6 +18,8 @@ const class_validator_1 = require("class-validator");
 const jwt_auth_guard_1 = require("../auth/jwt-auth.guard");
 const roles_decorator_1 = require("../auth/roles.decorator");
 const roles_guard_1 = require("../auth/roles.guard");
+const current_tenant_decorator_1 = require("../tenant/current-tenant.decorator");
+const print_agent_preview_dto_1 = require("./print-agent-preview.dto");
 const print_agent_service_1 = require("./print-agent.service");
 class ClaimDto {
     code;
@@ -101,6 +103,9 @@ let PrintAgentController = class PrintAgentController {
             escposBase64: dto.escposBase64,
         });
     }
+    enqueueFromPreview(dto, tenantId) {
+        return this.agent.enqueueFromPreview(dto.source, tenantId);
+    }
     claim(dto) {
         return this.agent.claim(dto.code);
     }
@@ -149,6 +154,16 @@ __decorate([
     __metadata("design:paramtypes", [EnqueueDto]),
     __metadata("design:returntype", void 0)
 ], PrintAgentController.prototype, "enqueue", null);
+__decorate([
+    (0, common_1.Post)('jobs/from-preview'),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
+    (0, roles_decorator_1.Roles)('admin'),
+    __param(0, (0, common_1.Body)()),
+    __param(1, (0, current_tenant_decorator_1.CurrentTenantId)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [print_agent_preview_dto_1.EnqueueFromPreviewDto, Object]),
+    __metadata("design:returntype", void 0)
+], PrintAgentController.prototype, "enqueueFromPreview", null);
 __decorate([
     (0, common_1.Post)('agent/claim'),
     __param(0, (0, common_1.Body)()),

@@ -14,13 +14,16 @@ const common_1 = require("@nestjs/common");
 const config_1 = require("@nestjs/config");
 const crypto_1 = require("crypto");
 const ticket_preview_util_1 = require("../pedidos/ticket-preview.util");
+const ticket_preview_service_1 = require("../pedidos/ticket-preview.service");
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 const JOB_TTL_MS = 10 * 60 * 1000;
 let PrintAgentService = class PrintAgentService {
     config;
+    ticketPreview;
     session = null;
-    constructor(config) {
+    constructor(config, ticketPreview) {
         this.config = config;
+        this.ticketPreview = ticketPreview;
     }
     isEnabled() {
         return (0, ticket_preview_util_1.ticketPreviewEnabled)(this.config);
@@ -41,6 +44,7 @@ let PrintAgentService = class PrintAgentService {
                 agentOnline: false,
                 printerName: null,
                 pendingJobs: 0,
+                paired: false,
             };
         }
         return {
@@ -132,15 +136,10 @@ let PrintAgentService = class PrintAgentService {
     enqueue(opts) {
         this.assertEnabled();
         this.purgeExpired();
-        const s = this.session;
-        if (!s) {
-            throw new common_1.NotFoundException('No hay sesión de puente. Genera un código de empareje primero.');
-        }
-        if (!s.agentToken) {
-            throw new common_1.NotFoundException('Todavía no hay un PC emparejado. Abre el PrintAgent e introduce el código.');
-        }
+        const s = this.requirePairedSession();
         this.dropOldJobs(s);
-        const kind = opts.kind ?? (opts.escposBase64 ? 'escpos' : opts.text ? 'text' : 'test');
+        const kind = opts.kind ??
+            (opts.escposBase64 ? 'escpos' : opts.text ? 'text' : 'test');
         const job = {
             id: (0, crypto_1.randomBytes)(8).toString('hex'),
             label: opts.label?.trim() || 'Ticket demo',
@@ -175,6 +174,24 @@ let PrintAgentService = class PrintAgentService {
             printerName: s.printerName,
         };
     }
+    async enqueueFromPreview(source, tenantId) {
+        const built = await this.ticketPreview.escposForAgentSource(source, tenantId);
+        return this.enqueue({
+            label: built.label,
+            escposBase64: built.escposBase64,
+            kind: 'escpos',
+        });
+    }
+    requirePairedSession() {
+        const s = this.session;
+        if (!s) {
+            throw new common_1.NotFoundException('No hay sesión de puente. Genera un código de empareje primero.');
+        }
+        if (!s.agentToken) {
+            throw new common_1.NotFoundException('Todavía no hay un PC emparejado. Abre el PrintAgent e introduce el código.');
+        }
+        return s;
+    }
     requireAgent(token) {
         this.assertEnabled();
         this.purgeExpired();
@@ -204,6 +221,7 @@ let PrintAgentService = class PrintAgentService {
 exports.PrintAgentService = PrintAgentService;
 exports.PrintAgentService = PrintAgentService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [config_1.ConfigService])
+    __metadata("design:paramtypes", [config_1.ConfigService,
+        ticket_preview_service_1.TicketPreviewService])
 ], PrintAgentService);
 //# sourceMappingURL=print-agent.service.js.map

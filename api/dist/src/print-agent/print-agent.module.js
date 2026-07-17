@@ -9,6 +9,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.PrintAgentModule = void 0;
 const common_1 = require("@nestjs/common");
 const auth_module_1 = require("../auth/auth.module");
+const pedidos_module_1 = require("../pedidos/pedidos.module");
 const print_agent_controller_1 = require("./print-agent.controller");
 const print_agent_service_1 = require("./print-agent.service");
 let PrintAgentModule = class PrintAgentModule {
@@ -16,7 +17,7 @@ let PrintAgentModule = class PrintAgentModule {
 exports.PrintAgentModule = PrintAgentModule;
 exports.PrintAgentModule = PrintAgentModule = __decorate([
     (0, common_1.Module)({
-        imports: [auth_module_1.AuthModule],
+        imports: [auth_module_1.AuthModule, (0, common_1.forwardRef)(() => pedidos_module_1.PedidosModule)],
         controllers: [print_agent_controller_1.PrintAgentController],
         providers: [print_agent_service_1.PrintAgentService],
         exports: [print_agent_service_1.PrintAgentService],

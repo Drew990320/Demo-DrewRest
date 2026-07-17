@@ -41,7 +41,7 @@ exports.PedidosModule = PedidosModule = __decorate([
             ticket_preview_service_1.TicketPreviewService,
             ticket_preview_controller_1.TicketPreviewEnabledGuard,
         ],
-        exports: [pedidos_service_1.PedidosService, pedidos_gateway_1.PedidosGateway, comanda_printer_service_1.ComandaPrinterService],
+        exports: [pedidos_service_1.PedidosService, pedidos_gateway_1.PedidosGateway, comanda_printer_service_1.ComandaPrinterService, ticket_preview_service_1.TicketPreviewService],
     })
 ], PedidosModule);
 //# sourceMappingURL=pedidos.module.js.map
