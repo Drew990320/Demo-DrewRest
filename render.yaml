@@ -2,8 +2,9 @@
 # Repo: https://github.com/Drew990320/Demo-DrewRest.git
 # Regenerar con: npm run Render:Publicar-Demo
 #
-# La web es Node (no static): sirve el export Expo y proxea /api → API_ORIGIN
-# para que el navegador no vea el host *-api.onrender.com.
+# La web sigue siendo static en Render, con rewrite /api/* → API (same-origin
+# en el navegador: solo se ve *-web.onrender.com). Tras cambiar routes, sincroniza
+# el Blueprint en Render (o añade la regla en Redirects/Rewrites del servicio web).
 
 databases:
   - name: drewrest-demo-db
@@ -59,19 +60,24 @@ services:
 
   - type: web
     name: drewrest-demo-web
-    runtime: node
+    runtime: static
     plan: free
     rootDir: web
-    buildCommand: npm install --omit=dev
-    startCommand: npm start
-    healthCheckPath: /health
-    envVars:
-      - key: NODE_VERSION
-        value: "22"
-      - key: NODE_ENV
-        value: production
-      - key: API_ORIGIN
-        fromService:
-          type: web
-          name: drewrest-demo-api
-          envVarKey: RENDER_EXTERNAL_URL
+    staticPublishPath: .
+    routes:
+      # Same-origin proxy: /api/foo → API /foo (el navegador solo ve *-web)
+      - type: rewrite
+        source: /api/*
+        destination: https://drewrest-demo-api.onrender.com/*
+      - type: rewrite
+        source: /fonts/*
+        destination: /fonts/:splat
+      - type: rewrite
+        source: /assets/*
+        destination: /assets/:splat
+      - type: rewrite
+        source: /_expo/*
+        destination: /_expo/:splat
+      - type: rewrite
+        source: /*
+        destination: /index.html
