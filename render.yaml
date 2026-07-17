@@ -67,6 +67,9 @@ services:
     routes:
       # Same-origin proxy: /api/foo → API /foo (el navegador solo ve *-web)
       - type: rewrite
+        source: /health
+        destination: https://drewrest-demo-api.onrender.com/health
+      - type: rewrite
         source: /api/*
         destination: https://drewrest-demo-api.onrender.com/*
       - type: rewrite
