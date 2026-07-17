@@ -736,9 +736,9 @@ exports.HELP_TUTORIAL_ACTIONS = [
         title: 'Vista previa tickets',
         subtitle: 'PDF sin impresora física',
         moduleId: 'admin_operacion',
-        roles: ['superadmin'],
-        screenIds: ['vista_previa_tickets', 'superadmin'],
-        routeHints: ['/vista-previa-impresion', '/superadmin'],
+        roles: ['admin'],
+        screenIds: ['vista_previa_tickets'],
+        routeHints: ['/vista-previa-impresion'],
         steps: [
             {
                 title: '1. Elige un formato',
