@@ -40,6 +40,7 @@ exports.resolverAssetVisualPath = resolverAssetVisualPath;
 exports.mimeFromAssetPath = mimeFromAssetPath;
 exports.campoArchivoPorTipo = campoArchivoPorTipo;
 exports.eliminarTodosAssetsVisuales = eliminarTodosAssetsVisuales;
+exports.eliminarAssetVisual = eliminarAssetVisual;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const common_1 = require("@nestjs/common");
@@ -189,5 +190,16 @@ function eliminarTodosAssetsVisuales() {
             }
         }
     }
+}
+function eliminarAssetVisual(tipo) {
+    const dir = (0, restaurant_branding_1.resolveImagesDir)();
+    for (const name of ASSET_BASENAMES[tipo]) {
+        try {
+            fs.unlinkSync(path.join(dir, name));
+        }
+        catch {
+        }
+    }
+    invalidarCacheAssetsTipo(tipo);
 }
 //# sourceMappingURL=visual-assets.util.js.map

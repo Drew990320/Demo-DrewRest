@@ -30,6 +30,7 @@ const crear_inventario_dto_1 = require("./dto/crear-inventario.dto");
 const movimiento_inventario_dto_1 = require("./dto/movimiento-inventario.dto");
 const upsert_config_inventario_dto_1 = require("./dto/upsert-config-inventario.dto");
 const receta_linea_dto_1 = require("./dto/receta-linea.dto");
+const recalcular_recetas_dto_1 = require("./dto/recalcular-recetas.dto");
 let InventarioController = class InventarioController {
     inventario;
     recetas;
@@ -62,11 +63,26 @@ let InventarioController = class InventarioController {
     listarRecetas(tenantId) {
         return this.recetas.listar(tenantId);
     }
+    costosProduccion(tenantId, margenObjetivo) {
+        const n = margenObjetivo != null && margenObjetivo !== ''
+            ? Number(margenObjetivo)
+            : undefined;
+        return this.recetas.listarCostosProduccion(tenantId, Number.isFinite(n) ? n : undefined);
+    }
     recetaPorProducto(idProducto, tenantId) {
         return this.recetas.obtenerPorProducto(idProducto, tenantId);
     }
     guardarReceta(dto, tenantId) {
         return this.recetas.upsert(dto, tenantId);
+    }
+    recalcularRecetas(dto, tenantId) {
+        if (dto.id_recurso != null) {
+            return this.recetas.recalcularPorRecurso(dto.id_recurso, tenantId);
+        }
+        if (dto.id_inventario != null) {
+            return this.recetas.recalcularPorInventario(dto.id_inventario, tenantId);
+        }
+        return { productos_actualizados: 0, ids_producto: [] };
     }
     eliminarReceta(id, tenantId) {
         return this.recetas.eliminar(id, tenantId);
@@ -149,6 +165,15 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], InventarioController.prototype, "listarRecetas", null);
 __decorate([
+    (0, common_1.Get)('costos-produccion'),
+    (0, roles_decorator_1.Roles)('admin'),
+    __param(0, (0, current_tenant_decorator_1.CurrentTenantId)()),
+    __param(1, (0, common_1.Query)('margen_objetivo')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number, String]),
+    __metadata("design:returntype", void 0)
+], InventarioController.prototype, "costosProduccion", null);
+__decorate([
     (0, common_1.Get)('recetas/producto/:idProducto'),
     (0, roles_decorator_1.Roles)('admin'),
     __param(0, (0, common_1.Param)('idProducto', common_1.ParseIntPipe)),
@@ -166,6 +191,15 @@ __decorate([
     __metadata("design:paramtypes", [receta_linea_dto_1.UpsertRecetaDto, Number]),
     __metadata("design:returntype", void 0)
 ], InventarioController.prototype, "guardarReceta", null);
+__decorate([
+    (0, common_1.Post)('recetas/recalcular'),
+    (0, roles_decorator_1.Roles)('admin'),
+    __param(0, (0, common_1.Body)()),
+    __param(1, (0, current_tenant_decorator_1.CurrentTenantId)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [recalcular_recetas_dto_1.RecalcularRecetasDto, Number]),
+    __metadata("design:returntype", void 0)
+], InventarioController.prototype, "recalcularRecetas", null);
 __decorate([
     (0, common_1.Delete)('recetas/:id'),
     (0, roles_decorator_1.Roles)('admin'),

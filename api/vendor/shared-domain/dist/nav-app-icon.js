@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.LEGACY_VISUAL_COLOR_DEFAULTS = exports.VISUAL_COLOR_DEFAULTS = exports.VISUAL_COLOR_KEYS = exports.NAV_ICON_DEFAULTS = exports.NAV_ICON_KEYS = exports.NAV_APP_ICONOS = exports.NAV_APP_ICON_CATEGORIAS = void 0;
+exports.LEGACY_VISUAL_COLOR_DEFAULTS = exports.VISUAL_COLOR_DEFAULTS = exports.VISUAL_COLOR_KEYS = exports.NAV_ICON_SECCIONES = exports.NAV_ICON_LABELS = exports.NAV_ICON_DEFAULTS = exports.NAV_ICON_KEYS = exports.NAV_APP_ICONOS = exports.NAV_APP_ICON_CATEGORIAS = void 0;
 exports.esNavAppIconValido = esNavAppIconValido;
 exports.resolverIconoNav = resolverIconoNav;
 exports.esPaletaVisualLegacy = esPaletaVisualLegacy;
@@ -353,6 +353,7 @@ exports.NAV_ICON_KEYS = [
     'cobrar',
     'usuarios',
     'editar_menu',
+    'menus_franja',
     'categorias',
     'mesas_admin',
     'descuentos_promociones',
@@ -360,6 +361,10 @@ exports.NAV_ICON_KEYS = [
     'inventario',
     'recursos',
     'contabilidad',
+    'ganancias',
+    'tienda',
+    'tienda_venta',
+    'tienda_catalogo',
     'configuracion',
     'conexion',
     'permisos',
@@ -383,6 +388,7 @@ exports.NAV_ICON_DEFAULTS = {
     cobrar: 'cash-outline',
     usuarios: 'person-circle-outline',
     editar_menu: 'book-outline',
+    menus_franja: 'layers-outline',
     categorias: 'calendar-outline',
     mesas_admin: 'grid-outline',
     descuentos_promociones: 'pricetag-outline',
@@ -390,6 +396,10 @@ exports.NAV_ICON_DEFAULTS = {
     inventario: 'cube-outline',
     recursos: 'cube-outline',
     contabilidad: 'calculator-outline',
+    ganancias: 'trending-up-outline',
+    tienda: 'bag-handle-outline',
+    tienda_venta: 'cart-outline',
+    tienda_catalogo: 'basket-outline',
     configuracion: 'settings-outline',
     conexion: 'phone-portrait-outline',
     permisos: 'shield-checkmark-outline',
@@ -398,6 +408,88 @@ exports.NAV_ICON_DEFAULTS = {
     impresoras_pos: 'print-outline',
     vista_previa_tickets: 'receipt-outline',
 };
+/** Etiquetas en Personalización visual (iconos de navegación / módulos). */
+exports.NAV_ICON_LABELS = {
+    mesas: 'Mesas',
+    pedidos: 'Pedidos',
+    mostrador: 'Mostrador',
+    para_llevar: 'Para llevar',
+    ayuda: 'Ayuda',
+    cocina: 'Cocina',
+    caja: 'Resumen',
+    mas: 'Más (admin)',
+    cuenta: 'Cuenta (mesero)',
+    mesa: 'Mesa (pedido)',
+    menu: 'Menú (pedido)',
+    cobrar: 'Cobrar',
+    usuarios: 'Usuarios',
+    editar_menu: 'Editar menú',
+    menus_franja: 'Menús por franja',
+    categorias: 'Categorías y disponibilidad',
+    mesas_admin: 'Gestionar mesas',
+    descuentos_promociones: 'Descuentos y promociones',
+    creditos: 'Créditos / fiados',
+    inventario: 'Inventario interno',
+    recursos: 'Bodega',
+    contabilidad: 'Contabilidad',
+    ganancias: 'Ganancias',
+    tienda: 'Catálogo tienda',
+    tienda_venta: 'Ventas tienda',
+    tienda_catalogo: 'Productos (tienda)',
+    configuracion: 'Configuración',
+    conexion: 'Conexión móvil',
+    permisos: 'Permisos',
+    turno: 'Turno y beneficios',
+    personalizacion: 'Personalización visual',
+    impresoras_pos: 'Impresoras POS',
+    vista_previa_tickets: 'Vista previa tickets',
+};
+/** Agrupación por categoría en Personalización visual. */
+exports.NAV_ICON_SECCIONES = [
+    {
+        titulo: 'Barra principal',
+        keys: [
+            'mesas',
+            'pedidos',
+            'mostrador',
+            'para_llevar',
+            'ayuda',
+            'cocina',
+            'caja',
+            'inventario',
+            'contabilidad',
+            'ganancias',
+            'mas',
+            'cuenta',
+        ],
+    },
+    { titulo: 'Dentro del pedido', keys: ['mesa', 'menu', 'cobrar'] },
+    {
+        titulo: 'Tienda',
+        keys: ['tienda', 'tienda_venta', 'tienda_catalogo'],
+    },
+    {
+        titulo: 'Panel «Más»',
+        keys: [
+            'usuarios',
+            'editar_menu',
+            'menus_franja',
+            'categorias',
+            'mesas_admin',
+            'descuentos_promociones',
+            'creditos',
+            'recursos',
+            'ganancias',
+            'configuracion',
+            'impresoras_pos',
+            'personalizacion',
+            'conexion',
+            'permisos',
+            'turno',
+            'vista_previa_tickets',
+        ],
+    },
+];
 const ICON_SET = new Set(exports.NAV_APP_ICONOS.map((i) => i.id));
 function esNavAppIconValido(icono) {
     return typeof icono === 'string' && ICON_SET.has(icono);

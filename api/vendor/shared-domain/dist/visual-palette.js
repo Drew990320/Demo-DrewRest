@@ -1,12 +1,13 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.PALETAS_PREDISENADAS = exports.GRUPOS_VISTA_PALETA_APP = void 0;
+exports.PALETAS_PREDISENADAS = exports.VISUAL_TONE_PRESETS = exports.VISUAL_TONE_IDS = exports.GRUPOS_VISTA_PALETA_APP = void 0;
 exports.modoPaletaVisual = modoPaletaVisual;
 exports.normalizarContrastePaleta = normalizarContrastePaleta;
 exports.derivarColoresSemanticos = derivarColoresSemanticos;
 exports.generarPaletaClaraDesdePrincipal = generarPaletaClaraDesdePrincipal;
 exports.generarPaletaOscuraDesdePrincipal = generarPaletaOscuraDesdePrincipal;
 exports.generarSugerenciasTemaDesdePrincipal = generarSugerenciasTemaDesdePrincipal;
+exports.aplicarTonoPaleta = aplicarTonoPaleta;
 exports.generarPaletaDesdePrincipal = generarPaletaDesdePrincipal;
 const nav_app_icon_1 = require("./nav-app-icon");
 /** Grupos para vista previa de todos los tokens que usa la app. */
@@ -326,6 +327,117 @@ function generarSugerenciasTemaDesdePrincipal(primaryHex) {
         claro: generarPaletaClaraDesdePrincipal(primaryHex),
         oscuro: generarPaletaOscuraDesdePrincipal(primaryHex),
     };
+}
+exports.VISUAL_TONE_IDS = [
+    'pastel',
+    'mate',
+    'natural',
+    'brillante',
+    'intenso',
+];
+exports.VISUAL_TONE_PRESETS = {
+    pastel: {
+        id: 'pastel',
+        nombre: 'Pastel',
+        descripcion: 'Suave y claro, poca saturación.',
+    },
+    mate: {
+        id: 'mate',
+        nombre: 'Mate',
+        descripcion: 'Apagado, sin brillo. Tonos terrosos.',
+    },
+    natural: {
+        id: 'natural',
+        nombre: 'Natural',
+        descripcion: 'Deja los colores como están.',
+    },
+    brillante: {
+        id: 'brillante',
+        nombre: 'Brillante',
+        descripcion: 'Vivo y saturado, más presencia.',
+    },
+    intenso: {
+        id: 'intenso',
+        nombre: 'Intenso',
+        descripcion: 'Máxima saturación, casi neón.',
+    },
+};
+function kindOfVisualKey(key) {
+    if (key === 'primary' || key === 'primary_dark' || key === 'secondary') {
+        return 'brand';
+    }
+    if (key === 'text' || key === 'text_muted')
+        return 'text';
+    if (key === 'border')
+        return 'border';
+    return 'surface';
+}
+function tonoHsl(s, l, kind, tone, modo) {
+    const oscuro = modo === 'oscuro';
+    switch (tone) {
+        case 'natural':
+            return { s, l };
+        case 'pastel':
+            if (kind === 'brand') {
+                return {
+                    s: 32,
+                    l: oscuro ? clamp(Math.max(l, 52), 52, 66) : clamp(Math.max(l, 64), 64, 80),
+                };
+            }
+            if (kind === 'surface') {
+                return {
+                    s: oscuro ? 14 : 16,
+                    l: oscuro ? clamp(l, 8, 22) : clamp(Math.max(l, 93), 92, 98),
+                };
+            }
+            if (kind === 'text')
+                return { s: 10, l };
+            return { s: oscuro ? 12 : 14, l: oscuro ? l : clamp(Math.max(l, 86), 86, 94) };
+        case 'mate':
+            if (kind === 'brand') {
+                return { s: 28, l: clamp(l, oscuro ? 40 : 38, 54) };
+            }
+            if (kind === 'surface') {
+                return { s: oscuro ? 8 : 10, l: oscuro ? clamp(l, 8, 20) : clamp(l, 88, 96) };
+            }
+            if (kind === 'text')
+                return { s: 8, l };
+            return { s: 10, l };
+        case 'brillante':
+            if (kind === 'brand') {
+                return { s: 82, l: clamp(l, oscuro ? 48 : 46, 56) };
+            }
+            if (kind === 'surface')
+                return { s: oscuro ? 22 : 18, l };
+            if (kind === 'text')
+                return { s: 16, l };
+            return { s: 20, l };
+        case 'intenso':
+            if (kind === 'brand') {
+                return { s: 96, l: clamp(l, oscuro ? 44 : 42, 52) };
+            }
+            if (kind === 'surface')
+                return { s: oscuro ? 28 : 22, l };
+            if (kind === 'text')
+                return { s: 18, l };
+            return { s: 24, l };
+    }
+}
+/** Recolorea la paleta conservando el matiz; el tono (pastel/mate/brillante) es idempotente. */
+function aplicarTonoPaleta(palette, tone) {
+    if (tone === 'natural')
+        return { ...palette };
+    const modo = modoPaletaVisual(palette);
+    const next = { ...palette };
+    for (const key of Object.keys(palette)) {
+        const parsed = parseHex(palette[key]);
+        if (!parsed)
+            continue;
+        const hsl = rgbToHsl(parsed.r, parsed.g, parsed.b);
+        const adj = tonoHsl(hsl.s, hsl.l, kindOfVisualKey(key), tone, modo);
+        next[key] = hslToHex(hsl.h, adj.s, adj.l);
+    }
+    return next;
 }
 /** @deprecated Usar generarPaletaClaraDesdePrincipal */
 function generarPaletaDesdePrincipal(primaryHex) {

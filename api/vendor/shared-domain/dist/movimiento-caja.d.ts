@@ -1,4 +1,4 @@
-export type TipoMovimientoCaja = 'devolucion_exceso_transferencia' | 'entrada_manual' | 'salida_manual' | 'pago_domicilio' | 'pago_mesero';
+export type TipoMovimientoCaja = 'devolucion_exceso_transferencia' | 'entrada_manual' | 'salida_manual' | 'pago_domicilio' | 'pago_mesero' | 'cuota_gasto_fijo';
 export type MetodoDevolucionExceso = 'efectivo' | 'transferencia';
 /** Destino del exceso cuando el cliente transfirió más del total del pedido. */
 export type ExcesoTransferenciaDestino = MetodoDevolucionExceso | 'domicilio' | 'mesero';
@@ -7,15 +7,22 @@ export type MovimientoCajaLike = {
     monto: number;
     metodo_devolucion?: MetodoDevolucionExceso | null;
 };
+/** Efectivo o transferencia; null/omitido = efectivo (entradas históricas). */
+export declare function metodoMovimientoCaja(m: Pick<MovimientoCajaLike, 'metodo_devolucion'>): MetodoDevolucionExceso;
 /** Impacto en efectivo físico en caja (+ entra, − sale). */
 export declare function impactoMovimientoCajaEfectivo(m: MovimientoCajaLike): number;
 export declare function etiquetaTipoMovimientoCaja(tipo: TipoMovimientoCaja): string;
 export declare function resumenImpactoMovimientosCaja(movimientos: MovimientoCajaLike[]): {
+    /** Solo efectivo (entra a caja física). */
     total_entradas_manual: number;
+    total_entradas_manual_transferencia: number;
+    /** Solo efectivo (sale de caja física). */
     total_salidas_manual: number;
+    total_salidas_manual_transferencia: number;
     total_devoluciones_efectivo: number;
     total_pagos_domicilio: number;
     total_pagos_mesero_exceso: number;
+    total_cuotas_gasto_fijo: number;
     neto_movimientos_caja: number;
 };
 export type CuadreCajaEfectivoInput = {
@@ -29,13 +36,16 @@ export type CuadreCajaEfectivo = {
     ventas_efectivo: number;
     total_pagos_meseros: number;
     total_entradas_manual: number;
+    total_entradas_manual_transferencia: number;
     total_salidas_manual: number;
+    total_salidas_manual_transferencia: number;
     total_devoluciones_efectivo: number;
     total_pagos_domicilio: number;
     total_pagos_mesero_exceso: number;
+    total_cuotas_gasto_fijo: number;
     /** Caja inicial + ventas efectivo + entradas manuales */
     subtotal_entradas_caja: number;
-    /** Pagos meseros + salidas manuales + devoluciones + domicilios + mesero (exceso) */
+    /** Pagos meseros + salidas manuales + devoluciones + domicilios + mesero (exceso) + fondos */
     subtotal_salidas_caja: number;
     /** subtotal_entradas_caja − subtotal_salidas_caja */
     efectivo_esperado_en_caja: number;

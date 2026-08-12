@@ -99,6 +99,16 @@ let VisualController = class VisualController {
             config: pub,
         };
     }
+    async eliminarAsset(tipoRaw, tenantId) {
+        const tipo = parseAssetTipo(tipoRaw);
+        const deleted = await this.visual.eliminarAsset(tipo, tenantId);
+        this.gateway.emitConfigActualizada('visual');
+        const config = await this.visual.obtener(tenantId);
+        return {
+            ...deleted,
+            config,
+        };
+    }
 };
 exports.VisualController = VisualController;
 __decorate([
@@ -161,6 +171,16 @@ __decorate([
     __metadata("design:paramtypes", [String, Object, Number]),
     __metadata("design:returntype", Promise)
 ], VisualController.prototype, "subirAsset", null);
+__decorate([
+    (0, common_1.Delete)('asset/:tipo'),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
+    (0, roles_decorator_1.Roles)('admin'),
+    __param(0, (0, common_1.Param)('tipo')),
+    __param(1, (0, current_tenant_decorator_1.CurrentTenantId)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Number]),
+    __metadata("design:returntype", Promise)
+], VisualController.prototype, "eliminarAsset", null);
 exports.VisualController = VisualController = __decorate([
     (0, common_1.Controller)('visual'),
     __metadata("design:paramtypes", [config_visual_service_1.ConfigVisualService,

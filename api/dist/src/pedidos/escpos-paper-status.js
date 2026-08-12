@@ -16,7 +16,7 @@ async function consultarPapelSerial(comPath, baudRate) {
         const port = new SerialPort({ path: comPath, baudRate, autoOpen: false }, () => { });
         const timeout = setTimeout(() => {
             port.close(() => finish(null));
-        }, 2500);
+        }, 400);
         port.open((openErr) => {
             if (openErr) {
                 finish(null);

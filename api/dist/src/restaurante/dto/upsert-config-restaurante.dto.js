@@ -11,10 +11,12 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UpsertConfigRestauranteDto = void 0;
 const class_validator_1 = require("class-validator");
+const class_transformer_1 = require("class-transformer");
 class UpsertConfigRestauranteDto {
     nombre_comercial;
     telefono;
     direccion;
+    nit;
     dominio_email_interno;
     logo_archivo;
     texto_gracias_ticket;
@@ -23,6 +25,15 @@ class UpsertConfigRestauranteDto {
     texto_pie_correo;
     prefijo_asunto_correo;
     mostrar_credito_drewtech;
+    factura_mostrar_logo;
+    factura_mostrar_mesero;
+    factura_mostrar_comensales;
+    factura_mostrar_detalle_items;
+    factura_mostrar_descuentos;
+    factura_mostrar_metodo_pago;
+    factura_mostrar_vuelto;
+    factura_mostrar_propina;
+    factura_mostrar_gracias;
     etiqueta_descuento_sopas;
     etiqueta_descuento_muleros;
     modulo_inventario_activo;
@@ -30,8 +41,11 @@ class UpsertConfigRestauranteDto {
     modulo_envio_correo_activo;
     modulo_resumen_diario_activo;
     modulo_contabilidad_activo;
+    modulo_ganancias_activo;
     modulo_creditos_activo;
     modulo_odoo_activo;
+    login_pin_compartido_activo;
+    login_pin;
 }
 exports.UpsertConfigRestauranteDto = UpsertConfigRestauranteDto;
 __decorate([
@@ -53,6 +67,12 @@ __decorate([
     (0, class_validator_1.MaxLength)(255),
     __metadata("design:type", Object)
 ], UpsertConfigRestauranteDto.prototype, "direccion", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(40),
+    __metadata("design:type", Object)
+], UpsertConfigRestauranteDto.prototype, "nit", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
@@ -106,6 +126,51 @@ __decorate([
 ], UpsertConfigRestauranteDto.prototype, "mostrar_credito_drewtech", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], UpsertConfigRestauranteDto.prototype, "factura_mostrar_logo", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], UpsertConfigRestauranteDto.prototype, "factura_mostrar_mesero", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], UpsertConfigRestauranteDto.prototype, "factura_mostrar_comensales", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], UpsertConfigRestauranteDto.prototype, "factura_mostrar_detalle_items", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], UpsertConfigRestauranteDto.prototype, "factura_mostrar_descuentos", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], UpsertConfigRestauranteDto.prototype, "factura_mostrar_metodo_pago", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], UpsertConfigRestauranteDto.prototype, "factura_mostrar_vuelto", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], UpsertConfigRestauranteDto.prototype, "factura_mostrar_propina", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], UpsertConfigRestauranteDto.prototype, "factura_mostrar_gracias", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.MinLength)(1),
     (0, class_validator_1.MaxLength)(80),
@@ -147,10 +212,33 @@ __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsBoolean)(),
     __metadata("design:type", Boolean)
+], UpsertConfigRestauranteDto.prototype, "modulo_ganancias_activo", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
 ], UpsertConfigRestauranteDto.prototype, "modulo_creditos_activo", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsBoolean)(),
     __metadata("design:type", Boolean)
 ], UpsertConfigRestauranteDto.prototype, "modulo_odoo_activo", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], UpsertConfigRestauranteDto.prototype, "login_pin_compartido_activo", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_transformer_1.Transform)(({ value }) => {
+        if (value == null)
+            return undefined;
+        const digits = String(value).replace(/\D/g, '').slice(0, 4);
+        return digits === '' ? undefined : digits;
+    }),
+    (0, class_validator_1.ValidateIf)((_, v) => v !== undefined),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.Matches)(/^\d{4}$/, { message: 'El PIN debe tener exactamente 4 dígitos' }),
+    __metadata("design:type", String)
+], UpsertConfigRestauranteDto.prototype, "login_pin", void 0);
 //# sourceMappingURL=upsert-config-restaurante.dto.js.map

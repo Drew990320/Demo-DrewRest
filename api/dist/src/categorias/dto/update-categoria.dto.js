@@ -31,6 +31,7 @@ class UpdateCategoriaDto {
     prioridad_cocina_baja;
     tipo_linea_cocina_default;
     icono_menu;
+    color_icono;
 }
 exports.UpdateCategoriaDto = UpdateCategoriaDto;
 __decorate([
@@ -126,4 +127,10 @@ __decorate([
     (0, class_validator_1.IsIn)(categoria_menu_icon_1.CATEGORIA_MENU_ICON_IDS),
     __metadata("design:type", Object)
 ], UpdateCategoriaDto.prototype, "icono_menu", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.ValidateIf)((_, v) => v != null && v !== ''),
+    (0, class_validator_1.Matches)(/^#[0-9A-Fa-f]{6}$/),
+    __metadata("design:type", Object)
+], UpdateCategoriaDto.prototype, "color_icono", void 0);
 //# sourceMappingURL=update-categoria.dto.js.map

@@ -54,7 +54,7 @@ let PedidosGateway = class PedidosGateway {
             const cached = (0, auth_user_cache_1.getCachedAuthUser)(idUsuario);
             if (cached?.activo) {
                 const pwdAtEsperado = (cached.passwordCambiadoEn ?? cached.creadoEn).getTime();
-                if (payload.pwdAt == null || payload.pwdAt < pwdAtEsperado) {
+                if (payload.pwdAt == null || payload.pwdAt + 2_000 < pwdAtEsperado) {
                     return null;
                 }
                 if (payload.tid != null &&
@@ -75,7 +75,7 @@ let PedidosGateway = class PedidosGateway {
                 return null;
             }
             const pwdAtEsperado = (user.passwordCambiadoEn ?? user.creadoEn).getTime();
-            if (payload.pwdAt == null || payload.pwdAt < pwdAtEsperado) {
+            if (payload.pwdAt == null || payload.pwdAt + 2_000 < pwdAtEsperado) {
                 return null;
             }
             if (payload.tid != null &&

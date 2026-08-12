@@ -18,8 +18,7 @@ class SetupSuperadminDto {
 }
 exports.SetupSuperadminDto = SetupSuperadminDto;
 __decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsEmail)({ require_tld: false }),
+    (0, class_validator_1.IsEmail)({ require_tld: true }, { message: 'Indica un correo válido (ej. tu@gmail.com)' }),
     __metadata("design:type", String)
 ], SetupSuperadminDto.prototype, "email", void 0);
 __decorate([

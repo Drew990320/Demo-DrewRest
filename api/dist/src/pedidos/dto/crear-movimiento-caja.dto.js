@@ -16,6 +16,7 @@ class CrearMovimientoCajaDto {
     monto;
     motivo;
     fecha;
+    metodo;
 }
 exports.CrearMovimientoCajaDto = CrearMovimientoCajaDto;
 __decorate([
@@ -38,4 +39,9 @@ __decorate([
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], CrearMovimientoCajaDto.prototype, "fecha", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsIn)(['efectivo', 'transferencia']),
+    __metadata("design:type", String)
+], CrearMovimientoCajaDto.prototype, "metodo", void 0);
 //# sourceMappingURL=crear-movimiento-caja.dto.js.map

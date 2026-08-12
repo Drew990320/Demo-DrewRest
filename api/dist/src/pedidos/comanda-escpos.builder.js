@@ -2,10 +2,12 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.buildComandaEscPos = buildComandaEscPos;
 const escpos_utils_1 = require("./escpos-utils");
-async function buildComandaEscPos(ticket, charWidth = escpos_utils_1.DEFAULT_ESC_POS_WIDTH) {
-    const printer = (0, escpos_utils_1.createEscPosPrinter)(charWidth);
-    const w = charWidth;
+async function buildComandaEscPos(ticket, charWidthOrOpts = escpos_utils_1.DEFAULT_ESC_POS_WIDTH) {
+    const opts = (0, escpos_utils_1.resolveEscPosTicketOpts)(charWidthOrOpts);
+    const printer = (0, escpos_utils_1.createEscPosPrinter)(opts.charWidth);
+    const w = opts.charWidth;
     const sep = '-'.repeat(w);
+    await (0, escpos_utils_1.applyEscPosTicketStart)(printer, opts);
     await printer.alignCenter();
     await printer.println('COMANDA COCINA');
     if (ticket.es_adicional) {
@@ -58,7 +60,7 @@ async function buildComandaEscPos(ticket, charWidth = escpos_utils_1.DEFAULT_ESC
         await printer.newLine();
     }
     await printer.println(sep);
-    await printer.cut();
+    await (0, escpos_utils_1.applyEscPosTicketEnd)(printer, opts);
     return (0, escpos_utils_1.bufferFromPrinter)(printer);
 }
 //# sourceMappingURL=comanda-escpos.builder.js.map

@@ -74,6 +74,7 @@ let SistemaController = class SistemaController {
             nombre: (0, restaurant_branding_1.restaurantName)(),
             telefono: (0, restaurant_branding_1.restaurantTicketPhone)() || null,
             direccion: (0, restaurant_branding_1.restaurantTicketAddress)() || null,
+            nit: (0, restaurant_branding_1.restaurantTicketNit)() || null,
             tiene_logo: tieneLogo,
             logo_url: tieneLogo ? '/sistema/logo' : null,
         };

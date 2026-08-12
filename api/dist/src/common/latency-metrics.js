@@ -141,6 +141,9 @@ function snapshotRendimiento(extra) {
                 estado: j.estado,
                 retries: j.retries,
                 cola_a_envio_ms: j.sentAt != null ? j.sentAt - j.queuedAt : null,
+                envio_a_fin_ms: j.sentAt != null && j.finishedAt != null
+                    ? j.finishedAt - j.sentAt
+                    : null,
                 total_ms: j.finishedAt != null ? j.finishedAt - j.queuedAt : null,
                 error: j.error ?? null,
             })),

@@ -78,7 +78,7 @@ exports.HELP_TUTORIAL_MODULES = [
             },
             {
                 title: 'Transferir o agrupar mesas',
-                body: 'Puedes mover el pedido entero a otra mesa libre, o agrupar mesas adicionales al mismo pedido. Separa el grupo antes de enviar a cocina.',
+                body: 'Puedes mover el pedido a otra mesa (libre u ocupada como cuenta separada), o agrupar mesas adicionales al mismo pedido. Separa el grupo antes de enviar a cocina.',
             },
         ],
     },
@@ -143,8 +143,8 @@ exports.HELP_TUTORIAL_MODULES = [
                 body: 'Crea productos, precios, subítems de cocina y reglas de reparto. Las categorías definen el día de la semana visible.',
             },
             {
-                title: 'Días del menú',
-                body: 'Activa categorías por día para rotar ofertas (ej. menú ejecutivo entre semana).',
+                title: 'Categorías y disponibilidad',
+                body: 'Organiza categorías y define qué días aparecen en el menú (ej. menú ejecutivo entre semana).',
             },
             {
                 title: 'Descuentos y promociones',
@@ -627,8 +627,8 @@ exports.HELP_TUTORIAL_ACTIONS = [
         steps: [
             {
                 title: '1. Cuándo transferir',
-                body: 'El cliente cambió de mesa física y llevas todo el pedido a otra mesa libre.',
-                tip: 'Si son varias mesas juntas, usa «Agrupar mesas» en lugar de transferir.',
+                body: 'El cliente cambió de mesa: muévelo a una libre, o a una ocupada para reunirse con otro cliente (queda como segunda cuenta, sin agrupar mesas).',
+                tip: 'Si quieren una sola cuenta en varias mesas físicas, usa «Agrupar mesas».',
             },
             {
                 title: '2. Abre transferir',
@@ -637,8 +637,8 @@ exports.HELP_TUTORIAL_ACTIONS = [
             },
             {
                 title: '3. Confirma',
-                buscar: 'Mapa de mesas libres',
-                accion: 'Toca la mesa libre destino y confirma.',
+                buscar: 'Mapa de mesas libres u ocupadas',
+                accion: 'Toca la mesa destino y confirma. En ocupada verás chips de pedidos como en bebidas.',
             },
         ],
     },

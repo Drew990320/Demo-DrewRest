@@ -57,53 +57,71 @@ let TicketPreviewService = class TicketPreviewService {
             throw new common_1.ServiceUnavailableException('Vista previa de tickets no disponible en este servidor');
         }
     }
-    charWidth() {
+    charWidth(anchoMm) {
+        if (anchoMm != null && anchoMm !== '') {
+            return (0, ticket_preview_util_1.ticketPreviewCharsForMm)((0, ticket_preview_util_1.ticketPreviewAnchoMm)(this.config, anchoMm));
+        }
         return (0, ticket_preview_util_1.ticketPreviewCharWidth)(this.config);
     }
-    async previewLogoPng() {
-        return (0, escpos_utils_1.ticketLogoPngBufferForPreview)();
+    anchoMm(override) {
+        return (0, ticket_preview_util_1.ticketPreviewAnchoMm)(this.config, override);
+    }
+    async previewLogoPng(charWidth) {
+        return (0, escpos_utils_1.ticketLogoPngBufferForPreview)(charWidth);
     }
     logoDataUrlFromPng(logoPng) {
         if (!logoPng?.length)
             return null;
         return `data:image/png;base64,${logoPng.toString('base64')}`;
     }
-    async bufferToHtml(buffer, subtitle) {
-        const logoPng = await this.previewLogoPng();
-        const segments = (0, escpos_buffer_decode_1.decodeEscPosBuffer)(buffer, this.charWidth());
+    async bufferToHtml(buffer, subtitle, anchoMmOverride) {
+        const mm = this.anchoMm(anchoMmOverride);
+        const chars = this.charWidth(mm);
+        const logoPng = await this.previewLogoPng(chars);
+        const segments = (0, escpos_buffer_decode_1.decodeEscPosBuffer)(buffer, chars);
         return (0, ticket_preview_html_builder_1.segmentsToTicketPreviewHtml)(segments, {
             subtitle,
             logoDataUrl: this.logoDataUrlFromPng(logoPng),
+            anchoMm: mm,
         });
     }
-    async bufferToPdf(buffer, subtitle) {
-        const logoPng = await this.previewLogoPng();
+    async bufferToPdf(buffer, subtitle, anchoMmOverride) {
+        const mm = this.anchoMm(anchoMmOverride);
+        const chars = this.charWidth(mm);
+        const logoPng = await this.previewLogoPng(chars);
         return withTimeout((0, ticket_preview_pdf_1.escposBufferToPdf)(buffer, {
             subtitle,
             logoPng,
-            charWidth: this.charWidth(),
+            charWidth: chars,
+            anchoMm: mm,
         }), 12_000);
     }
     catalog() {
-        return ticket_preview_samples_1.TICKET_PREVIEW_CATALOG;
+        return {
+            ancho_mm: this.anchoMm(),
+            anchos_mm: [58, 80],
+            items: ticket_preview_samples_1.TICKET_PREVIEW_CATALOG,
+        };
     }
-    async demoHtml(tipo) {
+    async demoHtml(tipo, anchoMm) {
         this.assertEnabled();
         const item = (0, ticket_preview_samples_1.catalogItemForTipo)(tipo);
         if (!item) {
             throw new common_1.NotFoundException(`Tipo de ticket no válido: ${tipo}`);
         }
-        const buffer = await (0, ticket_preview_samples_1.buildSampleEscPosBuffer)(tipo, this.charWidth());
-        return this.bufferToHtml(buffer, `${item.label} · demo 58 mm`);
+        const mm = this.anchoMm(anchoMm);
+        const buffer = await (0, ticket_preview_samples_1.buildSampleEscPosBuffer)(tipo, this.charWidth(mm));
+        return this.bufferToHtml(buffer, `${item.label} · demo ${mm} mm`, mm);
     }
-    async demoPdf(tipo) {
+    async demoPdf(tipo, anchoMm) {
         this.assertEnabled();
         const item = (0, ticket_preview_samples_1.catalogItemForTipo)(tipo);
         if (!item) {
             throw new common_1.NotFoundException(`Tipo de ticket no válido: ${tipo}`);
         }
-        const buffer = await (0, ticket_preview_samples_1.buildSampleEscPosBuffer)(tipo, this.charWidth());
-        return this.bufferToPdf(buffer, `${item.label} · demo 58 mm`);
+        const mm = this.anchoMm(anchoMm);
+        const buffer = await (0, ticket_preview_samples_1.buildSampleEscPosBuffer)(tipo, this.charWidth(mm));
+        return this.bufferToPdf(buffer, `${item.label} · demo ${mm} mm`, mm);
     }
     async pedidoComandaHtml(idPedido, opts = {}) {
         this.assertEnabled();

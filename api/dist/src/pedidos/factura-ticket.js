@@ -9,7 +9,7 @@ function labelMetodoPago(mp) {
     if (mp === 'transferencia')
         return 'Transferencia';
     if (mp === 'tarjeta')
-        return 'Tarjeta';
+        return 'Tarjeta crédito/débito';
     if (mp === 'fiado')
         return 'Fiado / crédito';
     if (mp === 'mixto')

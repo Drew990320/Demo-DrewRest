@@ -9,7 +9,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.AsignarDelegacionCierreDto = exports.AplicarSodaMeseroDto = exports.AplicarSodaAlmuerzoDto = exports.UpsertPagoTurnoMeseroDto = void 0;
+exports.AsignarDelegacionCierreDto = exports.AplicarBeneficiosTurnoTodosDto = exports.AplicarBeneficioTurnoMeseroDto = exports.AplicarBeneficioTurnoDto = exports.UpdateBeneficioTurnoDto = exports.UpsertBeneficioTurnoDto = exports.RepartirPagoTurnoMeserosDto = exports.UpsertPagoTurnoMeseroDto = void 0;
 const class_transformer_1 = require("class-transformer");
 const class_validator_1 = require("class-validator");
 class UpsertPagoTurnoMeseroDto {
@@ -41,25 +41,145 @@ __decorate([
     (0, class_validator_1.MaxLength)(500),
     __metadata("design:type", String)
 ], UpsertPagoTurnoMeseroDto.prototype, "notas", void 0);
-class AplicarSodaAlmuerzoDto {
+class RepartirPagoTurnoMeserosDto {
     fecha;
+    monto_total;
+    ids_usuarios;
+    notas;
 }
-exports.AplicarSodaAlmuerzoDto = AplicarSodaAlmuerzoDto;
+exports.RepartirPagoTurnoMeserosDto = RepartirPagoTurnoMeserosDto;
+__decorate([
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], RepartirPagoTurnoMeserosDto.prototype, "fecha", void 0);
+__decorate([
+    (0, class_transformer_1.Type)(() => Number),
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.Min)(1),
+    __metadata("design:type", Number)
+], RepartirPagoTurnoMeserosDto.prototype, "monto_total", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsArray)(),
+    (0, class_transformer_1.Type)(() => Number),
+    (0, class_validator_1.IsInt)({ each: true }),
+    __metadata("design:type", Array)
+], RepartirPagoTurnoMeserosDto.prototype, "ids_usuarios", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(500),
     __metadata("design:type", String)
-], AplicarSodaAlmuerzoDto.prototype, "fecha", void 0);
-class AplicarSodaMeseroDto extends AplicarSodaAlmuerzoDto {
-    id_usuario;
+], RepartirPagoTurnoMeserosDto.prototype, "notas", void 0);
+class UpsertBeneficioTurnoDto {
+    id_producto;
+    monto_descuento;
+    descontar_stock;
+    activo;
+    orden;
 }
-exports.AplicarSodaMeseroDto = AplicarSodaMeseroDto;
+exports.UpsertBeneficioTurnoDto = UpsertBeneficioTurnoDto;
 __decorate([
     (0, class_transformer_1.Type)(() => Number),
     (0, class_validator_1.IsInt)(),
     (0, class_validator_1.Min)(1),
     __metadata("design:type", Number)
-], AplicarSodaMeseroDto.prototype, "id_usuario", void 0);
+], UpsertBeneficioTurnoDto.prototype, "id_producto", void 0);
+__decorate([
+    (0, class_transformer_1.Type)(() => Number),
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.Min)(0),
+    __metadata("design:type", Number)
+], UpsertBeneficioTurnoDto.prototype, "monto_descuento", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], UpsertBeneficioTurnoDto.prototype, "descontar_stock", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], UpsertBeneficioTurnoDto.prototype, "activo", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_transformer_1.Type)(() => Number),
+    (0, class_validator_1.IsInt)(),
+    __metadata("design:type", Number)
+], UpsertBeneficioTurnoDto.prototype, "orden", void 0);
+class UpdateBeneficioTurnoDto {
+    monto_descuento;
+    descontar_stock;
+    activo;
+    orden;
+}
+exports.UpdateBeneficioTurnoDto = UpdateBeneficioTurnoDto;
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_transformer_1.Type)(() => Number),
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.Min)(0),
+    __metadata("design:type", Number)
+], UpdateBeneficioTurnoDto.prototype, "monto_descuento", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], UpdateBeneficioTurnoDto.prototype, "descontar_stock", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], UpdateBeneficioTurnoDto.prototype, "activo", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_transformer_1.Type)(() => Number),
+    (0, class_validator_1.IsInt)(),
+    __metadata("design:type", Number)
+], UpdateBeneficioTurnoDto.prototype, "orden", void 0);
+class AplicarBeneficioTurnoDto {
+    fecha;
+    id_beneficio_turno;
+}
+exports.AplicarBeneficioTurnoDto = AplicarBeneficioTurnoDto;
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], AplicarBeneficioTurnoDto.prototype, "fecha", void 0);
+__decorate([
+    (0, class_transformer_1.Type)(() => Number),
+    (0, class_validator_1.IsInt)(),
+    (0, class_validator_1.Min)(1),
+    __metadata("design:type", Number)
+], AplicarBeneficioTurnoDto.prototype, "id_beneficio_turno", void 0);
+class AplicarBeneficioTurnoMeseroDto extends AplicarBeneficioTurnoDto {
+    id_usuario;
+}
+exports.AplicarBeneficioTurnoMeseroDto = AplicarBeneficioTurnoMeseroDto;
+__decorate([
+    (0, class_transformer_1.Type)(() => Number),
+    (0, class_validator_1.IsInt)(),
+    (0, class_validator_1.Min)(1),
+    __metadata("design:type", Number)
+], AplicarBeneficioTurnoMeseroDto.prototype, "id_usuario", void 0);
+class AplicarBeneficiosTurnoTodosDto {
+    fecha;
+    ids_beneficio_turno;
+}
+exports.AplicarBeneficiosTurnoTodosDto = AplicarBeneficiosTurnoTodosDto;
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], AplicarBeneficiosTurnoTodosDto.prototype, "fecha", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsArray)(),
+    (0, class_transformer_1.Type)(() => Number),
+    (0, class_validator_1.IsInt)({ each: true }),
+    __metadata("design:type", Array)
+], AplicarBeneficiosTurnoTodosDto.prototype, "ids_beneficio_turno", void 0);
 class AsignarDelegacionCierreDto {
     fecha;
     id_usuario;

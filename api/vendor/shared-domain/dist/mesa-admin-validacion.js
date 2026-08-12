@@ -32,11 +32,11 @@ function aplicarPatchDisponibilidadMesa(actual, patch) {
 }
 function msgNumerosReservados(mesasVirtuales) {
     const r = (0, mesa_label_1.resolverMesasVirtuales)(mesasVirtuales);
-    return `Los números ${r.numero_mesa_para_llevar} (para llevar) y ${r.numero_mesa_mostrador} (mostrador) están reservados.`;
+    return `Los números ${r.numero_mesa_boutique} (tienda), ${r.numero_mesa_para_llevar} (para llevar) y ${r.numero_mesa_mostrador} (mostrador) están reservados.`;
 }
 function msgMesasSistema(mesasVirtuales) {
     const r = (0, mesa_label_1.resolverMesasVirtuales)(mesasVirtuales);
-    return `Las mesas ${r.numero_mesa_para_llevar} (para llevar) y ${r.numero_mesa_mostrador} (mostrador) son del sistema y no se pueden modificar.`;
+    return `Las mesas ${r.numero_mesa_boutique} (tienda), ${r.numero_mesa_para_llevar} (para llevar) y ${r.numero_mesa_mostrador} (mostrador) son del sistema y no se pueden modificar.`;
 }
 function validarPatchMesaAdmin(opts) {
     const { numeroMesa, flagsActuales, patch, pedidosActivos, weekdayHoy, mesasVirtuales, } = opts;

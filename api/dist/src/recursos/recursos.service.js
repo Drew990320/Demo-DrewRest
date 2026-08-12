@@ -8,23 +8,34 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.RecursosService = void 0;
 const common_1 = require("@nestjs/common");
 const recurso_comportamiento_1 = require("@drewrest/shared-domain/recurso-comportamiento");
 const recurso_movimientos_1 = require("@drewrest/shared-domain/recurso-movimientos");
 const inventario_unidades_1 = require("@drewrest/shared-domain/inventario-unidades");
+const inventario_costo_1 = require("@drewrest/shared-domain/inventario-costo");
 const prisma_service_1 = require("../prisma/prisma.service");
 const tenant_constants_1 = require("../tenant/tenant.constants");
 const recurso_stock_producto_1 = require("./recurso-stock-producto");
 const recursos_migracion_service_1 = require("./recursos-migracion.service");
 const deduccion_contexto_cache_1 = require("../inventario/deduccion-contexto-cache");
+const inventario_receta_service_1 = require("../inventario/inventario-receta.service");
+const RECETAS_VACIAS = {
+    productos_actualizados: 0,
+    ids_producto: [],
+};
 let RecursosService = class RecursosService {
     prisma;
     migracion;
-    constructor(prisma, migracion) {
+    recetasCosto;
+    constructor(prisma, migracion, recetasCosto) {
         this.prisma = prisma;
         this.migracion = migracion;
+        this.recetasCosto = recetasCosto;
     }
     qty(v) {
         return (0, inventario_unidades_1.redondearInventario)(Number(v));
@@ -283,7 +294,7 @@ let RecursosService = class RecursosService {
         });
         const estado = dto.estado && (0, recurso_comportamiento_1.esEstadoRecurso)(dto.estado) ? dto.estado : 'activo';
         const stockInicial = dto.stock_inicial ?? 0;
-        return this.prisma.$transaction(async (tx) => {
+        const mapped = await this.prisma.$transaction(async (tx) => {
             let rec;
             try {
                 rec = await tx.recurso.create({
@@ -352,6 +363,11 @@ let RecursosService = class RecursosService {
             (0, deduccion_contexto_cache_1.invalidateDeduccionEstructuraCache)(tenantId);
             return this.mapRecurso(rec);
         });
+        if (stockInicial > 0) {
+            const recetas_recalculadas = await this.recetasCosto.recalcularPorRecurso(mapped.id_recurso, tenantId);
+            return { ...mapped, recetas_recalculadas };
+        }
+        return { ...mapped, recetas_recalculadas: RECETAS_VACIAS };
     }
     async actualizarRecurso(id, dto, tenantId = tenant_constants_1.DEFAULT_TENANT_ID) {
         const existing = await this.prisma.recurso.findFirst({
@@ -436,7 +452,12 @@ let RecursosService = class RecursosService {
                 await this.prisma.$transaction((tx) => (0, recurso_stock_producto_1.syncStockProductoDesdeRecursoTx)(tx, r.idProducto, tenantId));
             }
             (0, deduccion_contexto_cache_1.invalidateDeduccionEstructuraCache)(tenantId);
-            return this.mapRecurso(r);
+            let recetas_recalculadas = RECETAS_VACIAS;
+            if (dto.costo !== undefined &&
+                Number(dto.costo) !== Number(existing.costo)) {
+                recetas_recalculadas = await this.recetasCosto.recalcularPorRecurso(id, tenantId);
+            }
+            return { ...this.mapRecurso(r), recetas_recalculadas };
         }
         catch (e) {
             if (e instanceof common_1.BadRequestException)
@@ -469,14 +490,24 @@ let RecursosService = class RecursosService {
             nuevo = (0, inventario_unidades_1.redondearInventario)(actual + delta);
         }
         const abs = Math.abs(input.cantidad);
-        const costoUnit = input.costo_unitario ?? (rec.costo != null ? Number(rec.costo) : null);
+        const costoCompra = input.costo_unitario ?? (rec.costo != null ? Number(rec.costo) : null);
+        const stockAntes = actual;
+        const costoAntes = rec.costo != null ? Number(rec.costo) : 0;
+        const costoPromedio = input.tipo === 'compra' && costoCompra != null
+            ? (0, inventario_costo_1.calcularCostoPromedioPonderado)({
+                stockAnterior: stockAntes,
+                costoAnterior: costoAntes,
+                qtyEntrada: abs,
+                costoEntrada: costoCompra,
+            })
+            : null;
         await tx.movimientoRecurso.create({
             data: {
                 idRecurso,
                 tipo: input.tipo,
                 cantidad: abs,
-                costoUnitario: costoUnit,
-                costoTotal: costoUnit != null ? abs * costoUnit : null,
+                costoUnitario: costoCompra,
+                costoTotal: costoCompra != null ? abs * costoCompra : null,
                 observacion: input.observacion ?? null,
                 moduloOrigen: input.modulo_origen ?? 'recursos',
                 idDocumento: input.id_documento ?? null,
@@ -498,14 +529,20 @@ let RecursosService = class RecursosService {
                 data: {
                     stock: nuevo,
                     estado: input.tipo === 'baja' ? 'baja' : estado,
-                    ...(input.tipo === 'compra' && costoUnit != null
-                        ? { costo: costoUnit }
+                    ...(input.tipo === 'compra' && costoPromedio != null
+                        ? { costo: costoPromedio }
                         : {}),
                 },
             });
             if (rec.idProducto != null) {
                 await (0, recurso_stock_producto_1.syncStockProductoDesdeRecursoTx)(tx, rec.idProducto, tenantId);
             }
+        }
+        else if (input.tipo === 'compra' && costoPromedio != null) {
+            await tx.recurso.update({
+                where: { idRecurso },
+                data: { costo: costoPromedio },
+            });
         }
         else if (input.tipo === 'baja' || input.tipo === 'mantenimiento') {
             await tx.recurso.update({
@@ -515,7 +552,11 @@ let RecursosService = class RecursosService {
                 },
             });
         }
-        return { skipped: false, stock: nuevo };
+        return {
+            skipped: false,
+            stock: nuevo,
+            costo_revaluado: input.tipo === 'compra' && costoPromedio != null,
+        };
     }
     async registrarMovimiento(id, dto, tenantId = tenant_constants_1.DEFAULT_TENANT_ID, idUsuario) {
         let tipo;
@@ -540,7 +581,12 @@ let RecursosService = class RecursosService {
                 modulo_origen: 'recursos',
             });
         });
-        return this.obtenerRecurso(id, tenantId);
+        let recetas_recalculadas = RECETAS_VACIAS;
+        if (tipo === 'compra') {
+            recetas_recalculadas = await this.recetasCosto.recalcularPorRecurso(id, tenantId);
+        }
+        const recurso = await this.obtenerRecurso(id, tenantId);
+        return { ...recurso, recetas_recalculadas };
     }
     async aplicarMovimientoDeduccionTx(tx, input) {
         return this.aplicarMovimientoTx(tx, input.id_recurso, input.tenant_id, {
@@ -718,7 +764,9 @@ let RecursosService = class RecursosService {
 exports.RecursosService = RecursosService;
 exports.RecursosService = RecursosService = __decorate([
     (0, common_1.Injectable)(),
+    __param(2, (0, common_1.Inject)((0, common_1.forwardRef)(() => inventario_receta_service_1.InventarioRecetaService))),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
-        recursos_migracion_service_1.RecursosMigracionService])
+        recursos_migracion_service_1.RecursosMigracionService,
+        inventario_receta_service_1.InventarioRecetaService])
 ], RecursosService);
 //# sourceMappingURL=recursos.service.js.map

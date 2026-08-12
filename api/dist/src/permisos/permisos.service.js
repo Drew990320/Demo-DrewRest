@@ -202,6 +202,24 @@ let PermisosService = class PermisosService {
                 permisos_chef: chef,
             };
         }
+        if (rol === 'autoservicio') {
+            return {
+                agregar_items: true,
+                editar_cantidades: true,
+                quitar_lineas: true,
+                enviar_cocina: true,
+                reimprimir_comanda: false,
+                cobrar: false,
+                precuenta: false,
+                reimprimir_factura: false,
+                cancelar_pedido: true,
+                transferir_mesa: false,
+                agrupar_mesas: false,
+                ayuda_companeros: false,
+                puede_cerrar_anulando: false,
+                es_admin: false,
+            };
+        }
         if (rol !== 'mesero') {
             return {
                 ...Object.fromEntries(permisos_mesero_1.PERMISOS_MESERO_KEYS.map((k) => [k, false])),
@@ -222,6 +240,19 @@ let PermisosService = class PermisosService {
             return;
         if (opts?.permitirChef && rol === 'chef')
             return;
+        if (rol === 'autoservicio') {
+            const allowed = [
+                'agregar_items',
+                'editar_cantidades',
+                'quitar_lineas',
+                'enviar_cocina',
+                'cancelar_pedido',
+            ];
+            if (!allowed.includes(permiso)) {
+                throw new common_1.ForbiddenException('No tienes permiso para esta acción');
+            }
+            return;
+        }
         if (rol !== 'mesero') {
             throw new common_1.ForbiddenException('No tienes permiso para esta acción');
         }

@@ -70,7 +70,7 @@ exports.PERMISOS_MESERO_META = {
     },
     transferir_mesa: {
         titulo: 'Transferir mesa',
-        detalle: 'Mover el pedido a otra mesa libre',
+        detalle: 'Mover el pedido a otra mesa (libre u ocupada como segunda cuenta)',
     },
     agrupar_mesas: {
         titulo: 'Agrupar mesas',

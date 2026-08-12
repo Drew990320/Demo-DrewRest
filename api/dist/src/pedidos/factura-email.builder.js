@@ -30,64 +30,87 @@ function fechaTicket(iso) {
     });
 }
 function buildFacturaEmailText(ticket) {
-    const lines = [(0, escpos_utils_1.ticketNombreLocal)()];
-    if ((0, escpos_utils_1.ticketTelefono)())
-        lines.push(`Tel: ${(0, escpos_utils_1.ticketTelefono)()}`);
-    if ((0, escpos_utils_1.ticketDireccion)())
-        lines.push((0, escpos_utils_1.ticketDireccion)());
-    lines.push('Cuenta / Factura', '', `${ticket.mesa_etiqueta}`, `Pedido #${ticket.id_pedido}`, ticket.id_factura != null ? `Factura #${ticket.id_factura}` : '', `Mesero: ${ticket.mesero || '—'}`, `Comensales: ${ticket.num_comensales}`, `Fecha: ${fechaTicket(ticket.emitida_en)}`, `Pago: ${(0, factura_ticket_1.labelMetodoPago)(ticket.metodo_pago)}`, '', 'Detalle', '--------');
-    for (const l of ticket.lineas) {
-        lines.push(`${l.cantidad}× ${l.nombre_producto}  ${formatCop(l.subtotal_linea)}`);
-        for (const p of l.personalizaciones ?? []) {
-            lines.push(`   · ${p}`);
-        }
-        if (l.nota_cocina?.trim()) {
-            lines.push(`   Nota: ${l.nota_cocina.trim()}`);
-        }
+    const flags = (0, restaurant_branding_1.restaurantFacturaMostrarFlags)();
+    const lines = [];
+    if (flags.logo) {
+        lines.push((0, escpos_utils_1.ticketNombreLocal)());
+        if ((0, escpos_utils_1.ticketNit)())
+            lines.push(`NIT: ${(0, escpos_utils_1.ticketNit)()}`);
+        if ((0, escpos_utils_1.ticketTelefono)())
+            lines.push(`Tel: ${(0, escpos_utils_1.ticketTelefono)()}`);
+        if ((0, escpos_utils_1.ticketDireccion)())
+            lines.push((0, escpos_utils_1.ticketDireccion)());
+    }
+    lines.push('Cuenta / Factura', '', `${ticket.mesa_etiqueta}`, `Pedido #${ticket.id_pedido}`, ticket.id_factura != null ? `Factura #${ticket.id_factura}` : '');
+    if (flags.mesero)
+        lines.push(`Mesero: ${ticket.mesero || '—'}`);
+    if (flags.comensales)
+        lines.push(`Comensales: ${ticket.num_comensales}`);
+    lines.push(`Fecha: ${fechaTicket(ticket.emitida_en)}`);
+    if (flags.metodoPago) {
+        lines.push(`Pago: ${(0, factura_ticket_1.labelMetodoPago)(ticket.metodo_pago)}`);
     }
     lines.push('');
-    lines.push(`Subtotal: ${formatCop(ticket.subtotal)}`);
-    if (ticket.descuento_sopas > 0) {
-        lines.push(`Desc. sopas: -${formatCop(ticket.descuento_sopas)}`);
-    }
-    if (ticket.descuento_muleros > 0) {
-        lines.push(`Desc. muleros: -${formatCop(ticket.descuento_muleros)}`);
-    }
-    if (ticket.descuento_promociones > 0) {
-        lines.push(`Desc. promociones: -${formatCop(ticket.descuento_promociones)}`);
-    }
-    lines.push(`TOTAL: ${formatCop(ticket.total)}`);
-    if (!ticket.es_precuenta &&
-        !ticket.es_total_pedido &&
-        ticket.detalle_exceso_cobro) {
-        const instrucciones = (0, factura_vuelto_1.lineasTicketExcesoCobro)(ticket.detalle_exceso_cobro);
-        if (instrucciones.length > 0) {
-            lines.push('');
-            for (const l of instrucciones) {
-                lines.push(`${l.etiqueta}: ${formatCop(l.monto)}`);
+    if (flags.detalleItems) {
+        lines.push('Detalle', '--------');
+        for (const l of ticket.lineas) {
+            lines.push(`${l.cantidad}× ${l.nombre_producto}  ${formatCop(l.subtotal_linea)}`);
+            for (const p of l.personalizaciones ?? []) {
+                lines.push(`   · ${p}`);
+            }
+            if (l.nota_cocina?.trim()) {
+                lines.push(`   Nota: ${l.nota_cocina.trim()}`);
             }
         }
+        lines.push('');
     }
-    else if (!ticket.es_precuenta &&
-        !ticket.es_total_pedido &&
-        ticket.vuelto_cliente &&
-        ticket.vuelto_cliente.vuelto_total > 0) {
-        const v = ticket.vuelto_cliente;
-        if (v.monto_recibido_efectivo != null && v.monto_recibido_efectivo > 0) {
-            lines.push(`Recibido efectivo: ${formatCop(v.monto_recibido_efectivo)}`);
+    lines.push(`Subtotal: ${formatCop(ticket.subtotal)}`);
+    if (flags.descuentos) {
+        if (ticket.descuento_sopas > 0) {
+            lines.push(`Desc. sopas: -${formatCop(ticket.descuento_sopas)}`);
         }
-        if (v.monto_transferencia_recibido != null &&
-            v.monto_transferencia_recibido > 0) {
-            lines.push(`Recibido transferencia: ${formatCop(v.monto_transferencia_recibido)}`);
+        if (ticket.descuento_muleros > 0) {
+            lines.push(`Desc. muleros: -${formatCop(ticket.descuento_muleros)}`);
         }
-        if (v.vuelto_efectivo > 0 && v.vuelto_transferencia > 0) {
-            lines.push(`Vuelto efectivo: ${formatCop(v.vuelto_efectivo)}`);
-            lines.push(`Vuelto transferencia: ${formatCop(v.vuelto_transferencia)}`);
+        if (ticket.descuento_promociones > 0) {
+            lines.push(`Desc. promociones: -${formatCop(ticket.descuento_promociones)}`);
         }
-        lines.push(`VUELTO: ${formatCop(v.vuelto_total)}`);
+    }
+    lines.push(`TOTAL: ${formatCop(ticket.total)}`);
+    if (flags.vuelto) {
+        if (!ticket.es_precuenta &&
+            !ticket.es_total_pedido &&
+            ticket.detalle_exceso_cobro) {
+            const instrucciones = (0, factura_vuelto_1.lineasTicketExcesoCobro)(ticket.detalle_exceso_cobro);
+            if (instrucciones.length > 0) {
+                lines.push('');
+                for (const l of instrucciones) {
+                    lines.push(`${l.etiqueta}: ${formatCop(l.monto)}`);
+                }
+            }
+        }
+        else if (!ticket.es_precuenta &&
+            !ticket.es_total_pedido &&
+            ticket.vuelto_cliente &&
+            ticket.vuelto_cliente.vuelto_total > 0) {
+            const v = ticket.vuelto_cliente;
+            if (v.monto_recibido_efectivo != null && v.monto_recibido_efectivo > 0) {
+                lines.push(`Recibido efectivo: ${formatCop(v.monto_recibido_efectivo)}`);
+            }
+            if (v.monto_transferencia_recibido != null &&
+                v.monto_transferencia_recibido > 0) {
+                lines.push(`Recibido transferencia: ${formatCop(v.monto_transferencia_recibido)}`);
+            }
+            if (v.vuelto_efectivo > 0 && v.vuelto_transferencia > 0) {
+                lines.push(`Vuelto efectivo: ${formatCop(v.vuelto_efectivo)}`);
+                lines.push(`Vuelto transferencia: ${formatCop(v.vuelto_transferencia)}`);
+            }
+            lines.push(`VUELTO: ${formatCop(v.vuelto_total)}`);
+        }
     }
     lines.push('');
-    lines.push((0, restaurant_branding_1.restaurantTextoGraciasTicket)());
+    if (flags.gracias)
+        lines.push((0, restaurant_branding_1.restaurantTextoGraciasTicket)());
     const pieCorreo = (0, restaurant_branding_1.restaurantTextoPieCorreo)();
     if (pieCorreo)
         lines.push(pieCorreo);
@@ -99,47 +122,56 @@ function buildFacturaEmailText(ticket) {
     return lines.filter((x) => x !== '').join('\n');
 }
 function buildFacturaEmailHtml(ticket) {
-    const filas = ticket.lineas
-        .map((l) => {
-        const extras = [
-            ...(l.personalizaciones ?? []).map((p) => escapeHtml(p)),
-            l.nota_cocina?.trim() ? `Nota: ${escapeHtml(l.nota_cocina.trim())}` : '',
-        ]
-            .filter(Boolean)
-            .map((t) => `<div style="color:#666;font-size:12px;margin-top:2px">${t}</div>`)
-            .join('');
-        return `<tr>
+    const flags = (0, restaurant_branding_1.restaurantFacturaMostrarFlags)();
+    const filas = flags.detalleItems
+        ? ticket.lineas
+            .map((l) => {
+            const extras = [
+                ...(l.personalizaciones ?? []).map((p) => escapeHtml(p)),
+                l.nota_cocina?.trim()
+                    ? `Nota: ${escapeHtml(l.nota_cocina.trim())}`
+                    : '',
+            ]
+                .filter(Boolean)
+                .map((t) => `<div style="color:#666;font-size:12px;margin-top:2px">${t}</div>`)
+                .join('');
+            return `<tr>
         <td style="padding:8px 0;border-bottom:1px solid #eee;vertical-align:top">${l.cantidad}× ${escapeHtml(l.nombre_producto)}${extras}</td>
         <td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right;white-space:nowrap;vertical-align:top">${formatCop(l.subtotal_linea)}</td>
       </tr>`;
-    })
-        .join('');
+        })
+            .join('')
+        : '';
     const descuentos = [];
-    if (ticket.descuento_sopas > 0) {
-        descuentos.push(`<tr><td>Desc. sopas</td><td style="text-align:right">-${formatCop(ticket.descuento_sopas)}</td></tr>`);
+    if (flags.descuentos) {
+        if (ticket.descuento_sopas > 0) {
+            descuentos.push(`<tr><td>Desc. sopas</td><td style="text-align:right">-${formatCop(ticket.descuento_sopas)}</td></tr>`);
+        }
+        if (ticket.descuento_muleros > 0) {
+            descuentos.push(`<tr><td>Desc. muleros</td><td style="text-align:right">-${formatCop(ticket.descuento_muleros)}</td></tr>`);
+        }
+        if (ticket.descuento_promociones > 0) {
+            descuentos.push(`<tr><td>Desc. promociones</td><td style="text-align:right">-${formatCop(ticket.descuento_promociones)}</td></tr>`);
+        }
     }
-    if (ticket.descuento_muleros > 0) {
-        descuentos.push(`<tr><td>Desc. muleros</td><td style="text-align:right">-${formatCop(ticket.descuento_muleros)}</td></tr>`);
-    }
-    if (ticket.descuento_promociones > 0) {
-        descuentos.push(`<tr><td>Desc. promociones</td><td style="text-align:right">-${formatCop(ticket.descuento_promociones)}</td></tr>`);
-    }
-    const vueltoHtml = !ticket.es_precuenta &&
+    const vueltoHtml = flags.vuelto &&
+        !ticket.es_precuenta &&
         !ticket.es_total_pedido &&
         ticket.detalle_exceso_cobro
         ? (() => {
             const instrucciones = (0, factura_vuelto_1.lineasTicketExcesoCobro)(ticket.detalle_exceso_cobro);
             if (instrucciones.length === 0)
                 return '';
-            const filas = instrucciones.map((l) => {
+            const filasV = instrucciones.map((l) => {
                 const bold = l.destacado
                     ? 'font-weight:bold;color:#8b3a2b'
                     : '';
                 return `<tr><td style="${bold}">${escapeHtml(l.etiqueta)}</td><td style="text-align:right;${bold}">${formatCop(l.monto)}</td></tr>`;
             });
-            return `<table style="width:100%;margin-top:12px;font-size:14px;border-top:1px solid #eee;padding-top:8px">${filas.join('')}</table>`;
+            return `<table style="width:100%;margin-top:12px;font-size:14px;border-top:1px solid #eee;padding-top:8px">${filasV.join('')}</table>`;
         })()
-        : !ticket.es_precuenta &&
+        : flags.vuelto &&
+            !ticket.es_precuenta &&
             !ticket.es_total_pedido &&
             ticket.vuelto_cliente &&
             ticket.vuelto_cliente.vuelto_total > 0
@@ -160,25 +192,40 @@ function buildFacturaEmailHtml(ticket) {
                 return `<table style="width:100%;margin-top:12px;font-size:14px;border-top:1px solid #eee;padding-top:8px">${filasVuelto.join('')}</table>`;
             })()
             : '';
+    const encabezadoLocal = flags.logo
+        ? `<h1 style="margin:0 0 4px;font-size:22px;color:#8b3a2b">${escapeHtml((0, escpos_utils_1.ticketNombreLocal)())}</h1>
+    ${(0, escpos_utils_1.ticketNit)()
+            ? `<p style="margin:0 0 2px;color:#555;font-size:14px">NIT: ${escapeHtml((0, escpos_utils_1.ticketNit)())}</p>`
+            : ''}
+    ${(0, escpos_utils_1.ticketTelefono)()
+            ? `<p style="margin:0 0 2px;color:#555;font-size:14px">Tel: ${escapeHtml((0, escpos_utils_1.ticketTelefono)())}</p>`
+            : ''}
+    ${(0, escpos_utils_1.ticketDireccion)()
+            ? `<p style="margin:0 0 12px;color:#555;font-size:14px">${escapeHtml((0, escpos_utils_1.ticketDireccion)())}</p>`
+            : '<p style="margin:0 0 12px"></p>'}`
+        : '';
     return `<!DOCTYPE html>
 <html lang="es">
 <head><meta charset="utf-8" /><title>Factura ${escapeHtml((0, restaurant_branding_1.restaurantName)())}</title></head>
 <body style="margin:0;padding:0;background:#f6f4f1;font-family:Segoe UI,Arial,sans-serif;color:#2c241c">
   <div style="max-width:520px;margin:24px auto;background:#fff;border-radius:12px;padding:24px;border:1px solid #e8e0d8">
-    <h1 style="margin:0 0 4px;font-size:22px;color:#8b3a2b">${escapeHtml((0, escpos_utils_1.ticketNombreLocal)())}</h1>
-    ${(0, escpos_utils_1.ticketTelefono)()
-        ? `<p style="margin:0 0 2px;color:#555;font-size:14px">Tel: ${escapeHtml((0, escpos_utils_1.ticketTelefono)())}</p>`
-        : ''}
-    ${(0, escpos_utils_1.ticketDireccion)()
-        ? `<p style="margin:0 0 12px;color:#555;font-size:14px">${escapeHtml((0, escpos_utils_1.ticketDireccion)())}</p>`
-        : '<p style="margin:0 0 12px"></p>'}
+    ${encabezadoLocal}
     <p style="margin:0 0 16px;color:#666;font-size:14px">Cuenta / Factura</p>
     <p style="margin:0 0 4px"><strong>${escapeHtml(ticket.mesa_etiqueta)}</strong></p>
     <p style="margin:0 0 4px;font-size:14px;color:#555">Pedido #${ticket.id_pedido}${ticket.id_factura != null ? ` · Factura #${ticket.id_factura}` : ''}</p>
-    <p style="margin:0 0 4px;font-size:14px;color:#555">Mesero: ${escapeHtml(ticket.mesero || '—')}</p>
+    ${flags.mesero
+        ? `<p style="margin:0 0 4px;font-size:14px;color:#555">Mesero: ${escapeHtml(ticket.mesero || '—')}</p>`
+        : ''}
+    ${flags.comensales
+        ? `<p style="margin:0 0 4px;font-size:14px;color:#555">Comensales: ${ticket.num_comensales}</p>`
+        : ''}
     <p style="margin:0 0 4px;font-size:14px;color:#555">Fecha: ${escapeHtml(fechaTicket(ticket.emitida_en))}</p>
-    <p style="margin:0 0 16px;font-size:14px;color:#555">Pago: ${escapeHtml((0, factura_ticket_1.labelMetodoPago)(ticket.metodo_pago))}</p>
-    <table style="width:100%;border-collapse:collapse;font-size:14px">${filas}</table>
+    ${flags.metodoPago
+        ? `<p style="margin:0 0 16px;font-size:14px;color:#555">Pago: ${escapeHtml((0, factura_ticket_1.labelMetodoPago)(ticket.metodo_pago))}</p>`
+        : '<p style="margin:0 0 16px"></p>'}
+    ${flags.detalleItems
+        ? `<table style="width:100%;border-collapse:collapse;font-size:14px">${filas}</table>`
+        : ''}
     <table style="width:100%;margin-top:12px;font-size:14px">
       <tr><td>Subtotal</td><td style="text-align:right">${formatCop(ticket.subtotal)}</td></tr>
       ${descuentos.join('')}
@@ -186,7 +233,9 @@ function buildFacturaEmailHtml(ticket) {
           <td style="padding-top:8px;text-align:right;font-size:18px;color:#8b3a2b"><strong>${formatCop(ticket.total)}</strong></td></tr>
     </table>
     ${vueltoHtml}
-    <p style="margin:20px 0 0;font-size:13px;color:#666">${escapeHtml((0, restaurant_branding_1.restaurantTextoGraciasTicket)())}</p>
+    ${flags.gracias
+        ? `<p style="margin:20px 0 0;font-size:13px;color:#666">${escapeHtml((0, restaurant_branding_1.restaurantTextoGraciasTicket)())}</p>`
+        : ''}
     ${(0, restaurant_branding_1.restaurantTextoPieCorreo)()
         ? `<p style="margin:8px 0 0;font-size:12px;color:#888">${escapeHtml((0, restaurant_branding_1.restaurantTextoPieCorreo)())}</p>`
         : ''}

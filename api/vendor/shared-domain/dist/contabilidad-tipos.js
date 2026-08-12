@@ -12,7 +12,9 @@ exports.EVENTOS_CONTABLES = [
     'cxp_compra_credito',
     'cxp_compra_contado',
     'caja_entrada_manual',
+    'caja_entrada_transferencia',
     'caja_salida_manual',
+    'caja_salida_transferencia',
     'exceso_devolucion',
     'movimiento_simple',
 ];
@@ -89,6 +91,8 @@ exports.SEED_REGLAS_EVENTO_CO = [
     { codigo: 'evt_cxp_credito', nombre: 'Compra a crédito', evento: 'cxp_compra_credito', debito: '1435', credito: '2205' },
     { codigo: 'evt_cxp_contado', nombre: 'Compra de contado', evento: 'cxp_compra_contado', debito: '1435', credito: '1105' },
     { codigo: 'evt_caja_entrada', nombre: 'Entrada manual caja', evento: 'caja_entrada_manual', debito: '1105', credito: '4210' },
+    { codigo: 'evt_caja_entrada_transfer', nombre: 'Entrada transferencia', evento: 'caja_entrada_transferencia', debito: '1110', credito: '4210' },
     { codigo: 'evt_caja_salida', nombre: 'Salida manual caja', evento: 'caja_salida_manual', debito: '5195', credito: '1105' },
+    { codigo: 'evt_caja_salida_transfer', nombre: 'Salida transferencia', evento: 'caja_salida_transferencia', debito: '5195', credito: '1110' },
     { codigo: 'evt_exceso', nombre: 'Devolución exceso', evento: 'exceso_devolucion', debito: '4135', credito: '1105' },
 ];

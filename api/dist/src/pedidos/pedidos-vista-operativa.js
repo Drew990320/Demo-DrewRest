@@ -23,6 +23,7 @@ exports.pedidoVistaOperativaInclude = {
         select: {
             idDetalle: true,
             idProducto: true,
+            idProductoVariante: true,
             idDetallePadre: true,
             cantidad: true,
             notaCocina: true,
@@ -54,6 +55,9 @@ exports.pedidoVistaOperativaInclude = {
                     },
                 },
             },
+            productoVariante: {
+                select: { idVariante: true, nombre: true },
+            },
             personalizaciones: {
                 select: {
                     opcion: {
@@ -82,8 +86,11 @@ function serializarPedidoVistaOperativa(p, opts) {
         return {
             id_detalle: d.idDetalle,
             id_producto: d.idProducto,
+            id_producto_variante: d.idProductoVariante ?? null,
             id_detalle_padre: d.idDetallePadre,
-            nombre_producto: d.producto.nombre,
+            nombre_producto: d.productoVariante?.nombre
+                ? `${d.producto.nombre} · ${d.productoVariante.nombre}`
+                : d.producto.nombre,
             categoria_nombre: cat.nombre,
             tipo_proteina: tipoProteina,
             es_bebida: (0, cocina_producto_1.categoriaEsBebida)(cat),
@@ -141,6 +148,8 @@ function serializarPedidoVistaOperativa(p, opts) {
         prioridad_cocina_origen: prioridadCocinaOrigen,
         prioridad_cocina_auto: prioridadAuto,
         prioridad_cocina_override: override === null ? null : override,
+        origen_autoservicio: Boolean(p.origenAutoservicio),
+        listo_para_cobro_autoservicio: Boolean(p.listoParaCobroAutoservicio),
         mesero: {
             id: p.usuario.idUsuario,
             nombre: p.usuario.nombre,

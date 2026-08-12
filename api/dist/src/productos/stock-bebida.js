@@ -1,16 +1,24 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.aplicaControlStockProducto = aplicaControlStockProducto;
 exports.aplicaControlStockBebida = aplicaControlStockBebida;
 exports.descontarStockBebidaTx = descontarStockBebidaTx;
 exports.reintegrarStockBebidaTx = reintegrarStockBebidaTx;
 exports.ajustarStockBebidaTx = ajustarStockBebidaTx;
 const common_1 = require("@nestjs/common");
 const inventario_stock_producto_1 = require("../inventario/inventario-stock-producto");
+function aplicaControlStockProducto(p) {
+    if (!p.controlStock)
+        return false;
+    if (p.usaProduccionPorciones)
+        return true;
+    return Boolean(p.categoria?.esBebida);
+}
 function aplicaControlStockBebida(p) {
-    return Boolean(p.controlStock && p.categoria?.esBebida);
+    return aplicaControlStockProducto(p);
 }
 async function descontarStockBebidaTx(tx, p, cantidad) {
-    if (!aplicaControlStockBebida(p) || cantidad <= 0)
+    if (!aplicaControlStockProducto(p) || cantidad <= 0)
         return;
     const tenantId = p.idRestaurante ?? 1;
     const inv = await (0, inventario_stock_producto_1.inventarioComercialPorProductoTx)(tx, p.idProducto, tenantId);
@@ -30,7 +38,7 @@ async function descontarStockBebidaTx(tx, p, cantidad) {
     }
 }
 async function reintegrarStockBebidaTx(tx, p, cantidad) {
-    if (!aplicaControlStockBebida(p) || cantidad <= 0)
+    if (!aplicaControlStockProducto(p) || cantidad <= 0)
         return;
     const tenantId = p.idRestaurante ?? 1;
     const inv = await (0, inventario_stock_producto_1.inventarioComercialPorProductoTx)(tx, p.idProducto, tenantId);

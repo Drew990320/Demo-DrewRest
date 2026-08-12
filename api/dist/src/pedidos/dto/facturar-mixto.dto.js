@@ -26,6 +26,7 @@ class FacturarMixtoDto {
     detalles_seleccion_referencia;
     monto_persona_plan;
     devolucion_exceso_metodo;
+    aplicar_redondeo;
 }
 exports.FacturarMixtoDto = FacturarMixtoDto;
 __decorate([
@@ -98,4 +99,9 @@ __decorate([
     (0, class_validator_1.IsIn)(['efectivo', 'transferencia', 'domicilio', 'mesero']),
     __metadata("design:type", String)
 ], FacturarMixtoDto.prototype, "devolucion_exceso_metodo", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], FacturarMixtoDto.prototype, "aplicar_redondeo", void 0);
 //# sourceMappingURL=facturar-mixto.dto.js.map

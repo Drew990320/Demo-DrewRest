@@ -34,9 +34,15 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.printEncabezadoDrewRest = exports.DREWTECH_CREDITO_LINEA = exports.DEFAULT_ESC_POS_WIDTH = exports.DREWTECH_TELEFONO_LABEL = exports.DREWTECH_TELEFONO = void 0;
+exports.resolveEscPosTicketOpts = resolveEscPosTicketOpts;
+exports.applyEscPosFontSize = applyEscPosFontSize;
+exports.applyEscPosBeep = applyEscPosBeep;
+exports.applyEscPosTicketStart = applyEscPosTicketStart;
+exports.applyEscPosTicketEnd = applyEscPosTicketEnd;
 exports.ticketNombreLocal = ticketNombreLocal;
 exports.ticketTelefono = ticketTelefono;
 exports.ticketDireccion = ticketDireccion;
+exports.ticketNit = ticketNit;
 exports.dimensionesLogoContenidas = dimensionesLogoContenidas;
 exports.ticketLogoPngBufferForPreview = ticketLogoPngBufferForPreview;
 exports.printPieDrewTechFactura = printPieDrewTechFactura;
@@ -53,7 +59,96 @@ Object.defineProperty(exports, "DREWTECH_TELEFONO", { enumerable: true, get: fun
 Object.defineProperty(exports, "DREWTECH_TELEFONO_LABEL", { enumerable: true, get: function () { return drewtech_soporte_1.DREWTECH_TELEFONO_LABEL; } });
 const restaurant_branding_1 = require("../common/restaurant-branding");
 const visual_assets_util_1 = require("../visual/visual-assets.util");
+const impresora_papel_ancho_1 = require("../impresoras-pos/impresora-papel-ancho");
 exports.DEFAULT_ESC_POS_WIDTH = 32;
+function resolveEscPosTicketOpts(charWidthOrOpts = exports.DEFAULT_ESC_POS_WIDTH) {
+    if (typeof charWidthOrOpts === 'number') {
+        return {
+            charWidth: charWidthOrOpts,
+            tamanoFuente: 1,
+            margenInicioLineas: 0,
+            margenFinLineas: 0,
+        };
+    }
+    const tamano = (0, impresora_papel_ancho_1.normalizarTamanoFuente)(charWidthOrOpts.tamanoFuente, 1);
+    let charWidth = Math.round(Number(charWidthOrOpts.charWidth) || exports.DEFAULT_ESC_POS_WIDTH);
+    if (tamano <= 0) {
+        const factor = (0, impresora_papel_ancho_1.factorColumnasPorTamanoFuente)(tamano);
+        charWidth = Math.min(56, Math.max(24, Math.round(charWidth * factor)));
+    }
+    if (tamano >= 3) {
+        charWidth = Math.max(16, Math.floor(charWidth / 2));
+    }
+    return {
+        charWidth,
+        tamanoFuente: tamano,
+        margenInicioLineas: Math.min(20, Math.max(0, Math.round(Number(charWidthOrOpts.margenInicioLineas) || 0))),
+        margenFinLineas: Math.min(20, Math.max(0, Math.round(Number(charWidthOrOpts.margenFinLineas) || 0))),
+    };
+}
+async function applyEscPosFontSize(printer, tamanoFuente) {
+    const t = (0, impresora_papel_ancho_1.normalizarTamanoFuente)(tamanoFuente, 1);
+    if (t <= 0) {
+        if (typeof printer.setTypeFontB === 'function') {
+            await printer.setTypeFontB();
+        }
+        if (typeof printer.setTextNormal === 'function') {
+            await printer.setTextNormal();
+        }
+        return;
+    }
+    if (typeof printer.setTypeFontA === 'function') {
+        await printer.setTypeFontA();
+    }
+    if (t >= 3 && typeof printer.setTextQuadArea === 'function') {
+        await printer.setTextQuadArea();
+        return;
+    }
+    if (t >= 2 && typeof printer.setTextDoubleHeight === 'function') {
+        await printer.setTextDoubleHeight();
+        return;
+    }
+    if (typeof printer.setTextNormal === 'function') {
+        await printer.setTextNormal();
+    }
+}
+function beepEscPosHabilitado() {
+    const raw = String(process.env.PRINTER_BEEP ?? '1').trim().toLowerCase();
+    return raw !== '0' && raw !== 'false' && raw !== 'off' && raw !== 'no';
+}
+function beepEscPosParams() {
+    const times = Math.min(9, Math.max(1, Math.round(Number(process.env.PRINTER_BEEP_TIMES) || 2)));
+    const length = Math.min(9, Math.max(1, Math.round(Number(process.env.PRINTER_BEEP_LENGTH) || 2)));
+    return { times, length };
+}
+async function applyEscPosBeep(printer) {
+    if (!beepEscPosHabilitado())
+        return;
+    if (typeof printer.beep !== 'function')
+        return;
+    const { times, length } = beepEscPosParams();
+    try {
+        await printer.beep(times, length);
+    }
+    catch {
+    }
+}
+async function applyEscPosTicketStart(printer, opts) {
+    await applyEscPosBeep(printer);
+    for (let i = 0; i < opts.margenInicioLineas; i++) {
+        await printer.newLine();
+    }
+    await applyEscPosFontSize(printer, opts.tamanoFuente);
+}
+async function applyEscPosTicketEnd(printer, opts) {
+    if (typeof printer.setTextNormal === 'function') {
+        await printer.setTextNormal();
+    }
+    for (let i = 0; i < opts.margenFinLineas; i++) {
+        await printer.newLine();
+    }
+    await printer.cut();
+}
 function ticketNombreLocal() {
     return (0, restaurant_branding_1.restaurantName)();
 }
@@ -62,6 +157,9 @@ function ticketTelefono() {
 }
 function ticketDireccion() {
     return (0, restaurant_branding_1.restaurantTicketAddress)();
+}
+function ticketNit() {
+    return (0, restaurant_branding_1.restaurantTicketNit)();
 }
 const TICKET_LOGO_ANCHO_PX = (() => {
     const n = Number(process.env.PRINTER_LOGO_WIDTH_PX ?? 384);
@@ -73,6 +171,8 @@ const TICKET_LOGO_MAX_ALTO_PX = (() => {
 })();
 const FACTURA_LOGO_MAX_ANCHO = 320;
 const FACTURA_LOGO_MAX_ALTO = 120;
+const LOGO_TICKET_CACHE_TTL_MS = 30 * 60 * 1000;
+const logoTicketCache = new Map();
 function dimensionesLogoContenidas(srcW, srcH, maxW, maxH) {
     if (srcW <= 0 || srcH <= 0) {
         return { width: maxW, height: Math.min(maxH, 72) };
@@ -155,11 +255,18 @@ function redimensionarPngBuffer(pngBuffer, maxWidthPx, maxHeightPx) {
         return null;
     }
 }
-async function cargarLogoTicketRedimensionado(sourcePath) {
+async function cargarLogoTicketRedimensionado(sourcePath, maxWidthPx = TICKET_LOGO_ANCHO_PX) {
+    const cacheKey = `${sourcePath}|${maxWidthPx}`;
+    const hit = logoTicketCache.get(cacheKey);
+    if (hit && Date.now() - hit.at < LOGO_TICKET_CACHE_TTL_MS) {
+        return hit.buf;
+    }
     try {
         const { leerImagenComoPngBuffer } = await Promise.resolve().then(() => __importStar(require('../visual/image-png.util')));
         const pngBuf = await leerImagenComoPngBuffer(sourcePath);
-        return redimensionarPngBuffer(pngBuf, TICKET_LOGO_ANCHO_PX, TICKET_LOGO_MAX_ALTO_PX);
+        const buf = redimensionarPngBuffer(pngBuf, maxWidthPx, TICKET_LOGO_MAX_ALTO_PX);
+        logoTicketCache.set(cacheKey, { buf, at: Date.now() });
+        return buf;
     }
     catch {
         return null;
@@ -171,11 +278,12 @@ function resolveTicketLogoPath() {
         (0, visual_assets_util_1.resolverAssetVisualPath)('login', null) ??
         (0, restaurant_branding_1.resolveRestaurantLogoPath)());
 }
-async function ticketLogoPngBufferForPreview() {
+async function ticketLogoPngBufferForPreview(charWidth = exports.DEFAULT_ESC_POS_WIDTH) {
     const logoPath = resolveTicketLogoPath();
     if (!logoPath)
         return null;
-    return cargarLogoTicketRedimensionado(logoPath);
+    const maxW = (0, impresora_papel_ancho_1.logoAnchoPxParaPapelMm)((0, impresora_papel_ancho_1.papelMmDesdeChars)(charWidth));
+    return cargarLogoTicketRedimensionado(logoPath, maxW);
 }
 async function printPieDrewTechFactura(printer, charWidth = exports.DEFAULT_ESC_POS_WIDTH) {
     if (!(0, restaurant_branding_1.restaurantMostrarCreditoDrewTech)())
@@ -192,7 +300,7 @@ function formatCopEscPos(value) {
     const sign = n < 0 ? '-' : '';
     const abs = Math.abs(n);
     const grouped = abs.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-    return `${sign}$ ${grouped}`;
+    return `${sign}$${grouped}`;
 }
 function wrapEscPos(text, width) {
     const words = text.replace(/\s+/g, ' ').trim().split(' ');
@@ -214,17 +322,21 @@ function wrapEscPos(text, width) {
     return lines.length ? lines : [''];
 }
 function lineaConPrecio(etiqueta, precio, width) {
+    const w = Math.max(8, Math.floor(Number(width) || exports.DEFAULT_ESC_POS_WIDTH));
+    const p = precio.length > w ? precio.slice(precio.length - w) : precio;
     if (!etiqueta.trim()) {
-        return precio.padStart(width);
+        return p.padStart(w);
     }
-    const gap = width - etiqueta.length - precio.length;
-    if (gap >= 1) {
-        return etiqueta + ' '.repeat(gap) + precio;
+    const maxLeft = w - p.length - 1;
+    if (maxLeft < 1) {
+        return p.padStart(w);
     }
-    return `${etiqueta.slice(0, Math.max(1, width - precio.length - 1))} ${precio}`;
+    const left = etiqueta.length <= maxLeft ? etiqueta : etiqueta.slice(0, maxLeft);
+    const gap = w - left.length - p.length;
+    return left + ' '.repeat(Math.max(1, gap)) + p;
 }
 function createEscPosPrinter(charWidth) {
-    const { ThermalPrinter, PrinterTypes, CharacterSet } = require('node-thermal-printer');
+    const { ThermalPrinter, PrinterTypes, CharacterSet, BreakLine, } = require('node-thermal-printer');
     const dummyIface = path.join(os.tmpdir(), `pos-escpos-dummy-${process.pid}.bin`);
     return new ThermalPrinter({
         type: PrinterTypes.EPSON,
@@ -233,15 +345,17 @@ function createEscPosPrinter(charWidth) {
         removeSpecialCharacters: false,
         lineCharacter: '-',
         width: charWidth,
+        breakLine: BreakLine.NONE,
     });
 }
 async function printEncabezadoRestaurante(printer, charWidth = exports.DEFAULT_ESC_POS_WIDTH) {
     await printer.alignCenter();
     const logoPath = resolveTicketLogoPath();
+    const logoMaxW = (0, impresora_papel_ancho_1.logoAnchoPxParaPapelMm)((0, impresora_papel_ancho_1.papelMmDesdeChars)(charWidth));
     let logoOk = false;
     if (logoPath) {
         try {
-            const logoBuf = await cargarLogoTicketRedimensionado(logoPath);
+            const logoBuf = await cargarLogoTicketRedimensionado(logoPath, logoMaxW);
             if (logoBuf) {
                 await printer.printImageBuffer(logoBuf);
             }
@@ -258,6 +372,11 @@ async function printEncabezadoRestaurante(printer, charWidth = exports.DEFAULT_E
         await printer.bold(true);
         await printer.println((0, restaurant_branding_1.restaurantName)().toUpperCase());
         await printer.bold(false);
+    }
+    if (ticketNit()) {
+        for (const line of wrapEscPos(`NIT: ${ticketNit()}`, charWidth)) {
+            await printer.println(line);
+        }
     }
     if (ticketTelefono()) {
         for (const line of wrapEscPos(`Tel: ${ticketTelefono()}`, charWidth)) {

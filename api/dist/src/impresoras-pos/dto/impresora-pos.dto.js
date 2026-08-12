@@ -19,6 +19,10 @@ class CreateImpresoraPosDto {
     activa;
     orden;
     baud_rate;
+    ancho_papel_mm;
+    tamano_fuente;
+    margen_inicio_lineas;
+    margen_fin_lineas;
     roles;
     es_cocina_maestra;
 }
@@ -51,6 +55,37 @@ __decorate([
     __metadata("design:type", Object)
 ], CreateImpresoraPosDto.prototype, "baud_rate", void 0);
 __decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_transformer_1.Type)(() => Number),
+    (0, class_validator_1.IsInt)(),
+    (0, class_validator_1.IsIn)([58, 80]),
+    __metadata("design:type", Number)
+], CreateImpresoraPosDto.prototype, "ancho_papel_mm", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_transformer_1.Type)(() => Number),
+    (0, class_validator_1.IsInt)(),
+    (0, class_validator_1.Min)(-1),
+    (0, class_validator_1.Max)(3),
+    __metadata("design:type", Number)
+], CreateImpresoraPosDto.prototype, "tamano_fuente", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_transformer_1.Type)(() => Number),
+    (0, class_validator_1.IsInt)(),
+    (0, class_validator_1.Min)(0),
+    (0, class_validator_1.Max)(20),
+    __metadata("design:type", Number)
+], CreateImpresoraPosDto.prototype, "margen_inicio_lineas", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_transformer_1.Type)(() => Number),
+    (0, class_validator_1.IsInt)(),
+    (0, class_validator_1.Min)(0),
+    (0, class_validator_1.Max)(20),
+    __metadata("design:type", Number)
+], CreateImpresoraPosDto.prototype, "margen_fin_lineas", void 0);
+__decorate([
     (0, class_validator_1.IsArray)(),
     (0, class_validator_1.ArrayUnique)(),
     (0, class_validator_1.IsIn)([...impresoras_pos_types_1.ROLES_IMPRESORA_POS], { each: true }),
@@ -67,6 +102,10 @@ class UpdateImpresoraPosDto {
     activa;
     orden;
     baud_rate;
+    ancho_papel_mm;
+    tamano_fuente;
+    margen_inicio_lineas;
+    margen_fin_lineas;
     roles;
     es_cocina_maestra;
 }
@@ -100,6 +139,37 @@ __decorate([
     (0, class_validator_1.Min)(1200),
     __metadata("design:type", Object)
 ], UpdateImpresoraPosDto.prototype, "baud_rate", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_transformer_1.Type)(() => Number),
+    (0, class_validator_1.IsInt)(),
+    (0, class_validator_1.IsIn)([58, 80]),
+    __metadata("design:type", Number)
+], UpdateImpresoraPosDto.prototype, "ancho_papel_mm", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_transformer_1.Type)(() => Number),
+    (0, class_validator_1.IsInt)(),
+    (0, class_validator_1.Min)(-1),
+    (0, class_validator_1.Max)(3),
+    __metadata("design:type", Number)
+], UpdateImpresoraPosDto.prototype, "tamano_fuente", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_transformer_1.Type)(() => Number),
+    (0, class_validator_1.IsInt)(),
+    (0, class_validator_1.Min)(0),
+    (0, class_validator_1.Max)(20),
+    __metadata("design:type", Number)
+], UpdateImpresoraPosDto.prototype, "margen_inicio_lineas", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_transformer_1.Type)(() => Number),
+    (0, class_validator_1.IsInt)(),
+    (0, class_validator_1.Min)(0),
+    (0, class_validator_1.Max)(20),
+    __metadata("design:type", Number)
+], UpdateImpresoraPosDto.prototype, "margen_fin_lineas", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsArray)(),

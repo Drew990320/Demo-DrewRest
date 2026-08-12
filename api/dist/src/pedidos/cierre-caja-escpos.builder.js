@@ -9,6 +9,7 @@ async function buildCierreCajaEscPos(ticket, charWidth = escpos_utils_1.DEFAULT_
     const printer = (0, escpos_utils_1.createEscPosPrinter)(charWidth);
     const w = charWidth;
     const sep = '-'.repeat(w);
+    await (0, escpos_utils_1.applyEscPosBeep)(printer);
     await printer.alignCenter();
     await printer.println('CIERRE DE CAJA');
     await printer.println(ticket.fecha);
@@ -33,7 +34,14 @@ async function buildCierreCajaEscPos(ticket, charWidth = escpos_utils_1.DEFAULT_
         await printer.println((0, escpos_utils_1.lineaConPrecio)('Total entradas', (0, escpos_utils_1.formatCopEscPos)(ticket.subtotal_entradas_caja ?? 0), w));
         await printer.bold(false);
     }
-    await printer.println((0, escpos_utils_1.lineaConPrecio)('Transferencias', (0, escpos_utils_1.formatCopEscPos)(ticket.totales_por_metodo.transferencia), w));
+    await printer.println((0, escpos_utils_1.lineaConPrecio)('Transferido rec.', (0, escpos_utils_1.formatCopEscPos)(ticket.transferido_recibido ?? ticket.totales_por_metodo.transferencia), w));
+    if ((ticket.total_entradas_manual_transferencia ?? 0) > 0) {
+        await printer.println((0, escpos_utils_1.lineaConPrecio)('Entradas transf.', (0, escpos_utils_1.formatCopEscPos)(ticket.total_entradas_manual_transferencia ?? 0), w));
+    }
+    if ((ticket.total_salidas_manual_transferencia ?? 0) > 0) {
+        await printer.println((0, escpos_utils_1.lineaConPrecio)('Salidas transf.', (0, escpos_utils_1.formatCopEscPos)(-(ticket.total_salidas_manual_transferencia ?? 0)), w));
+    }
+    await printer.println((0, escpos_utils_1.lineaConPrecio)('Tarjeta cred/deb', (0, escpos_utils_1.formatCopEscPos)(ticket.totales_por_metodo.tarjeta ?? 0), w));
     if ((ticket.totales_por_metodo.fiado ?? 0) > 0) {
         await printer.println((0, escpos_utils_1.lineaConPrecio)('Fiado (por cobrar)', (0, escpos_utils_1.formatCopEscPos)(ticket.totales_por_metodo.fiado ?? 0), w));
         for (const f of ticket.fiados_dia ?? []) {
@@ -57,6 +65,9 @@ async function buildCierreCajaEscPos(ticket, charWidth = escpos_utils_1.DEFAULT_
     if ((ticket.total_pagos_mesero_exceso ?? 0) > 0) {
         await printer.println((0, escpos_utils_1.lineaConPrecio)('Mesero (exceso)', (0, escpos_utils_1.formatCopEscPos)(-(ticket.total_pagos_mesero_exceso ?? 0)), w));
     }
+    if ((ticket.total_cuotas_gasto_fijo ?? 0) > 0) {
+        await printer.println((0, escpos_utils_1.lineaConPrecio)('Fondos gasto fijo', (0, escpos_utils_1.formatCopEscPos)(-(ticket.total_cuotas_gasto_fijo ?? 0)), w));
+    }
     if ((ticket.subtotal_salidas_caja ?? 0) > 0) {
         await printer.bold(true);
         await printer.println((0, escpos_utils_1.lineaConPrecio)('Total salidas', (0, escpos_utils_1.formatCopEscPos)(-(ticket.subtotal_salidas_caja ?? 0)), w));
@@ -76,6 +87,7 @@ async function buildBaseCajaEscPos(ticket, charWidth = escpos_utils_1.DEFAULT_ES
     const printer = (0, escpos_utils_1.createEscPosPrinter)(charWidth);
     const w = charWidth;
     const sep = '-'.repeat(w);
+    await (0, escpos_utils_1.applyEscPosBeep)(printer);
     await printer.alignCenter();
     await printer.println('CAJA INICIAL');
     await printer.println(ticket.fecha);
@@ -98,6 +110,7 @@ async function buildBaseCajaCierreEscPos(ticket, charWidth = escpos_utils_1.DEFA
     const printer = (0, escpos_utils_1.createEscPosPrinter)(charWidth);
     const w = charWidth;
     const sep = '-'.repeat(w);
+    await (0, escpos_utils_1.applyEscPosBeep)(printer);
     await printer.alignCenter();
     await printer.println('CAJA CIERRE');
     await printer.println(ticket.fecha);
@@ -128,6 +141,7 @@ async function buildMovimientoCajaEscPos(ticket, charWidth = escpos_utils_1.DEFA
     const sep = '-'.repeat(w);
     const titulo = ticket.tipo === 'entrada_manual' ? 'ENTRADA DE CAJA' : 'SALIDA DE CAJA';
     const prefijoMonto = ticket.tipo === 'entrada_manual' ? '+' : '-';
+    await (0, escpos_utils_1.applyEscPosBeep)(printer);
     await printer.alignCenter();
     await printer.println(titulo);
     await printer.println(ticket.fecha);
@@ -140,6 +154,8 @@ async function buildMovimientoCajaEscPos(ticket, charWidth = escpos_utils_1.DEFA
     if (ticket.registrado_por.trim()) {
         await printer.println(`Por: ${ticket.registrado_por.trim()}`);
     }
+    const metodoLabel = ticket.metodo === 'transferencia' ? 'Transferencia' : 'Efectivo';
+    await printer.println(`Método: ${metodoLabel}`);
     await printer.println(sep);
     await printer.println('Motivo:');
     for (const line of (0, escpos_utils_1.wrapEscPos)(ticket.motivo.trim() || '-', w)) {

@@ -9,6 +9,7 @@ function escapeHtml(text) {
         .replace(/"/g, '&quot;');
 }
 function segmentsToTicketPreviewHtml(segments, opts) {
+    const anchoMm = opts?.anchoMm === 80 ? 80 : 58;
     const lines = [];
     if (opts?.subtitle?.trim()) {
         lines.push(`<div class="subtitle">${escapeHtml(opts.subtitle.trim())}</div>`);
@@ -42,7 +43,7 @@ function segmentsToTicketPreviewHtml(segments, opts) {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Vista previa ticket 58 mm</title>
+  <title>Vista previa ticket ${anchoMm} mm</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -54,7 +55,7 @@ function segmentsToTicketPreviewHtml(segments, opts) {
       justify-content: center;
     }
     .ticket {
-      width: 58mm;
+      width: ${anchoMm}mm;
       max-width: 100%;
       background: #fff;
       color: #111;
@@ -90,7 +91,7 @@ function segmentsToTicketPreviewHtml(segments, opts) {
     }
     @media print {
       body { background: #fff; padding: 0; }
-      .ticket { box-shadow: none; width: 58mm; }
+      .ticket { box-shadow: none; width: ${anchoMm}mm; }
     }
   </style>
 </head>

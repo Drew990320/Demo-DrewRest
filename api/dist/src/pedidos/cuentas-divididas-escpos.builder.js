@@ -14,6 +14,7 @@ async function buildCuentasDivididasEscPos(ticket, charWidth = escpos_utils_1.DE
     const printer = (0, escpos_utils_1.createEscPosPrinter)(charWidth);
     const w = charWidth;
     const sep = '-'.repeat(w);
+    await (0, escpos_utils_1.applyEscPosBeep)(printer);
     await printer.alignCenter();
     await printer.println('CUENTAS DIVIDIDAS');
     await printer.println(ticket.fecha);

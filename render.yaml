@@ -2,9 +2,9 @@
 # Repo: https://github.com/Drew990320/Demo-DrewRest.git
 # Regenerar con: npm run Render:Publicar-Demo
 #
-# La web sigue siendo static en Render, con rewrite /api/* → API (same-origin
-# en el navegador: solo se ve *-web.onrender.com). Tras cambiar routes, sincroniza
-# el Blueprint en Render (o añade la regla en Redirects/Rewrites del servicio web).
+# La web es Static Site en Render con rewrite /api/* → API (same-origin en el
+# navegador: solo se ve *-web.onrender.com). El paquete web también incluye
+# server.js (proxy Node) por si en el futuro se convierte el servicio a Node.
 
 databases:
   - name: drewrest-demo-db

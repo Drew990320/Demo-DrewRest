@@ -20,7 +20,7 @@ let InventarioModule = class InventarioModule {
 exports.InventarioModule = InventarioModule;
 exports.InventarioModule = InventarioModule = __decorate([
     (0, common_1.Module)({
-        imports: [tenant_module_1.TenantModule, recursos_module_1.RecursosModule],
+        imports: [tenant_module_1.TenantModule, (0, common_1.forwardRef)(() => recursos_module_1.RecursosModule)],
         controllers: [inventario_controller_1.InventarioController],
         providers: [
             inventario_service_1.InventarioService,

@@ -9,12 +9,60 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ImportCategoriaPlantillaDto = exports.CategoriaPlantillaItemDto = void 0;
+exports.ImportCategoriaPlantillaDto = exports.CategoriaPlantillaItemDto = exports.ProductoPlantillaItemDto = void 0;
 const class_transformer_1 = require("class-transformer");
 const class_validator_1 = require("class-validator");
+class ProductoPlantillaItemDto {
+    nombre;
+    precio;
+    descripcion;
+    activo;
+    es_plato_principal;
+    es_empacable;
+    envia_cocina;
+}
+exports.ProductoPlantillaItemDto = ProductoPlantillaItemDto;
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MinLength)(1),
+    (0, class_validator_1.MaxLength)(150),
+    __metadata("design:type", String)
+], ProductoPlantillaItemDto.prototype, "nombre", void 0);
+__decorate([
+    (0, class_transformer_1.Type)(() => Number),
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.Min)(0),
+    __metadata("design:type", Number)
+], ProductoPlantillaItemDto.prototype, "precio", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", Object)
+], ProductoPlantillaItemDto.prototype, "descripcion", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], ProductoPlantillaItemDto.prototype, "activo", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], ProductoPlantillaItemDto.prototype, "es_plato_principal", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], ProductoPlantillaItemDto.prototype, "es_empacable", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], ProductoPlantillaItemDto.prototype, "envia_cocina", void 0);
 class CategoriaPlantillaItemDto {
     nombre;
     icono_menu;
+    color_icono;
     activo;
     disponible_lunes;
     disponible_martes;
@@ -31,6 +79,7 @@ class CategoriaPlantillaItemDto {
     tipo_linea_cocina_default;
     es_plato_principal_default;
     prioridad_cocina_baja;
+    productos;
 }
 exports.CategoriaPlantillaItemDto = CategoriaPlantillaItemDto;
 __decorate([
@@ -44,6 +93,11 @@ __decorate([
     (0, class_validator_1.MaxLength)(80),
     __metadata("design:type", Object)
 ], CategoriaPlantillaItemDto.prototype, "icono_menu", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.Matches)(/^#[0-9A-Fa-f]{6}$/),
+    __metadata("design:type", Object)
+], CategoriaPlantillaItemDto.prototype, "color_icono", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsBoolean)(),
@@ -124,8 +178,16 @@ __decorate([
     (0, class_validator_1.IsBoolean)(),
     __metadata("design:type", Boolean)
 ], CategoriaPlantillaItemDto.prototype, "prioridad_cocina_baja", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsArray)(),
+    (0, class_validator_1.ValidateNested)({ each: true }),
+    (0, class_transformer_1.Type)(() => ProductoPlantillaItemDto),
+    __metadata("design:type", Array)
+], CategoriaPlantillaItemDto.prototype, "productos", void 0);
 class ImportCategoriaPlantillaDto {
     modo;
+    id_menu;
     categorias;
 }
 exports.ImportCategoriaPlantillaDto = ImportCategoriaPlantillaDto;
@@ -134,6 +196,11 @@ __decorate([
     (0, class_validator_1.IsIn)(['merge', 'skip_existing']),
     __metadata("design:type", String)
 ], ImportCategoriaPlantillaDto.prototype, "modo", void 0);
+__decorate([
+    (0, class_transformer_1.Type)(() => Number),
+    (0, class_validator_1.IsNumber)(),
+    __metadata("design:type", Number)
+], ImportCategoriaPlantillaDto.prototype, "id_menu", void 0);
 __decorate([
     (0, class_validator_1.IsArray)(),
     (0, class_validator_1.ValidateNested)({ each: true }),

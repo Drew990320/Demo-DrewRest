@@ -36,6 +36,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.restaurantName = restaurantName;
 exports.restaurantTicketPhone = restaurantTicketPhone;
 exports.restaurantTicketAddress = restaurantTicketAddress;
+exports.restaurantTicketNit = restaurantTicketNit;
 exports.restaurantEmailDomain = restaurantEmailDomain;
 exports.restaurantEmailSuffix = restaurantEmailSuffix;
 exports.restaurantTextoGraciasTicket = restaurantTextoGraciasTicket;
@@ -44,6 +45,7 @@ exports.restaurantTextoAvisoNoDian = restaurantTextoAvisoNoDian;
 exports.restaurantTextoPieCorreo = restaurantTextoPieCorreo;
 exports.restaurantPrefijoAsuntoCorreo = restaurantPrefijoAsuntoCorreo;
 exports.restaurantMostrarCreditoDrewTech = restaurantMostrarCreditoDrewTech;
+exports.restaurantFacturaMostrarFlags = restaurantFacturaMostrarFlags;
 exports.restaurantModuloEnvioCorreoActivo = restaurantModuloEnvioCorreoActivo;
 exports.restaurantModuloResumenDiarioActivo = restaurantModuloResumenDiarioActivo;
 exports.restaurantModuloMeserosOperativosActivo = restaurantModuloMeserosOperativosActivo;
@@ -82,6 +84,12 @@ function restaurantTicketAddress() {
         return row.direccion.trim();
     return process.env.RESTAURANT_TICKET_ADDRESS?.trim() || '';
 }
+function restaurantTicketNit() {
+    const row = rowOrNull();
+    if (row?.nit?.trim())
+        return row.nit.trim();
+    return process.env.RESTAURANT_TICKET_NIT?.trim() || '';
+}
 function restaurantEmailDomain() {
     const row = rowOrNull();
     if (row?.dominioEmailInterno?.trim()) {
@@ -119,6 +127,20 @@ function restaurantMostrarCreditoDrewTech() {
     if (row)
         return row.mostrarCreditoDrewTech;
     return true;
+}
+function restaurantFacturaMostrarFlags() {
+    const row = rowOrNull();
+    return {
+        logo: row?.facturaMostrarLogo !== false,
+        mesero: row?.facturaMostrarMesero !== false,
+        comensales: row?.facturaMostrarComensales !== false,
+        detalleItems: row?.facturaMostrarDetalleItems !== false,
+        descuentos: row?.facturaMostrarDescuentos !== false,
+        metodoPago: row?.facturaMostrarMetodoPago !== false,
+        vuelto: row?.facturaMostrarVuelto !== false,
+        propina: row?.facturaMostrarPropina !== false,
+        gracias: row?.facturaMostrarGracias !== false,
+    };
 }
 function restaurantModuloEnvioCorreoActivo() {
     const row = rowOrNull();

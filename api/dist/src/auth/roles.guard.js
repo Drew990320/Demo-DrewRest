@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.RolesGuard = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@nestjs/core");
+const roles_1 = require("@drewrest/shared-domain/roles");
 const roles_decorator_1 = require("./roles.decorator");
 let RolesGuard = class RolesGuard {
     reflector;
@@ -27,11 +28,13 @@ let RolesGuard = class RolesGuard {
             return true;
         }
         const req = context.switchToHttp().getRequest();
-        const nombre = req.user?.rol?.nombre;
-        if (!nombre) {
-            throw new common_1.ForbiddenException('No tienes permiso para esta acción');
-        }
-        if (!roles.includes(nombre)) {
+        const rol = req.user?.rol;
+        const nombre = typeof rol === 'string'
+            ? rol
+            : rol && typeof rol === 'object'
+                ? rol.nombre
+                : undefined;
+        if (!nombre || !(0, roles_1.rolCumpleRequeridos)(nombre, roles)) {
             throw new common_1.ForbiddenException('No tienes permiso para esta acción');
         }
         return true;

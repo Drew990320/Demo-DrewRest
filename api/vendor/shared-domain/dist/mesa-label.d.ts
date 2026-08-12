@@ -2,27 +2,36 @@
 export declare const MESA_PARA_LLEVAR_NUMERO = 98;
 /** Mesa virtual para ventas en mostrador. */
 export declare const MESA_MOSTRADOR_NUMERO = 99;
+/** Mesa virtual para ventas de tienda / retail (solo admin). */
+export declare const MESA_BOUTIQUE_NUMERO = 97;
 export type MesasVirtualesConfig = {
     numero_mesa_para_llevar?: number;
     numeroMesaParaLlevar?: number;
     numero_mesa_mostrador?: number;
     numeroMesaMostrador?: number;
+    numero_mesa_boutique?: number;
+    numeroMesaBoutique?: number;
     etiqueta_para_llevar?: string;
     etiquetaParaLlevar?: string;
     etiqueta_mostrador?: string;
     etiquetaMostrador?: string;
+    etiqueta_boutique?: string;
+    etiquetaBoutique?: string;
 };
 export type MesasVirtualesResueltas = {
     numero_mesa_para_llevar: number;
     numero_mesa_mostrador: number;
+    numero_mesa_boutique: number;
     etiqueta_para_llevar: string;
     etiqueta_mostrador: string;
+    etiqueta_boutique: string;
 };
-/** Resuelve números y etiquetas con defaults 98/99. */
+/** Resuelve números y etiquetas con defaults 97/98/99. */
 export declare function resolverMesasVirtuales(cfg?: MesasVirtualesConfig | null): MesasVirtualesResueltas;
 export declare function esMesaVirtualNumero(numero: number, cfg?: MesasVirtualesConfig | null): boolean;
 export declare function esMesaMostradorNumero(numero: number, cfg?: MesasVirtualesConfig | null): boolean;
 export declare function esMesaParaLlevarNumero(numero: number, cfg?: MesasVirtualesConfig | null): boolean;
+export declare function esMesaBoutiqueNumero(numero: number, cfg?: MesasVirtualesConfig | null): boolean;
 /** Texto para UI (pantallas de mesero/cocina). */
 export declare function tituloLugarMesa(numero: number, cfg?: MesasVirtualesConfig | null): string;
 /** Etiqueta corta para la grilla de mesas. */

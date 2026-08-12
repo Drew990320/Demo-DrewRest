@@ -6,6 +6,8 @@ exports.resumenesSimplesExcesoCobro = resumenesSimplesExcesoCobro;
 exports.lineasTicketExcesoCobro = lineasTicketExcesoCobro;
 exports.calcularDetalleExcesoCobro = calcularDetalleExcesoCobro;
 exports.calcularVueltoCliente = calcularVueltoCliente;
+exports.transferenciaRecibidaDeFactura = transferenciaRecibidaDeFactura;
+exports.totalTransferidoRecibido = totalTransferidoRecibido;
 const factura_mixto_1 = require("./factura-mixto");
 function detalleExcesoCobroActivo(d) {
     return (d.vuelto_cliente_efectivo > 0 ||
@@ -161,4 +163,52 @@ function calcularVueltoCliente(params) {
         vuelto_efectivo,
         vuelto_transferencia,
     };
+}
+/**
+ * Monto transferido en esta factura: si hay exceso, el recibido completo;
+ * si no, el total de la pata transferencia.
+ */
+function transferenciaRecibidaDeFactura(f) {
+    const recibido = parseDetalleExcesoCobro(f.detalle_exceso_cobro)
+        ?.monto_transferencia_recibido ?? 0;
+    if (recibido > 0)
+        return recibido;
+    if (f.metodo_pago === 'transferencia') {
+        return Math.max(0, Math.round(Number(f.total) || 0));
+    }
+    return 0;
+}
+/**
+ * Suma lo transferido (incluye exceso a domicilio/mesero/vuelto).
+ * En cobro mixto el snapshot se duplica en ambas patas: se cuenta una sola vez.
+ */
+function totalTransferidoRecibido(facturas) {
+    let total = 0;
+    const mixtoVisto = new Set();
+    const mixtoPendiente = new Map();
+    for (const f of facturas) {
+        const grupo = f.cobro_mixto_grupo != null ? Number(f.cobro_mixto_grupo) : NaN;
+        if (Number.isFinite(grupo) && grupo > 0) {
+            const arr = mixtoPendiente.get(grupo) ?? [];
+            arr.push(f);
+            mixtoPendiente.set(grupo, arr);
+            continue;
+        }
+        total += transferenciaRecibidaDeFactura(f);
+    }
+    for (const [grupo, cobros] of mixtoPendiente) {
+        if (mixtoVisto.has(grupo))
+            continue;
+        mixtoVisto.add(grupo);
+        const recibido = cobros
+            .map((c) => parseDetalleExcesoCobro(c.detalle_exceso_cobro)
+            ?.monto_transferencia_recibido ?? 0)
+            .find((n) => n > 0);
+        if (recibido && recibido > 0) {
+            total += recibido;
+            continue;
+        }
+        total += cobros.reduce((s, c) => s + transferenciaRecibidaDeFactura(c), 0);
+    }
+    return total;
 }

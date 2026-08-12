@@ -18,6 +18,8 @@ const empaque_para_llevar_1 = require("@drewrest/shared-domain/empaque-para-llev
 const cocina_producto_1 = require("@drewrest/shared-domain/cocina-producto");
 const mazorca_linea_pedido_1 = require("../pedidos/mazorca-linea-pedido");
 const producto_inventario_vinculo_service_1 = require("../inventario/producto-inventario-vinculo.service");
+const menu_activo_service_1 = require("../menu/menu-activo.service");
+const producto_imagen_upload_util_1 = require("../menu/producto-imagen-upload.util");
 function resolverFlagsProducto(cat, explicit, existing) {
     const auto = (0, empaque_para_llevar_1.flagsProductoMenuPorCategoria)(cat);
     let esEmpacable;
@@ -64,6 +66,7 @@ function mapProducto(p) {
         nombre: p.nombre,
         descripcion: p.descripcion,
         precio: Number(p.precio),
+        precio_costo: p.precioCosto != null ? Number(p.precioCosto) : null,
         activo: p.activo,
         es_plato_principal: p.esPlatoPrincipal,
         es_empacable: p.esEmpacable,
@@ -76,18 +79,32 @@ function mapProducto(p) {
         control_stock: p.controlStock,
         stock_disponible: p.stockDisponible,
         ocultar_sin_stock: p.ocultarSinStock,
+        es_combo: p.esCombo,
+        combo_min: Math.max(1, p.comboMin ?? 1),
+        combo_max: Math.max(1, p.comboMax ?? 1),
+        usa_produccion_porciones: Boolean(p.usaProduccionPorciones),
+        porciones_por_entera: Math.max(1, p.porcionesPorEntera ?? 8),
+        imagen_archivo: p.imagenArchivo ?? null,
+        imagen_url: (0, producto_imagen_upload_util_1.productoImagenPublicUrl)(p.idProducto, p.imagenArchivo),
         es_bebida: p.categoria.esBebida ?? false,
         total_usos_pedido: p._count?.detalles ?? 0,
     };
+}
+function normalizarComboMinMax(minRaw, maxRaw) {
+    const comboMin = Math.max(1, Math.min(99, Math.round(minRaw)));
+    const comboMax = Math.max(comboMin, Math.min(99, Math.round(maxRaw)));
+    return { comboMin, comboMax };
 }
 let ProductosService = class ProductosService {
     prisma;
     gateway;
     vinculoInventario;
-    constructor(prisma, gateway, vinculoInventario) {
+    menuActivo;
+    constructor(prisma, gateway, vinculoInventario, menuActivo) {
         this.prisma = prisma;
         this.gateway = gateway;
         this.vinculoInventario = vinculoInventario;
+        this.menuActivo = menuActivo;
     }
     async asegurarUnicoMazorca(idProducto, esMazorca, tenantId) {
         if (!esMazorca)
@@ -109,7 +126,7 @@ let ProductosService = class ProductosService {
     }
     async listarCategorias(tenantId = tenant_constants_1.DEFAULT_TENANT_ID) {
         const rows = await this.prisma.categoria.findMany({
-            where: { idRestaurante: tenantId },
+            where: { idRestaurante: tenantId, canal: 'restaurante' },
             select: { idCategoria: true, nombre: true },
             orderBy: { nombre: 'asc' },
         });
@@ -121,7 +138,7 @@ let ProductosService = class ProductosService {
     async listarProductos(incluirInactivos, tenantId = tenant_constants_1.DEFAULT_TENANT_ID) {
         const rows = await this.prisma.producto.findMany({
             where: {
-                categoria: { idRestaurante: tenantId },
+                categoria: { idRestaurante: tenantId, canal: 'restaurante' },
                 ...(incluirInactivos ? {} : { activo: true }),
             },
             include: {
@@ -149,28 +166,56 @@ let ProductosService = class ProductosService {
         if (dto.usa_subitems_repartibles && (flags.esEmpacable || esMazorca)) {
             throw new common_1.BadRequestException('Este producto no admite subítems repartibles');
         }
-        const enviaCocina = resolverEnviaCocinaProducto(cat, { envia_cocina: dto.envia_cocina }, undefined, {
-            esEmpacable: flags.esEmpacable,
-            esAcompanamientoMazorca: esMazorca,
-        });
+        const esCombo = Boolean(dto.es_combo);
+        if (esCombo && (flags.esEmpacable || esMazorca || dto.usa_subitems_repartibles)) {
+            throw new common_1.BadRequestException('Un combo no puede ser empacable, mazorca ni usar subítems repartibles');
+        }
+        const { comboMin, comboMax } = normalizarComboMinMax(dto.combo_min ?? 1, dto.combo_max ?? dto.combo_min ?? 1);
+        const enviaCocina = esCombo
+            ? dto.envia_cocina === true
+            : resolverEnviaCocinaProducto(cat, { envia_cocina: dto.envia_cocina }, undefined, {
+                esEmpacable: flags.esEmpacable,
+                esAcompanamientoMazorca: esMazorca,
+            });
         const created = await this.prisma.producto.create({
             data: {
                 idCategoria: dto.id_categoria,
                 nombre: dto.nombre.trim(),
                 descripcion: dto.descripcion?.trim() || null,
                 precio: dto.precio,
-                esPlatoPrincipal: flags.esPlatoPrincipal,
-                esEmpacable: flags.esEmpacable,
+                esPlatoPrincipal: esCombo ? false : flags.esPlatoPrincipal,
+                esEmpacable: esCombo ? false : flags.esEmpacable,
                 enviaCocina,
-                usaSubitemsRepartibles: dto.usa_subitems_repartibles ?? false,
-                cantidadRepartoSubitems: dto.usa_subitems_repartibles && dto.cantidad_reparto_subitems != null
+                usaSubitemsRepartibles: esCombo
+                    ? false
+                    : (dto.usa_subitems_repartibles ?? false),
+                cantidadRepartoSubitems: !esCombo &&
+                    dto.usa_subitems_repartibles &&
+                    dto.cantidad_reparto_subitems != null
                     ? Math.max(1, Math.min(99, Math.round(dto.cantidad_reparto_subitems)))
                     : 1,
                 esAcompanamientoMazorca: esMazorca,
                 tipoProteina: dto.tipo_proteina ?? 'ninguno',
                 prioridadCocinaBaja: dto.prioridad_cocina_baja ?? null,
+                esCombo,
+                comboMin,
+                comboMax,
                 activo: true,
-                ...(dto.control_stock != null ? { controlStock: dto.control_stock } : {}),
+                ...(dto.usa_produccion_porciones != null
+                    ? { usaProduccionPorciones: dto.usa_produccion_porciones }
+                    : {}),
+                ...(dto.porciones_por_entera != null
+                    ? {
+                        porcionesPorEntera: Math.max(1, Math.round(dto.porciones_por_entera)),
+                    }
+                    : {}),
+                ...(dto.control_stock != null || dto.usa_produccion_porciones
+                    ? {
+                        controlStock: Boolean(dto.usa_produccion_porciones
+                            ? true
+                            : dto.control_stock),
+                    }
+                    : {}),
                 ...(dto.stock_disponible != null
                     ? { stockDisponible: Math.round(dto.stock_disponible) }
                     : {}),
@@ -182,6 +227,9 @@ let ProductosService = class ProductosService {
         });
         if (esMazorca) {
             await this.asegurarUnicoMazorca(created.idProducto, true, tenantId);
+        }
+        if (!esMazorca && !created.esCuotaPendienteReparto) {
+            await this.menuActivo.asegurarProductoEnMenuDefault(created.idProducto, created.precio, tenantId);
         }
         this.gateway.emitConfigActualizada('menu', tenantId);
         return mapProducto(created);
@@ -218,10 +266,19 @@ let ProductosService = class ProductosService {
             (flags.esEmpacable || esMazorca)) {
             throw new common_1.BadRequestException('Este producto no admite subítems repartibles');
         }
-        const enviaCocina = resolverEnviaCocinaProducto(cat, { envia_cocina: dto.envia_cocina }, existing.enviaCocina, {
-            esEmpacable: flags.esEmpacable,
-            esAcompanamientoMazorca: esMazorca,
-        });
+        const esCombo = dto.es_combo != null ? dto.es_combo : existing.esCombo;
+        if (esCombo && (flags.esEmpacable || esMazorca || dto.usa_subitems_repartibles)) {
+            throw new common_1.BadRequestException('Un combo no puede ser empacable, mazorca ni usar subítems repartibles');
+        }
+        const { comboMin, comboMax } = normalizarComboMinMax(dto.combo_min ?? existing.comboMin, dto.combo_max ?? existing.comboMax);
+        const enviaCocina = esCombo
+            ? dto.envia_cocina != null
+                ? dto.envia_cocina
+                : existing.enviaCocina
+            : resolverEnviaCocinaProducto(cat, { envia_cocina: dto.envia_cocina }, existing.enviaCocina, {
+                esEmpacable: flags.esEmpacable,
+                esAcompanamientoMazorca: esMazorca,
+            });
         const updated = await this.prisma.producto.update({
             where: { idProducto },
             data: {
@@ -231,24 +288,48 @@ let ProductosService = class ProductosService {
                     ? { descripcion: dto.descripcion?.trim() || null }
                     : {}),
                 ...(dto.precio != null ? { precio: dto.precio } : {}),
+                ...(dto.precio_costo !== undefined
+                    ? {
+                        precioCosto: dto.precio_costo === null
+                            ? null
+                            : Math.round(Number(dto.precio_costo)),
+                    }
+                    : {}),
                 ...(dto.activo != null ? { activo: dto.activo } : {}),
-                esPlatoPrincipal: flags.esPlatoPrincipal,
-                esEmpacable: flags.esEmpacable,
+                esPlatoPrincipal: esCombo ? false : flags.esPlatoPrincipal,
+                esEmpacable: esCombo ? false : flags.esEmpacable,
                 enviaCocina,
                 ...(dto.usa_subitems_repartibles != null
-                    ? { usaSubitemsRepartibles: dto.usa_subitems_repartibles }
-                    : {}),
+                    ? { usaSubitemsRepartibles: esCombo ? false : dto.usa_subitems_repartibles }
+                    : esCombo
+                        ? { usaSubitemsRepartibles: false }
+                        : {}),
                 ...(dto.cantidad_reparto_subitems != null
                     ? {
                         cantidadRepartoSubitems: Math.max(1, Math.min(99, Math.round(dto.cantidad_reparto_subitems))),
                     }
                     : {}),
                 esAcompanamientoMazorca: esMazorca,
+                esCombo,
+                comboMin,
+                comboMax,
                 ...(dto.tipo_proteina != null ? { tipoProteina: dto.tipo_proteina } : {}),
                 ...(dto.prioridad_cocina_baja !== undefined
                     ? { prioridadCocinaBaja: dto.prioridad_cocina_baja }
                     : {}),
-                ...(dto.control_stock != null ? { controlStock: dto.control_stock } : {}),
+                ...(dto.usa_produccion_porciones != null
+                    ? { usaProduccionPorciones: dto.usa_produccion_porciones }
+                    : {}),
+                ...(dto.porciones_por_entera != null
+                    ? {
+                        porcionesPorEntera: Math.max(1, Math.round(dto.porciones_por_entera)),
+                    }
+                    : {}),
+                ...(dto.usa_produccion_porciones === true
+                    ? { controlStock: true }
+                    : dto.control_stock != null
+                        ? { controlStock: dto.control_stock }
+                        : {}),
                 ...(dto.stock_disponible != null
                     ? { stockDisponible: Math.round(dto.stock_disponible) }
                     : {}),
@@ -258,11 +339,19 @@ let ProductosService = class ProductosService {
             },
             include: { categoria: { select: { nombre: true, esBebida: true } } },
         });
+        if (!esCombo && existing.esCombo) {
+            await this.prisma.productoComboElegible.deleteMany({
+                where: { idProductoCombo: idProducto },
+            });
+        }
         if (dto.es_acompanamiento_mazorca != null) {
             await this.asegurarUnicoMazorca(idProducto, esMazorca, tenantId);
         }
         if (dto.nombre != null) {
             await this.vinculoInventario.sincronizarNombreDesdeProducto(idProducto, dto.nombre, tenantId);
+        }
+        if (dto.precio != null) {
+            await this.menuActivo.sincronizarPrecioMenuDefault(idProducto, dto.precio, tenantId);
         }
         this.gateway.emitConfigActualizada('menu', tenantId);
         return mapProducto(updated);
@@ -313,6 +402,7 @@ exports.ProductosService = ProductosService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
         pedidos_gateway_1.PedidosGateway,
-        producto_inventario_vinculo_service_1.ProductoInventarioVinculoService])
+        producto_inventario_vinculo_service_1.ProductoInventarioVinculoService,
+        menu_activo_service_1.MenuActivoService])
 ], ProductosService);
 //# sourceMappingURL=productos.service.js.map

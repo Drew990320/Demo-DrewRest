@@ -14,6 +14,7 @@ const class_validator_1 = require("class-validator");
 class CreatePedidoDto {
     id_mesa;
     num_comensales;
+    origen_autoservicio;
 }
 exports.CreatePedidoDto = CreatePedidoDto;
 __decorate([
@@ -25,4 +26,9 @@ __decorate([
     (0, class_validator_1.Min)(1),
     __metadata("design:type", Number)
 ], CreatePedidoDto.prototype, "num_comensales", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], CreatePedidoDto.prototype, "origen_autoservicio", void 0);
 //# sourceMappingURL=create-pedido.dto.js.map

@@ -4,7 +4,7 @@ exports.consultarPapelWindows = consultarPapelWindows;
 const node_child_process_1 = require("node:child_process");
 const node_util_1 = require("node:util");
 const execFileAsync = (0, node_util_1.promisify)(node_child_process_1.execFile);
-const CACHE_TTL_MS = 3_000;
+const CACHE_TTL_MS = 30_000;
 const cache = new Map();
 async function consultarPapelWindows(printerName) {
     if (process.platform !== 'win32')

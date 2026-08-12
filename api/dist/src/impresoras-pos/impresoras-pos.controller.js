@@ -54,7 +54,11 @@ let ImpresorasPosController = class ImpresorasPosController {
     }
     async pruebaLocal(id) {
         const row = await this.impresoras.obtener(id, tenant_constants_1.DEFAULT_TENANT_ID);
-        return this.printer.imprimirPruebaADestino(row.destino, row.baud_rate);
+        return this.printer.imprimirPruebaADestino(row.destino, row.baud_rate, row.ancho_papel_mm, {
+            tamano_fuente: row.tamano_fuente,
+            margen_inicio_lineas: row.margen_inicio_lineas,
+            margen_fin_lineas: row.margen_fin_lineas,
+        });
     }
     obtener(id, req) {
         return this.impresoras.obtener(id, req.user.idRestaurante);
@@ -73,7 +77,11 @@ let ImpresorasPosController = class ImpresorasPosController {
     }
     async prueba(id, req) {
         const row = await this.impresoras.obtener(id, req.user.idRestaurante);
-        return this.printer.imprimirPruebaADestino(row.destino, row.baud_rate);
+        return this.printer.imprimirPruebaADestino(row.destino, row.baud_rate, row.ancho_papel_mm, {
+            tamano_fuente: row.tamano_fuente,
+            margen_inicio_lineas: row.margen_inicio_lineas,
+            margen_fin_lineas: row.margen_fin_lineas,
+        });
     }
     async estado(id, req) {
         const row = await this.impresoras.obtener(id, req.user.idRestaurante);

@@ -249,7 +249,7 @@ let ConfigVisualService = class ConfigVisualService {
         (0, config_restaurante_cache_1.invalidateConfigRestauranteCache)(tenantId);
         await this.prisma.categoria.updateMany({
             where: { idRestaurante: tenantId },
-            data: { iconoMenu: null },
+            data: { iconoMenu: null, colorIcono: null },
         });
         this.invalidateCache(tenantId);
         const row = await this.prisma.configVisual.update({
@@ -375,6 +375,20 @@ let ConfigVisualService = class ConfigVisualService {
         cachedRowByTenant.set(tenantId, row);
         (0, visual_assets_util_1.invalidarCacheAssetsTipo)(tipo);
         return { archivo, tipo };
+    }
+    async eliminarAsset(tipo, tenantId = tenant_constants_1.DEFAULT_TENANT_ID) {
+        (0, visual_assets_util_1.eliminarAssetVisual)(tipo);
+        const field = (0, visual_assets_util_1.campoArchivoPorTipo)(tipo);
+        const row = await this.prisma.configVisual.upsert({
+            where: { idRestaurante: tenantId },
+            create: { idRestaurante: tenantId, [field]: null },
+            update: {
+                [field]: null,
+                actualizadoEn: new Date(),
+            },
+        });
+        cachedRowByTenant.set(tenantId, row);
+        return { tipo, eliminado: true };
     }
     resolveAssetPath(tipo, tenantId = tenant_constants_1.DEFAULT_TENANT_ID) {
         const row = cachedRowByTenant.get(tenantId);

@@ -16,7 +16,8 @@ function pedidoUsaLineaMazorca(mesaNumero, mazorcaActiva = false, mesasVirtuales
         return false;
     const r = (0, mesa_label_1.resolverMesasVirtuales)(mesasVirtuales);
     return (mesaNumero !== r.numero_mesa_para_llevar &&
-        mesaNumero !== r.numero_mesa_mostrador);
+        mesaNumero !== r.numero_mesa_mostrador &&
+        mesaNumero !== r.numero_mesa_boutique);
 }
 function esMesaSinLineaMazorca(mesaNumero, mesasVirtuales) {
     return !pedidoUsaLineaMazorca(mesaNumero, true, mesasVirtuales);

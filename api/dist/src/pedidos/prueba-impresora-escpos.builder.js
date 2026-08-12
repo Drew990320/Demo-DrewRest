@@ -3,10 +3,16 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.buildPruebaImpresoraEscPos = buildPruebaImpresoraEscPos;
 const instalacion_on_prem_1 = require("../sistema/instalacion-on-prem");
 const escpos_utils_1 = require("./escpos-utils");
-async function buildPruebaImpresoraEscPos(destino, charWidth = escpos_utils_1.DEFAULT_ESC_POS_WIDTH) {
-    const printer = (0, escpos_utils_1.createEscPosPrinter)(charWidth);
-    const w = charWidth;
+async function buildPruebaImpresoraEscPos(destino, charWidthOrOpts = escpos_utils_1.DEFAULT_ESC_POS_WIDTH, anchoPapelMm = 58) {
+    const opts = (0, escpos_utils_1.resolveEscPosTicketOpts)(charWidthOrOpts);
+    const printer = (0, escpos_utils_1.createEscPosPrinter)(opts.charWidth);
+    const w = opts.charWidth;
     const sep = '-'.repeat(w);
+    const mm = typeof charWidthOrOpts === 'number'
+        ? anchoPapelMm
+        : charWidthOrOpts.charWidth >= 40
+            ? 80
+            : anchoPapelMm;
     const instalacion = (0, instalacion_on_prem_1.leerInstalacionOnPrem)();
     const version = instalacion.version?.trim() || '1.0.0';
     const buildId = instalacion.build_id?.trim();
@@ -15,6 +21,7 @@ async function buildPruebaImpresoraEscPos(destino, charWidth = escpos_utils_1.DE
     const ahora = new Date().toLocaleString('es-CO', {
         timeZone: 'America/Bogota',
     });
+    await (0, escpos_utils_1.applyEscPosTicketStart)(printer, opts);
     await printer.alignCenter();
     await printer.bold(true);
     await printer.println('DREWREST');
@@ -64,7 +71,9 @@ async function buildPruebaImpresoraEscPos(destino, charWidth = escpos_utils_1.DE
     await printer.println('[OK] Lineas separadoras');
     await printer.println('[  ] Corte de papel');
     await printer.println(sep);
-    await printer.println('Lineas de relleno (58 mm):');
+    await printer.println(`Ancho papel: ${mm} mm (${w} cols)`);
+    await printer.println(`Fuente: ${opts.tamanoFuente} · Margen ${opts.margenInicioLineas}/${opts.margenFinLineas}`);
+    await printer.println(`Lineas de relleno (${mm} mm):`);
     for (let i = 1; i <= 6; i++) {
         await printer.println(`${i}. Item demo prueba #${i}`);
     }
@@ -77,8 +86,7 @@ async function buildPruebaImpresoraEscPos(destino, charWidth = escpos_utils_1.DE
     await printer.bold(true);
     await printer.println('DrewRest by DrewTech');
     await printer.bold(false);
-    await printer.newLine();
-    await printer.cut();
+    await (0, escpos_utils_1.applyEscPosTicketEnd)(printer, opts);
     return (0, escpos_utils_1.bufferFromPrinter)(printer);
 }
 //# sourceMappingURL=prueba-impresora-escpos.builder.js.map

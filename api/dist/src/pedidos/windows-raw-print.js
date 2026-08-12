@@ -42,6 +42,7 @@ const path = __importStar(require("path"));
 const execFileAsync = (0, util_1.promisify)(child_process_1.execFile);
 const SCRIPT_PATH = path.join(os.tmpdir(), 'drewrest-raw-print-v2.ps1');
 let scriptReady = null;
+let resolvedExe;
 const SCRIPT_BODY = `
 param(
   [Parameter(Mandatory=$true)][string]$PrinterName,
@@ -110,23 +111,77 @@ function ensureScript() {
     }
     return scriptReady;
 }
-async function printRawWindows(printerName, data) {
+function candidateRawPrintExes() {
+    const fromEnv = process.env.DREWREST_RAW_PRINT_EXE?.trim();
+    const cwd = process.cwd();
+    const here = __dirname;
+    return [
+        fromEnv,
+        path.join(cwd, 'bin', 'DrewRest.RawPrint.exe'),
+        path.join(cwd, 'DrewRest.RawPrint.exe'),
+        path.join(here, '..', '..', 'bin', 'DrewRest.RawPrint.exe'),
+        path.join(here, '..', '..', '..', 'bin', 'DrewRest.RawPrint.exe'),
+        path.join(here, 'DrewRest.RawPrint.exe'),
+    ].filter((p) => Boolean(p && p.length > 0));
+}
+function resolveRawPrintExe() {
+    if (resolvedExe !== undefined)
+        return resolvedExe;
+    for (const p of candidateRawPrintExes()) {
+        try {
+            if (fs.existsSync(p)) {
+                resolvedExe = p;
+                return p;
+            }
+        }
+        catch {
+        }
+    }
+    resolvedExe = null;
+    return null;
+}
+async function printViaExe(exe, printerName, binPath) {
+    await execFileAsync(exe, [printerName, binPath], {
+        timeout: 10_000,
+        windowsHide: true,
+    });
+}
+async function printViaPowerShell(printerName, binPath) {
     await ensureScript();
+    await execFileAsync('powershell.exe', [
+        '-NoProfile',
+        '-NonInteractive',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        SCRIPT_PATH,
+        '-PrinterName',
+        printerName,
+        '-FilePath',
+        binPath,
+    ], { timeout: 10_000, windowsHide: true });
+}
+async function printRawWindows(printerName, data) {
     const binPath = path.join(os.tmpdir(), `drewrest-comanda-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.bin`);
     await fs.promises.writeFile(binPath, data);
     try {
-        await execFileAsync('powershell.exe', [
-            '-NoProfile',
-            '-NonInteractive',
-            '-ExecutionPolicy',
-            'Bypass',
-            '-File',
-            SCRIPT_PATH,
-            '-PrinterName',
-            printerName,
-            '-FilePath',
-            binPath,
-        ], { timeout: 15000, windowsHide: true });
+        const exe = resolveRawPrintExe();
+        if (exe) {
+            try {
+                await printViaExe(exe, printerName, binPath);
+                return;
+            }
+            catch (e) {
+                const msg = e instanceof Error ? e.message : String(e);
+                if (/timeout|etimedout|aborted|exceeded/i.test(msg)) {
+                    throw e instanceof Error
+                        ? e
+                        : new Error(`RawPrint timeout: ${msg}`);
+                }
+                resolvedExe = null;
+            }
+        }
+        await printViaPowerShell(printerName, binPath);
     }
     finally {
         await fs.promises.unlink(binPath).catch(() => undefined);

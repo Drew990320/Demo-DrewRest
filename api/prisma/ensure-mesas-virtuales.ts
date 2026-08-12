@@ -1,5 +1,5 @@
 /**
- * Crea las mesas virtuales 98 (para llevar) y 99 (mostrador) si no existen.
+ * Crea las mesas virtuales 97 (tienda), 98 (para llevar) y 99 (mostrador) si no existen.
  * No borra ni modifica otros datos. Útil cuando la BD se creó sin ejecutar el seed completo.
  *
  * Uso: npm run prisma:ensure-mesas
@@ -41,10 +41,11 @@ async function ensureMesaVirtual(idRestaurante: number, numero: number) {
 
 async function main() {
   const idRestaurante = await ensureRestaurantePrincipal();
+  await ensureMesaVirtual(idRestaurante, 97);
   await ensureMesaVirtual(idRestaurante, 98);
   await ensureMesaVirtual(idRestaurante, 99);
   console.log(
-    'Mesas virtuales listas: 98 (para llevar), 99 (mostrador).',
+    'Mesas virtuales listas: 97 (tienda), 98 (para llevar), 99 (mostrador).',
   );
 }
 

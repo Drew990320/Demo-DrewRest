@@ -1,5 +1,5 @@
 /** Eventos operativos que disparan posteo contable automático. */
-export type EventoContable = 'venta_contado_efectivo' | 'venta_tarjeta' | 'venta_transferencia' | 'venta_fiado' | 'abono_cliente' | 'pago_proveedor' | 'cxp_compra_credito' | 'cxp_compra_contado' | 'caja_entrada_manual' | 'caja_salida_manual' | 'exceso_devolucion' | 'movimiento_simple';
+export type EventoContable = 'venta_contado_efectivo' | 'venta_tarjeta' | 'venta_transferencia' | 'venta_fiado' | 'abono_cliente' | 'pago_proveedor' | 'cxp_compra_credito' | 'cxp_compra_contado' | 'caja_entrada_manual' | 'caja_entrada_transferencia' | 'caja_salida_manual' | 'caja_salida_transferencia' | 'exceso_devolucion' | 'movimiento_simple';
 export declare const EVENTOS_CONTABLES: readonly EventoContable[];
 export declare function esEventoContable(v: string): v is EventoContable;
 export type GrupoCategoriaContable = 'entro_dinero' | 'salio_dinero' | 'me_deben' | 'debo' | 'interno';

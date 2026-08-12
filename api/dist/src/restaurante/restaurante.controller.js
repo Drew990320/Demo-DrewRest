@@ -52,8 +52,11 @@ let RestauranteController = class RestauranteController {
             nombre: c.nombre_comercial,
             telefono: c.telefono,
             direccion: c.direccion,
+            nit: c.nit,
             tiene_logo: c.tiene_logo,
             logo_url: c.tiene_logo ? '/sistema/logo' : null,
+            login_pin_disponible: await this.config.loginPinDisponibleAhora(tenantId),
+            login_autoservicio_disponible: await this.config.loginAutoservicioDisponibleAhora(tenantId),
         };
     }
 };

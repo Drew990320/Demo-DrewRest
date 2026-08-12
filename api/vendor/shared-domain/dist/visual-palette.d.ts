@@ -84,6 +84,16 @@ export declare function derivarColoresSemanticos(palette: Record<VisualColorKey,
 export declare function generarPaletaClaraDesdePrincipal(primaryHex: string): Record<VisualColorKey, string>;
 export declare function generarPaletaOscuraDesdePrincipal(primaryHex: string): Record<VisualColorKey, string>;
 export declare function generarSugerenciasTemaDesdePrincipal(primaryHex: string): SugerenciaTemaVisual;
+export declare const VISUAL_TONE_IDS: readonly ["pastel", "mate", "natural", "brillante", "intenso"];
+export type VisualToneId = (typeof VISUAL_TONE_IDS)[number];
+export type VisualTonePreset = {
+    id: VisualToneId;
+    nombre: string;
+    descripcion: string;
+};
+export declare const VISUAL_TONE_PRESETS: Record<VisualToneId, VisualTonePreset>;
+/** Recolorea la paleta conservando el matiz; el tono (pastel/mate/brillante) es idempotente. */
+export declare function aplicarTonoPaleta(palette: Record<VisualColorKey, string>, tone: VisualToneId): Record<VisualColorKey, string>;
 /** @deprecated Usar generarPaletaClaraDesdePrincipal */
 export declare function generarPaletaDesdePrincipal(primaryHex: string): Record<VisualColorKey, string>;
 export type PaletaPredisenada = {

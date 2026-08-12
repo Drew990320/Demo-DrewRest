@@ -17,11 +17,16 @@ export type ResultadoValidacionTransferencia = {
     accion: 'rechazar';
     mensaje: string;
 };
-/** Transferencia entre mesas libres; no hacia/desde 98 (para llevar) ni 99 (mostrador). */
+/**
+ * Transferencia entre mesas físicas (no 98/99).
+ * - Libre: mueve la cuenta y libera el origen.
+ * - Ocupada: deja una segunda cuenta en el destino (como bebidas / para llevar), sin agrupar mesas.
+ */
 export declare function validarTransferenciaPedido(input: {
     origen_mesa_numero: number;
     destino_mesa_numero: number;
     destino_libre: boolean;
+    destino_es_anexa?: boolean;
     mesas_virtuales?: MesasVirtualesConfig | null;
 }): ResultadoValidacionTransferencia;
-export declare const AYUDA_TRANSFERENCIA_PEDIDO = "Elige una mesa libre. Para llevar y mostrador: cancela y abre pedido nuevo.";
+export declare const AYUDA_TRANSFERENCIA_PEDIDO = "Elige mesa libre u ocupada. En ocupada queda como segunda cuenta (sin agrupar). Para llevar y mostrador: cancela y abre pedido nuevo.";

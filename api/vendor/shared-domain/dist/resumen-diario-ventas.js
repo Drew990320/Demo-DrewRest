@@ -36,8 +36,10 @@ function agregarVentasResumenDiario(lineas) {
     }
     const platos_por_categoria = Array.from(byCatPlatos.entries())
         .map(([categoria_nombre, v]) => ({ categoria_nombre, ...v }))
-        .sort((a, b) => a.categoria_nombre.localeCompare(b.categoria_nombre, 'es'));
-    const items_menu = Array.from(byProducto.values()).sort((a, b) => b.cantidad - a.cantidad ||
+        .sort((a, b) => b.subtotal - a.subtotal ||
+        a.categoria_nombre.localeCompare(b.categoria_nombre, 'es'));
+    const items_menu = Array.from(byProducto.values()).sort((a, b) => b.subtotal - a.subtotal ||
+        b.cantidad - a.cantidad ||
         a.nombre_producto.localeCompare(b.nombre_producto, 'es'));
     return { platos_por_categoria, items_menu };
 }

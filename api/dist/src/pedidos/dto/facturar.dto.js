@@ -32,10 +32,11 @@ class FacturarDto {
     monto_transferencia;
     monto_recibido_efectivo;
     devolucion_exceso_metodo;
+    aplicar_redondeo;
 }
 exports.FacturarDto = FacturarDto;
 __decorate([
-    (0, class_validator_1.IsIn)(['efectivo', 'transferencia', 'fiado']),
+    (0, class_validator_1.IsIn)(['efectivo', 'transferencia', 'tarjeta', 'fiado']),
     __metadata("design:type", String)
 ], FacturarDto.prototype, "metodo_pago", void 0);
 __decorate([
@@ -135,4 +136,9 @@ __decorate([
     (0, class_validator_1.IsIn)(['efectivo', 'transferencia', 'domicilio', 'mesero']),
     __metadata("design:type", String)
 ], FacturarDto.prototype, "devolucion_exceso_metodo", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], FacturarDto.prototype, "aplicar_redondeo", void 0);
 //# sourceMappingURL=facturar.dto.js.map

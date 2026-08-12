@@ -87,7 +87,7 @@ __decorate([
 exports.ProductosController = ProductosController = __decorate([
     (0, common_1.Controller)('productos'),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
-    (0, roles_decorator_1.Roles)('admin'),
+    (0, roles_decorator_1.Roles)('admin', 'superadmin'),
     __metadata("design:paramtypes", [productos_service_1.ProductosService])
 ], ProductosController);
 //# sourceMappingURL=productos.controller.js.map

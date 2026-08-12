@@ -32,8 +32,19 @@ let JwtStrategy = class JwtStrategy extends (0, passport_1.PassportStrategy)(pas
         if (!Number.isFinite(id)) {
             throw new common_1.UnauthorizedException('Token inválido');
         }
+        const assertPwdYTenant = (user) => {
+            if (payload.tid != null &&
+                Number(payload.tid) !== user.idRestaurante) {
+                throw new common_1.UnauthorizedException('Token de otro restaurante');
+            }
+            const pwdAtEsperado = (user.passwordCambiadoEn ?? user.creadoEn).getTime();
+            if (payload.pwdAt == null || payload.pwdAt + 2_000 < pwdAtEsperado) {
+                throw new common_1.UnauthorizedException('Sesión expirada. Inicia sesión de nuevo.');
+            }
+        };
         const cached = (0, auth_user_cache_1.getCachedAuthUser)(id);
         if (cached?.activo) {
+            assertPwdYTenant(cached);
             await (0, tenant_access_1.assertTenantAccessForUser)(this.prisma, cached);
             return cached;
         }
@@ -44,14 +55,7 @@ let JwtStrategy = class JwtStrategy extends (0, passport_1.PassportStrategy)(pas
         if (!user?.activo) {
             throw new common_1.UnauthorizedException('Usuario inactivo o inexistente');
         }
-        if (payload.tid != null &&
-            Number(payload.tid) !== user.idRestaurante) {
-            throw new common_1.UnauthorizedException('Token de otro restaurante');
-        }
-        const pwdAtEsperado = (user.passwordCambiadoEn ?? user.creadoEn).getTime();
-        if (payload.pwdAt == null || payload.pwdAt < pwdAtEsperado) {
-            throw new common_1.UnauthorizedException('Sesión expirada. Inicia sesión de nuevo.');
-        }
+        assertPwdYTenant(user);
         await (0, tenant_access_1.assertTenantAccessForUser)(this.prisma, user);
         (0, auth_user_cache_1.setCachedAuthUser)(user);
         return user;

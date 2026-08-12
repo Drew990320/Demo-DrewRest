@@ -16,6 +16,7 @@ export type LineaFacturaAgrupable = {
     es_plato_principal?: boolean;
     es_bebida?: boolean;
     es_empacable?: boolean;
+    es_combo?: boolean;
     es_acompanamiento_mazorca?: boolean;
 };
 export type LineaFacturaGrupo = LineaFacturaAgrupable & {

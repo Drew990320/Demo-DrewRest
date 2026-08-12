@@ -92,7 +92,8 @@ let MesasService = class MesasService {
     async ensureLugarParaMesaNormal(numeroMesa, tenantId, idLugar) {
         const mv = await this.configMesasVirtuales(tenantId);
         const esVirtual = numeroMesa === mv.numero_mesa_mostrador ||
-            numeroMesa === mv.numero_mesa_para_llevar;
+            numeroMesa === mv.numero_mesa_para_llevar ||
+            numeroMesa === mv.numero_mesa_boutique;
         if (esVirtual) {
             return null;
         }

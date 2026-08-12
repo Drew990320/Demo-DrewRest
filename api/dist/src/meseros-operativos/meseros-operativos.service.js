@@ -17,6 +17,11 @@ const pedidos_gateway_1 = require("../pedidos/pedidos.gateway");
 const fecha_bogota_db_1 = require("../common/fecha-bogota-db");
 const stock_bebida_1 = require("../productos/stock-bebida");
 const usuario_display_1 = require("../usuarios/usuario-display");
+const repartir_monto_cop_1 = require("@drewrest/shared-domain/repartir-monto-cop");
+const CLAVE_PAGO = 'pago';
+function claveDescuento(idBeneficioTurno) {
+    return `d:${idBeneficioTurno}`;
+}
 let MeserosOperativosService = class MeserosOperativosService {
     prisma;
     gateway;
@@ -29,40 +34,126 @@ let MeserosOperativosService = class MeserosOperativosService {
     parseFechaBogota(fecha) {
         return (0, fecha_bogota_db_1.fechaBogotaDb)(fecha);
     }
-    async ctxSodaAlmuerzo(tenantId) {
-        const config = await this.prisma.configOperativa.findUnique({
+    serializeBeneficio(b) {
+        const prod = b.producto ?? null;
+        return {
+            id_beneficio_turno: b.idBeneficioTurno,
+            id_producto: b.idProducto,
+            producto_nombre: prod?.nombre ?? null,
+            precio_producto: prod != null ? Math.round(Number(prod.precio)) : null,
+            monto_descuento: Math.round(Number(b.montoDescuento)),
+            descontar_stock: b.descontarStock,
+            activo: b.activo,
+            orden: b.orden,
+            control_stock: Boolean(prod?.controlStock && prod.categoria?.esBebida),
+            stock_disponible: prod?.stockDisponible ?? null,
+        };
+    }
+    async listBeneficios(tenantId) {
+        const rows = await this.prisma.beneficioTurnoProducto.findMany({
             where: { idRestaurante: tenantId },
             include: {
-                productoSodaAlmuerzo: {
+                producto: {
+                    include: { categoria: { select: { esBebida: true } } },
+                },
+            },
+            orderBy: [{ orden: 'asc' }, { idBeneficioTurno: 'asc' }],
+        });
+        return rows.map((b) => this.serializeBeneficio(b));
+    }
+    async crearBeneficio(dto, tenantId) {
+        const producto = await this.prisma.producto.findFirst({
+            where: {
+                idProducto: dto.id_producto,
+                categoria: { idRestaurante: tenantId },
+            },
+        });
+        if (!producto) {
+            throw new common_1.BadRequestException('Producto no encontrado');
+        }
+        const monto = Math.round(dto.monto_descuento);
+        if (monto < 0) {
+            throw new common_1.BadRequestException('El descuento no puede ser negativo');
+        }
+        try {
+            const row = await this.prisma.beneficioTurnoProducto.create({
+                data: {
+                    idRestaurante: tenantId,
+                    idProducto: dto.id_producto,
+                    montoDescuento: monto,
+                    descontarStock: dto.descontar_stock !== false,
+                    activo: dto.activo !== false,
+                    orden: dto.orden ?? 0,
+                },
+                include: {
+                    producto: {
+                        include: { categoria: { select: { esBebida: true } } },
+                    },
+                },
+            });
+            return this.serializeBeneficio(row);
+        }
+        catch {
+            throw new common_1.ConflictException('Ya existe un beneficio de turno para ese producto');
+        }
+    }
+    async actualizarBeneficio(idBeneficioTurno, dto, tenantId) {
+        const existing = await this.prisma.beneficioTurnoProducto.findFirst({
+            where: { idBeneficioTurno, idRestaurante: tenantId },
+        });
+        if (!existing) {
+            throw new common_1.NotFoundException('Beneficio no encontrado');
+        }
+        const row = await this.prisma.beneficioTurnoProducto.update({
+            where: { idBeneficioTurno },
+            data: {
+                ...(dto.monto_descuento != null
+                    ? { montoDescuento: Math.round(dto.monto_descuento) }
+                    : {}),
+                ...(dto.descontar_stock != null
+                    ? { descontarStock: dto.descontar_stock }
+                    : {}),
+                ...(dto.activo != null ? { activo: dto.activo } : {}),
+                ...(dto.orden != null ? { orden: dto.orden } : {}),
+            },
+            include: {
+                producto: {
                     include: { categoria: { select: { esBebida: true } } },
                 },
             },
         });
-        if (!config) {
-            throw new common_1.NotFoundException('Configuración operativa no encontrada');
+        return this.serializeBeneficio(row);
+    }
+    async eliminarBeneficio(idBeneficioTurno, tenantId) {
+        const existing = await this.prisma.beneficioTurnoProducto.findFirst({
+            where: { idBeneficioTurno, idRestaurante: tenantId },
+        });
+        if (!existing) {
+            throw new common_1.NotFoundException('Beneficio no encontrado');
         }
-        const prod = config.productoSodaAlmuerzo;
-        return {
-            activo: config.beneficioSodaAlmuerzoActivo,
-            descontarStock: config.sodaAlmuerzoDescontarStock,
-            idProducto: config.idProductoSodaAlmuerzo,
-            producto: prod,
-            productoNombre: prod?.nombre ?? null,
-            controlStock: prod ? (0, stock_bebida_1.aplicaControlStockBebida)(prod) : false,
-            stockDisponible: prod?.stockDisponible ?? null,
-        };
+        await this.prisma.beneficioTurnoProducto.delete({
+            where: { idBeneficioTurno },
+        });
+        return { ok: true };
     }
     async resumen(fecha, tenantId) {
         const { iso, date } = this.parseFechaBogota(fecha);
-        const sodaCfg = await this.ctxSodaAlmuerzo(tenantId);
+        const beneficios = await this.listBeneficios(tenantId);
+        const beneficiosActivos = beneficios.filter((b) => b.activo);
         const meseros = await this.prisma.usuario.findMany({
             where: { idRestaurante: tenantId, rol: { nombre: 'mesero' }, activo: true },
             include: { rol: true },
             orderBy: [{ nombre: 'asc' }, { apellido: 'asc' }],
         });
         const registros = await this.prisma.registroBeneficioMesero.findMany({
-            where: { fecha: date },
-            include: { producto: { select: { nombre: true } } },
+            where: {
+                fecha: date,
+                mesero: { idRestaurante: tenantId },
+            },
+            include: {
+                producto: { select: { nombre: true } },
+                beneficioTurno: { select: { idBeneficioTurno: true } },
+            },
         });
         const delegacion = await this.prisma.delegacionMeseroTurno.findUnique({
             where: {
@@ -78,32 +169,38 @@ let MeserosOperativosService = class MeserosOperativosService {
             list.push(r);
             byUser.set(r.idUsuario, list);
         }
-        let sodasAplicadas = 0;
+        let descuentosAplicados = 0;
+        let montoDescuentosTotal = 0;
         let pagosRegistrados = 0;
         let montoPagosTotal = 0;
         const filas = meseros.map((m) => {
             const rs = byUser.get(m.idUsuario) ?? [];
-            const soda = rs.find((x) => x.tipo === 'soda_almuerzo') ?? null;
             const pago = rs.find((x) => x.tipo === 'pago_turno') ?? null;
-            if (soda)
-                sodasAplicadas += 1;
             if (pago) {
                 pagosRegistrados += 1;
                 montoPagosTotal += Number(pago.monto ?? 0);
             }
+            const descuentos = rs
+                .filter((x) => x.tipo === 'descuento_turno' || x.tipo === 'soda_almuerzo')
+                .map((d) => {
+                descuentosAplicados += 1;
+                montoDescuentosTotal += Number(d.monto ?? 0);
+                return {
+                    id_registro: d.idRegistro,
+                    id_beneficio_turno: d.idBeneficioTurno,
+                    id_producto: d.idProducto,
+                    producto_nombre: d.producto?.nombre ?? null,
+                    monto_descuento: Math.round(Number(d.monto ?? 0)),
+                    cantidad: d.cantidad,
+                    desconto_stock: d.descontoStock,
+                };
+            });
             const pub = (0, usuario_display_1.nombreUsuarioPublico)(m.nombre, m.apellido, m.rol.nombre);
             return {
                 id_usuario: m.idUsuario,
                 nombre: pub.nombre,
                 apellido: pub.apellido,
-                soda_almuerzo: soda
-                    ? {
-                        id_registro: soda.idRegistro,
-                        cantidad: soda.cantidad,
-                        desconto_stock: soda.descontoStock,
-                        producto_nombre: soda.producto?.nombre ?? sodaCfg.productoNombre,
-                    }
-                    : null,
+                descuentos,
                 pago_turno: pago
                     ? {
                         id_registro: pago.idRegistro,
@@ -113,29 +210,29 @@ let MeserosOperativosService = class MeserosOperativosService {
                     : null,
             };
         });
+        const delPub = delegacion
+            ? (0, usuario_display_1.nombreUsuarioPublico)(delegacion.mesero.nombre, delegacion.mesero.apellido, delegacion.mesero.rol.nombre)
+            : null;
         return {
             fecha: iso,
             delegacion_cierre_anulacion: delegacion
                 ? {
                     id_usuario: delegacion.idUsuario,
-                    nombre: (0, usuario_display_1.nombreUsuarioPublico)(delegacion.mesero.nombre, delegacion.mesero.apellido, delegacion.mesero.rol.nombre).nombre,
-                    apellido: (0, usuario_display_1.nombreUsuarioPublico)(delegacion.mesero.nombre, delegacion.mesero.apellido, delegacion.mesero.rol.nombre).apellido,
-                    asignado_en: delegacion.creadoEn,
+                    nombre: delPub.nombre,
+                    apellido: delPub.apellido,
+                    asignado_en: delegacion.creadoEn.toISOString(),
                 }
                 : null,
-            config: {
-                beneficio_soda_almuerzo_activo: sodaCfg.activo,
-                id_producto_soda_almuerzo: sodaCfg.idProducto,
-                producto_soda_nombre: sodaCfg.productoNombre,
-                soda_almuerzo_descontar_stock: sodaCfg.descontarStock,
-                producto_control_stock: sodaCfg.controlStock,
-                producto_stock_disponible: sodaCfg.stockDisponible,
-            },
+            beneficios,
+            beneficios_activos: beneficiosActivos,
             meseros: filas,
             totales: {
-                sodas_aplicadas: sodasAplicadas,
+                descuentos_aplicados: descuentosAplicados,
+                monto_descuentos_total: Math.round(montoDescuentosTotal),
                 pagos_registrados: pagosRegistrados,
                 monto_pagos_total: Math.round(montoPagosTotal),
+                beneficios_configurados: beneficios.length,
+                beneficios_activos: beneficiosActivos.length,
             },
         };
     }
@@ -145,16 +242,17 @@ let MeserosOperativosService = class MeserosOperativosService {
         const monto = Math.round(dto.monto);
         const row = await this.prisma.registroBeneficioMesero.upsert({
             where: {
-                fecha_idUsuario_tipo: {
+                fecha_idUsuario_claveUnica: {
                     fecha: date,
                     idUsuario: dto.id_usuario,
-                    tipo: 'pago_turno',
+                    claveUnica: CLAVE_PAGO,
                 },
             },
             create: {
                 fecha: date,
                 idUsuario: dto.id_usuario,
                 tipo: 'pago_turno',
+                claveUnica: CLAVE_PAGO,
                 monto,
                 notas: dto.notas?.trim() || null,
                 idUsuarioRegistro: idAdmin,
@@ -171,100 +269,112 @@ let MeserosOperativosService = class MeserosOperativosService {
             notas: row.notas,
         };
     }
-    async aplicarSodaAlmuerzoTodos(dto, idAdmin, tenantId) {
+    async repartirPagoTurno(dto, idAdmin, tenantId) {
         const { iso, date } = this.parseFechaBogota(dto.fecha);
-        const sodaCfg = await this.ctxSodaAlmuerzo(tenantId);
-        if (!sodaCfg.activo) {
-            throw new common_1.BadRequestException('Activa el beneficio de soda almuerzo en Configuración');
+        const montoTotal = Math.round(dto.monto_total);
+        if (montoTotal < 1) {
+            throw new common_1.BadRequestException('El monto a repartir debe ser mayor a 0');
         }
-        if (!sodaCfg.idProducto || !sodaCfg.producto) {
-            throw new common_1.BadRequestException('Indica el producto de soda almuerzo en Configuración');
-        }
-        const meseros = await this.prisma.usuario.findMany({
-            where: { idRestaurante: tenantId, rol: { nombre: 'mesero' }, activo: true },
-            select: { idUsuario: true },
+        let meseros = await this.prisma.usuario.findMany({
+            where: {
+                idRestaurante: tenantId,
+                rol: { nombre: 'mesero' },
+                activo: true,
+                ...(dto.ids_usuarios?.length
+                    ? { idUsuario: { in: dto.ids_usuarios } }
+                    : {}),
+            },
+            select: { idUsuario: true, nombre: true, apellido: true },
+            orderBy: [{ nombre: 'asc' }, { apellido: 'asc' }],
         });
-        let aplicados = 0;
-        let omitidos = 0;
-        let stockDescontado = false;
+        if (dto.ids_usuarios?.length) {
+            const pedidas = new Set(dto.ids_usuarios);
+            if (meseros.length !== pedidas.size) {
+                throw new common_1.BadRequestException('Uno o más meseros no están activos o no existen');
+            }
+        }
+        if (meseros.length === 0) {
+            throw new common_1.BadRequestException('No hay meseros activos para repartir');
+        }
+        const partes = (0, repartir_monto_cop_1.repartirMontoEnCop)(montoTotal, meseros.length);
+        const notas = dto.notas?.trim() || null;
+        const resultados = [];
         await this.prisma.$transaction(async (tx) => {
-            for (const m of meseros) {
-                const existing = await tx.registroBeneficioMesero.findUnique({
+            for (let i = 0; i < meseros.length; i++) {
+                const m = meseros[i];
+                const monto = partes[i];
+                await tx.registroBeneficioMesero.upsert({
                     where: {
-                        fecha_idUsuario_tipo: {
+                        fecha_idUsuario_claveUnica: {
                             fecha: date,
                             idUsuario: m.idUsuario,
-                            tipo: 'soda_almuerzo',
+                            claveUnica: CLAVE_PAGO,
                         },
                     },
-                });
-                if (existing) {
-                    omitidos += 1;
-                    continue;
-                }
-                let desconto = false;
-                if (sodaCfg.descontarStock && sodaCfg.producto) {
-                    const prodFresh = await tx.producto.findUnique({
-                        where: { idProducto: sodaCfg.producto.idProducto },
-                        include: { categoria: { select: { esBebida: true } } },
-                    });
-                    if (prodFresh && (0, stock_bebida_1.aplicaControlStockBebida)(prodFresh)) {
-                        await (0, stock_bebida_1.descontarStockBebidaTx)(tx, prodFresh, 1);
-                        desconto = true;
-                        stockDescontado = true;
-                    }
-                }
-                await tx.registroBeneficioMesero.create({
-                    data: {
+                    create: {
                         fecha: date,
                         idUsuario: m.idUsuario,
-                        tipo: 'soda_almuerzo',
-                        idProducto: sodaCfg.idProducto,
-                        cantidad: 1,
-                        descontoStock: desconto,
+                        tipo: 'pago_turno',
+                        claveUnica: CLAVE_PAGO,
+                        monto,
+                        notas,
+                        idUsuarioRegistro: idAdmin,
+                    },
+                    update: {
+                        monto,
+                        notas,
                         idUsuarioRegistro: idAdmin,
                     },
                 });
-                aplicados += 1;
+                resultados.push({ id_usuario: m.idUsuario, monto });
             }
         });
-        if (stockDescontado) {
-            this.gateway.emitConfigActualizada('menu', tenantId);
-        }
         return {
             fecha: iso,
-            aplicados,
-            omitidos,
-            total_meseros: meseros.length,
+            monto_total: montoTotal,
+            meseros: resultados,
+            total_asignado: resultados.reduce((s, r) => s + r.monto, 0),
         };
     }
-    async aplicarSodaAlmuerzoMesero(dto, idAdmin, tenantId) {
+    async loadBeneficioActivo(idBeneficioTurno, tenantId) {
+        const b = await this.prisma.beneficioTurnoProducto.findFirst({
+            where: { idBeneficioTurno, idRestaurante: tenantId },
+            include: {
+                producto: {
+                    include: { categoria: { select: { esBebida: true } } },
+                },
+            },
+        });
+        if (!b) {
+            throw new common_1.NotFoundException('Beneficio no encontrado');
+        }
+        if (!b.activo) {
+            throw new common_1.BadRequestException('Ese beneficio está desactivado');
+        }
+        return b;
+    }
+    async aplicarBeneficioMesero(dto, idAdmin, tenantId) {
         const { iso, date } = this.parseFechaBogota(dto.fecha);
-        const sodaCfg = await this.ctxSodaAlmuerzo(tenantId);
-        if (!sodaCfg.activo) {
-            throw new common_1.BadRequestException('Activa el beneficio de soda almuerzo en Configuración');
-        }
-        if (!sodaCfg.idProducto || !sodaCfg.producto) {
-            throw new common_1.BadRequestException('Indica el producto de soda almuerzo en Configuración');
-        }
+        const beneficio = await this.loadBeneficioActivo(dto.id_beneficio_turno, tenantId);
         await this.ensureMeseroActivo(dto.id_usuario, tenantId);
+        const clave = claveDescuento(beneficio.idBeneficioTurno);
         const existing = await this.prisma.registroBeneficioMesero.findUnique({
             where: {
-                fecha_idUsuario_tipo: {
+                fecha_idUsuario_claveUnica: {
                     fecha: date,
                     idUsuario: dto.id_usuario,
-                    tipo: 'soda_almuerzo',
+                    claveUnica: clave,
                 },
             },
         });
         if (existing) {
-            throw new common_1.ConflictException('Este mesero ya tiene soda de almuerzo hoy');
+            throw new common_1.ConflictException('Ese beneficio ya está aplicado al mesero');
         }
         let desconto = false;
         await this.prisma.$transaction(async (tx) => {
-            if (sodaCfg.descontarStock && sodaCfg.producto) {
+            if (beneficio.descontarStock && beneficio.producto) {
                 const prodFresh = await tx.producto.findUnique({
-                    where: { idProducto: sodaCfg.producto.idProducto },
+                    where: { idProducto: beneficio.idProducto },
                     include: { categoria: { select: { esBebida: true } } },
                 });
                 if (prodFresh && (0, stock_bebida_1.aplicaControlStockBebida)(prodFresh)) {
@@ -276,8 +386,11 @@ let MeserosOperativosService = class MeserosOperativosService {
                 data: {
                     fecha: date,
                     idUsuario: dto.id_usuario,
-                    tipo: 'soda_almuerzo',
-                    idProducto: sodaCfg.idProducto,
+                    tipo: 'descuento_turno',
+                    claveUnica: clave,
+                    idBeneficioTurno: beneficio.idBeneficioTurno,
+                    idProducto: beneficio.idProducto,
+                    monto: Math.round(Number(beneficio.montoDescuento)),
                     cantidad: 1,
                     descontoStock: desconto,
                     idUsuarioRegistro: idAdmin,
@@ -287,7 +400,97 @@ let MeserosOperativosService = class MeserosOperativosService {
         if (desconto) {
             this.gateway.emitConfigActualizada('menu', tenantId);
         }
-        return { fecha: iso, id_usuario: dto.id_usuario, desconto_stock: desconto };
+        return {
+            fecha: iso,
+            id_usuario: dto.id_usuario,
+            id_beneficio_turno: beneficio.idBeneficioTurno,
+            desconto_stock: desconto,
+        };
+    }
+    async aplicarBeneficiosTodos(dto, idAdmin, tenantId) {
+        const { iso, date } = this.parseFechaBogota(dto.fecha);
+        const beneficios = await this.prisma.beneficioTurnoProducto.findMany({
+            where: {
+                idRestaurante: tenantId,
+                activo: true,
+                ...(dto.ids_beneficio_turno?.length
+                    ? { idBeneficioTurno: { in: dto.ids_beneficio_turno } }
+                    : {}),
+            },
+            include: {
+                producto: {
+                    include: { categoria: { select: { esBebida: true } } },
+                },
+            },
+            orderBy: [{ orden: 'asc' }, { idBeneficioTurno: 'asc' }],
+        });
+        if (beneficios.length === 0) {
+            throw new common_1.BadRequestException('Configura al menos un beneficio activo (producto + descuento)');
+        }
+        const meseros = await this.prisma.usuario.findMany({
+            where: { idRestaurante: tenantId, rol: { nombre: 'mesero' }, activo: true },
+            select: { idUsuario: true },
+        });
+        let aplicados = 0;
+        let omitidos = 0;
+        let stockDescontado = false;
+        await this.prisma.$transaction(async (tx) => {
+            for (const m of meseros) {
+                for (const beneficio of beneficios) {
+                    const clave = claveDescuento(beneficio.idBeneficioTurno);
+                    const existing = await tx.registroBeneficioMesero.findUnique({
+                        where: {
+                            fecha_idUsuario_claveUnica: {
+                                fecha: date,
+                                idUsuario: m.idUsuario,
+                                claveUnica: clave,
+                            },
+                        },
+                    });
+                    if (existing) {
+                        omitidos += 1;
+                        continue;
+                    }
+                    let desconto = false;
+                    if (beneficio.descontarStock && beneficio.producto) {
+                        const prodFresh = await tx.producto.findUnique({
+                            where: { idProducto: beneficio.idProducto },
+                            include: { categoria: { select: { esBebida: true } } },
+                        });
+                        if (prodFresh && (0, stock_bebida_1.aplicaControlStockBebida)(prodFresh)) {
+                            await (0, stock_bebida_1.descontarStockBebidaTx)(tx, prodFresh, 1);
+                            desconto = true;
+                            stockDescontado = true;
+                        }
+                    }
+                    await tx.registroBeneficioMesero.create({
+                        data: {
+                            fecha: date,
+                            idUsuario: m.idUsuario,
+                            tipo: 'descuento_turno',
+                            claveUnica: clave,
+                            idBeneficioTurno: beneficio.idBeneficioTurno,
+                            idProducto: beneficio.idProducto,
+                            monto: Math.round(Number(beneficio.montoDescuento)),
+                            cantidad: 1,
+                            descontoStock: desconto,
+                            idUsuarioRegistro: idAdmin,
+                        },
+                    });
+                    aplicados += 1;
+                }
+            }
+        });
+        if (stockDescontado) {
+            this.gateway.emitConfigActualizada('menu', tenantId);
+        }
+        return {
+            fecha: iso,
+            aplicados,
+            omitidos,
+            total_meseros: meseros.length,
+            total_beneficios: beneficios.length,
+        };
     }
     async eliminarRegistro(idRegistro, tenantId) {
         const row = await this.prisma.registroBeneficioMesero.findUnique({
@@ -348,7 +551,7 @@ let MeserosOperativosService = class MeserosOperativosService {
                 id_usuario: row.idUsuario,
                 nombre: pub.nombre,
                 apellido: pub.apellido,
-                asignado_en: row.creadoEn,
+                asignado_en: row.creadoEn.toISOString(),
             },
         };
     }
@@ -357,10 +560,14 @@ let MeserosOperativosService = class MeserosOperativosService {
     }
     async ensureMeseroActivo(idUsuario, tenantId) {
         const u = await this.prisma.usuario.findFirst({
-            where: { idUsuario, idRestaurante: tenantId },
-            include: { rol: true },
+            where: {
+                idUsuario,
+                idRestaurante: tenantId,
+                activo: true,
+                rol: { nombre: 'mesero' },
+            },
         });
-        if (!u || !u.activo || u.rol.nombre !== 'mesero') {
+        if (!u) {
             throw new common_1.BadRequestException('Mesero no encontrado o inactivo');
         }
     }

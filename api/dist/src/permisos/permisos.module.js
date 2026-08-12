@@ -16,7 +16,7 @@ let PermisosModule = class PermisosModule {
 exports.PermisosModule = PermisosModule;
 exports.PermisosModule = PermisosModule = __decorate([
     (0, common_1.Module)({
-        imports: [auth_module_1.AuthModule],
+        imports: [(0, common_1.forwardRef)(() => auth_module_1.AuthModule)],
         controllers: [permisos_controller_1.PermisosController],
         providers: [permisos_service_1.PermisosService],
         exports: [permisos_service_1.PermisosService],

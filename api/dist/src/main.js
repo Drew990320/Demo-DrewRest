@@ -32,7 +32,9 @@ function parseRequestTimeoutMs() {
     return 30_000;
 }
 function isCrossOriginPublicAsset(pathname) {
-    return (pathname.startsWith('/visual/asset/') || pathname === '/sistema/logo');
+    return (pathname.startsWith('/visual/asset/') ||
+        pathname === '/sistema/logo' ||
+        /^\/menu\/productos\/\d+\/imagen$/.test(pathname));
 }
 function securityHeaders(req, res, next) {
     res.setHeader('X-Content-Type-Options', 'nosniff');

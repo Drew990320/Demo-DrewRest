@@ -141,7 +141,7 @@ const SCREEN_DESTINATIONS = {
     categorias_admin: {
         screenId: 'categorias_admin',
         route: '/(app)/categorias-admin',
-        title: 'Días del menú',
+        title: 'Categorías y disponibilidad',
         viaMoreMenu: true,
         moreNavTarget: 'more.categorias_admin',
     },

@@ -33,7 +33,7 @@ exports.HELP_KNOWLEDGE_TOPICS = [
         relatedTargetIds: ['more.descuentos'],
         faq: [
             { q: '¿Dónde creo una promoción?', a: 'Más → Descuentos y promociones → define reglas y etiquetas del pedido.' },
-            { q: '¿Dónde edito el menú?', a: 'Más → Editar menú (productos) y Días del menú (categorías por día).' },
+            { q: '¿Dónde edito el menú?', a: 'Más → Editar menú (productos) y Categorías y disponibilidad (categorías por día).' },
         ],
     },
     {

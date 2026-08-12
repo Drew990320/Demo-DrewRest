@@ -1,9 +1,14 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.metodoMovimientoCaja = metodoMovimientoCaja;
 exports.impactoMovimientoCajaEfectivo = impactoMovimientoCajaEfectivo;
 exports.etiquetaTipoMovimientoCaja = etiquetaTipoMovimientoCaja;
 exports.resumenImpactoMovimientosCaja = resumenImpactoMovimientosCaja;
 exports.calcularEfectivoEsperadoEnCaja = calcularEfectivoEsperadoEnCaja;
+/** Efectivo o transferencia; null/omitido = efectivo (entradas históricas). */
+function metodoMovimientoCaja(m) {
+    return m.metodo_devolucion === 'transferencia' ? 'transferencia' : 'efectivo';
+}
 /** Impacto en efectivo físico en caja (+ entra, − sale). */
 function impactoMovimientoCajaEfectivo(m) {
     const monto = Math.round(Number(m.monto) || 0);
@@ -11,11 +16,12 @@ function impactoMovimientoCajaEfectivo(m) {
         return 0;
     switch (m.tipo) {
         case 'entrada_manual':
-            return monto;
+            return metodoMovimientoCaja(m) === 'efectivo' ? monto : 0;
         case 'salida_manual':
-            return -monto;
+            return metodoMovimientoCaja(m) === 'efectivo' ? -monto : 0;
         case 'pago_domicilio':
         case 'pago_mesero':
+        case 'cuota_gasto_fijo':
             return -monto;
         case 'devolucion_exceso_transferencia':
             return m.metodo_devolucion === 'efectivo' ? -monto : 0;
@@ -33,6 +39,8 @@ function etiquetaTipoMovimientoCaja(tipo) {
             return 'Pago domiciliario';
         case 'pago_mesero':
             return 'Pago al mesero (exceso transfer.)';
+        case 'cuota_gasto_fijo':
+            return 'Fondo gasto fijo';
         case 'devolucion_exceso_transferencia':
             return 'Devolución (exceso transferencia)';
         default:
@@ -41,23 +49,40 @@ function etiquetaTipoMovimientoCaja(tipo) {
 }
 function resumenImpactoMovimientosCaja(movimientos) {
     let total_entradas_manual = 0;
+    let total_entradas_manual_transferencia = 0;
     let total_salidas_manual = 0;
+    let total_salidas_manual_transferencia = 0;
     let total_devoluciones_efectivo = 0;
     let total_pagos_domicilio = 0;
     let total_pagos_mesero_exceso = 0;
+    let total_cuotas_gasto_fijo = 0;
     let neto_movimientos_caja = 0;
     for (const m of movimientos) {
         const impacto = impactoMovimientoCajaEfectivo(m);
         neto_movimientos_caja += impacto;
         const monto = Math.round(Number(m.monto) || 0);
-        if (m.tipo === 'entrada_manual')
-            total_entradas_manual += monto;
-        else if (m.tipo === 'salida_manual')
-            total_salidas_manual += monto;
+        if (m.tipo === 'entrada_manual') {
+            if (metodoMovimientoCaja(m) === 'transferencia') {
+                total_entradas_manual_transferencia += monto;
+            }
+            else {
+                total_entradas_manual += monto;
+            }
+        }
+        else if (m.tipo === 'salida_manual') {
+            if (metodoMovimientoCaja(m) === 'transferencia') {
+                total_salidas_manual_transferencia += monto;
+            }
+            else {
+                total_salidas_manual += monto;
+            }
+        }
         else if (m.tipo === 'pago_domicilio')
             total_pagos_domicilio += monto;
         else if (m.tipo === 'pago_mesero')
             total_pagos_mesero_exceso += monto;
+        else if (m.tipo === 'cuota_gasto_fijo')
+            total_cuotas_gasto_fijo += monto;
         else if (m.tipo === 'devolucion_exceso_transferencia' &&
             m.metodo_devolucion === 'efectivo') {
             total_devoluciones_efectivo += monto;
@@ -65,10 +90,13 @@ function resumenImpactoMovimientosCaja(movimientos) {
     }
     return {
         total_entradas_manual,
+        total_entradas_manual_transferencia,
         total_salidas_manual,
+        total_salidas_manual_transferencia,
         total_devoluciones_efectivo,
         total_pagos_domicilio,
         total_pagos_mesero_exceso,
+        total_cuotas_gasto_fijo,
         neto_movimientos_caja,
     };
 }
@@ -87,17 +115,21 @@ function calcularEfectivoEsperadoEnCaja(input) {
         impacto.total_salidas_manual +
         impacto.total_devoluciones_efectivo +
         impacto.total_pagos_domicilio +
-        impacto.total_pagos_mesero_exceso;
+        impacto.total_pagos_mesero_exceso +
+        impacto.total_cuotas_gasto_fijo;
     const efectivo_esperado_en_caja = subtotal_entradas_caja - subtotal_salidas_caja;
     return {
         monto_base_efectivo,
         ventas_efectivo,
         total_pagos_meseros,
         total_entradas_manual: impacto.total_entradas_manual,
+        total_entradas_manual_transferencia: impacto.total_entradas_manual_transferencia,
         total_salidas_manual: impacto.total_salidas_manual,
+        total_salidas_manual_transferencia: impacto.total_salidas_manual_transferencia,
         total_devoluciones_efectivo: impacto.total_devoluciones_efectivo,
         total_pagos_domicilio: impacto.total_pagos_domicilio,
         total_pagos_mesero_exceso: impacto.total_pagos_mesero_exceso,
+        total_cuotas_gasto_fijo: impacto.total_cuotas_gasto_fijo,
         subtotal_entradas_caja,
         subtotal_salidas_caja,
         efectivo_esperado_en_caja,

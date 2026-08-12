@@ -7,23 +7,29 @@ exports.escposBufferToPdf = escposBufferToPdf;
 const pdfkit_1 = __importDefault(require("pdfkit"));
 const escpos_buffer_decode_1 = require("./escpos-buffer-decode");
 const escpos_utils_1 = require("./escpos-utils");
+const impresora_papel_ancho_1 = require("../impresoras-pos/impresora-papel-ancho");
 const MM_TO_PT = 72 / 25.4;
-const TICKET_WIDTH_MM = 58;
-const PAGE_WIDTH_PT = TICKET_WIDTH_MM * MM_TO_PT;
 const PAD_PT = 5;
-const CONTENT_W_PT = PAGE_WIDTH_PT - PAD_PT * 2;
 const BASE_FONT_SIZE = 7.2;
 const LINE_HEIGHT = BASE_FONT_SIZE * 1.28;
 function pickFont(bold) {
     return bold ? 'Courier-Bold' : 'Courier';
 }
-function renderSegments(doc, segments, logoPng, subtitle) {
+function pageMetrics(anchoMm) {
+    const pageWidthPt = anchoMm * MM_TO_PT;
+    return {
+        pageWidthPt,
+        contentWPt: pageWidthPt - PAD_PT * 2,
+    };
+}
+function renderSegments(doc, segments, metrics, logoPng, subtitle) {
     let y = PAD_PT;
+    const { pageWidthPt, contentWPt } = metrics;
     const ensureSpace = (h) => {
         const maxY = doc.page.height - PAD_PT;
         if (y + h > maxY) {
             doc.addPage({
-                size: [PAGE_WIDTH_PT, 720],
+                size: [pageWidthPt, 720],
                 margins: { top: PAD_PT, bottom: PAD_PT, left: PAD_PT, right: PAD_PT },
             });
             y = PAD_PT;
@@ -34,7 +40,7 @@ function renderSegments(doc, segments, logoPng, subtitle) {
             .font('Helvetica')
             .fontSize(5.5)
             .fillColor('#666666')
-            .text(subtitle.trim(), PAD_PT, y, { width: CONTENT_W_PT, align: 'center' });
+            .text(subtitle.trim(), PAD_PT, y, { width: contentWPt, align: 'center' });
         y += 9;
     }
     for (const seg of segments) {
@@ -42,7 +48,7 @@ function renderSegments(doc, segments, logoPng, subtitle) {
             if (logoPng) {
                 ensureSpace(56);
                 try {
-                    doc.image(logoPng, PAD_PT, y, { width: CONTENT_W_PT });
+                    doc.image(logoPng, PAD_PT, y, { width: contentWPt });
                     y += 52;
                 }
                 catch {
@@ -54,7 +60,7 @@ function renderSegments(doc, segments, logoPng, subtitle) {
             ensureSpace(LINE_HEIGHT);
             doc
                 .moveTo(PAD_PT, y + LINE_HEIGHT * 0.45)
-                .lineTo(PAGE_WIDTH_PT - PAD_PT, y + LINE_HEIGHT * 0.45)
+                .lineTo(pageWidthPt - PAD_PT, y + LINE_HEIGHT * 0.45)
                 .strokeColor('#999999')
                 .lineWidth(0.5)
                 .stroke();
@@ -72,7 +78,7 @@ function renderSegments(doc, segments, logoPng, subtitle) {
             .fontSize(size)
             .fillColor('#111111')
             .text(line.text || ' ', PAD_PT, y, {
-            width: CONTENT_W_PT,
+            width: contentWPt,
             align: line.align,
             lineBreak: false,
         });
@@ -80,22 +86,25 @@ function renderSegments(doc, segments, logoPng, subtitle) {
     }
 }
 function escposBufferToPdf(buffer, opts) {
-    const segments = (0, escpos_buffer_decode_1.decodeEscPosBuffer)(buffer, opts?.charWidth ?? escpos_utils_1.DEFAULT_ESC_POS_WIDTH);
+    const charWidth = opts?.charWidth ?? escpos_utils_1.DEFAULT_ESC_POS_WIDTH;
+    const anchoMm = opts?.anchoMm ?? (0, impresora_papel_ancho_1.papelMmDesdeChars)(charWidth);
+    const metrics = pageMetrics(anchoMm);
+    const segments = (0, escpos_buffer_decode_1.decodeEscPosBuffer)(buffer, charWidth);
     return new Promise((resolve, reject) => {
         const chunks = [];
         const doc = new pdfkit_1.default({
-            size: [PAGE_WIDTH_PT, 720],
+            size: [metrics.pageWidthPt, 720],
             margins: { top: PAD_PT, bottom: PAD_PT, left: PAD_PT, right: PAD_PT },
             autoFirstPage: true,
             info: {
-                Title: 'Vista previa ticket POS 58 mm',
+                Title: `Vista previa ticket POS ${anchoMm} mm`,
                 Producer: 'DrewRest',
             },
         });
         doc.on('data', (chunk) => chunks.push(chunk));
         doc.on('end', () => resolve(Buffer.concat(chunks)));
         doc.on('error', reject);
-        renderSegments(doc, segments, opts?.logoPng, opts?.subtitle);
+        renderSegments(doc, segments, metrics, opts?.logoPng, opts?.subtitle);
         doc.end();
     });
 }

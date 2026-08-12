@@ -31,19 +31,34 @@ let MeserosOperativosController = class MeserosOperativosController {
     resumen(fecha, tenantId) {
         return this.service.resumen(fecha, tenantId);
     }
+    listBeneficios(tenantId) {
+        return this.service.listBeneficios(tenantId);
+    }
+    crearBeneficio(dto, tenantId) {
+        return this.service.crearBeneficio(dto, tenantId);
+    }
+    aplicarBeneficiosTodos(dto, req, tenantId) {
+        return this.service.aplicarBeneficiosTodos(dto, req.user.idUsuario, tenantId);
+    }
+    aplicarBeneficioMesero(dto, req, tenantId) {
+        return this.service.aplicarBeneficioMesero(dto, req.user.idUsuario, tenantId);
+    }
+    actualizarBeneficio(id, dto, tenantId) {
+        return this.service.actualizarBeneficio(id, dto, tenantId);
+    }
+    eliminarBeneficio(id, tenantId) {
+        return this.service.eliminarBeneficio(id, tenantId);
+    }
     upsertPagoTurno(dto, req, tenantId) {
         return this.service.upsertPagoTurno(dto, req.user.idUsuario, tenantId);
     }
-    aplicarSodaTodos(dto, req, tenantId) {
-        return this.service.aplicarSodaAlmuerzoTodos(dto, req.user.idUsuario, tenantId);
-    }
-    aplicarSodaMesero(dto, req, tenantId) {
-        return this.service.aplicarSodaAlmuerzoMesero(dto, req.user.idUsuario, tenantId);
+    repartirPagoTurno(dto, req, tenantId) {
+        return this.service.repartirPagoTurno(dto, req.user.idUsuario, tenantId);
     }
     eliminarRegistro(id, tenantId) {
         return this.service.eliminarRegistro(id, tenantId);
     }
-    asignarDelegacionCierre(dto, req, tenantId) {
+    asignarDelegacion(dto, req, tenantId) {
         return this.service.asignarDelegacionCierre(dto, req.user.idUsuario, tenantId);
     }
 };
@@ -66,6 +81,62 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], MeserosOperativosController.prototype, "resumen", null);
 __decorate([
+    (0, common_1.Get)('beneficios'),
+    (0, roles_decorator_1.Roles)('admin'),
+    __param(0, (0, current_tenant_decorator_1.CurrentTenantId)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number]),
+    __metadata("design:returntype", void 0)
+], MeserosOperativosController.prototype, "listBeneficios", null);
+__decorate([
+    (0, common_1.Post)('beneficios'),
+    (0, roles_decorator_1.Roles)('admin'),
+    __param(0, (0, common_1.Body)()),
+    __param(1, (0, current_tenant_decorator_1.CurrentTenantId)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [meseros_operativos_dto_1.UpsertBeneficioTurnoDto, Number]),
+    __metadata("design:returntype", void 0)
+], MeserosOperativosController.prototype, "crearBeneficio", null);
+__decorate([
+    (0, common_1.Post)('beneficios/aplicar'),
+    (0, roles_decorator_1.Roles)('admin'),
+    __param(0, (0, common_1.Body)()),
+    __param(1, (0, common_1.Req)()),
+    __param(2, (0, current_tenant_decorator_1.CurrentTenantId)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [meseros_operativos_dto_1.AplicarBeneficiosTurnoTodosDto, Object, Number]),
+    __metadata("design:returntype", void 0)
+], MeserosOperativosController.prototype, "aplicarBeneficiosTodos", null);
+__decorate([
+    (0, common_1.Post)('beneficios/aplicar-mesero'),
+    (0, roles_decorator_1.Roles)('admin'),
+    __param(0, (0, common_1.Body)()),
+    __param(1, (0, common_1.Req)()),
+    __param(2, (0, current_tenant_decorator_1.CurrentTenantId)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [meseros_operativos_dto_1.AplicarBeneficioTurnoMeseroDto, Object, Number]),
+    __metadata("design:returntype", void 0)
+], MeserosOperativosController.prototype, "aplicarBeneficioMesero", null);
+__decorate([
+    (0, common_1.Patch)('beneficios/:id'),
+    (0, roles_decorator_1.Roles)('admin'),
+    __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
+    __param(1, (0, common_1.Body)()),
+    __param(2, (0, current_tenant_decorator_1.CurrentTenantId)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number, meseros_operativos_dto_1.UpdateBeneficioTurnoDto, Number]),
+    __metadata("design:returntype", void 0)
+], MeserosOperativosController.prototype, "actualizarBeneficio", null);
+__decorate([
+    (0, common_1.Delete)('beneficios/:id'),
+    (0, roles_decorator_1.Roles)('admin'),
+    __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
+    __param(1, (0, current_tenant_decorator_1.CurrentTenantId)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number, Number]),
+    __metadata("design:returntype", void 0)
+], MeserosOperativosController.prototype, "eliminarBeneficio", null);
+__decorate([
     (0, common_1.Post)('pago-turno'),
     (0, roles_decorator_1.Roles)('admin'),
     __param(0, (0, common_1.Body)()),
@@ -76,25 +147,15 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], MeserosOperativosController.prototype, "upsertPagoTurno", null);
 __decorate([
-    (0, common_1.Post)('soda-almuerzo/aplicar'),
+    (0, common_1.Post)('pago-turno/repartir'),
     (0, roles_decorator_1.Roles)('admin'),
     __param(0, (0, common_1.Body)()),
     __param(1, (0, common_1.Req)()),
     __param(2, (0, current_tenant_decorator_1.CurrentTenantId)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [meseros_operativos_dto_1.AplicarSodaAlmuerzoDto, Object, Number]),
+    __metadata("design:paramtypes", [meseros_operativos_dto_1.RepartirPagoTurnoMeserosDto, Object, Number]),
     __metadata("design:returntype", void 0)
-], MeserosOperativosController.prototype, "aplicarSodaTodos", null);
-__decorate([
-    (0, common_1.Post)('soda-almuerzo/mesero'),
-    (0, roles_decorator_1.Roles)('admin'),
-    __param(0, (0, common_1.Body)()),
-    __param(1, (0, common_1.Req)()),
-    __param(2, (0, current_tenant_decorator_1.CurrentTenantId)()),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [meseros_operativos_dto_1.AplicarSodaMeseroDto, Object, Number]),
-    __metadata("design:returntype", void 0)
-], MeserosOperativosController.prototype, "aplicarSodaMesero", null);
+], MeserosOperativosController.prototype, "repartirPagoTurno", null);
 __decorate([
     (0, common_1.Delete)('registros/:id'),
     (0, roles_decorator_1.Roles)('admin'),
@@ -113,7 +174,7 @@ __decorate([
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [meseros_operativos_dto_1.AsignarDelegacionCierreDto, Object, Number]),
     __metadata("design:returntype", void 0)
-], MeserosOperativosController.prototype, "asignarDelegacionCierre", null);
+], MeserosOperativosController.prototype, "asignarDelegacion", null);
 exports.MeserosOperativosController = MeserosOperativosController = __decorate([
     (0, common_1.Controller)('meseros-operativos'),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),

@@ -703,6 +703,45 @@ let InventarioDeduccionService = class InventarioDeduccionService {
             });
         }
     }
+    async consumirRecetaProduccionEnTx(tx, input) {
+        if (input.cantidadEnteras <= 0)
+            return;
+        const configRow = await this.obtenerConfigRow(input.tenantId);
+        const politica = this.politicaDesdeRow(configRow);
+        const evento = politica.evento_receta;
+        const ctx = await this.cargarContextoDeduccion(tx, input.tenantId, [
+            input.idProducto,
+        ]);
+        const receta = ctx.recetaPorProducto.get(input.idProducto);
+        if (!receta?.lineas?.length) {
+            throw new common_1.BadRequestException('El producto necesita una receta con ingredientes (costo de 1 entera) antes de registrar producción');
+        }
+        const plan = (0, inventario_motor_1.planificarDeduccionReceta)({
+            linea: {
+                id_detalle_pedido: 0,
+                id_producto: input.idProducto,
+                cantidad: input.cantidadEnteras,
+                nombre_producto: input.nombreProducto,
+            },
+            receta,
+            articulos: ctx.articulos,
+            recetas: ctx.recetas,
+            conversiones: ctx.conversiones,
+            evento,
+            politica,
+        });
+        if (!plan.movimientos.length) {
+            throw new common_1.BadRequestException('No se pudo descontar la receta (revisa ingredientes y unidades)');
+        }
+        await this.persistirMovimientos(tx, plan.movimientos, {
+            evento,
+            idDetallePedido: 0,
+            idUsuario: input.idUsuario,
+            id_documento: input.idDocumento,
+            usaRecursos: ctx.usaRecursos,
+            tenantId: input.tenantId,
+        });
+    }
 };
 exports.InventarioDeduccionService = InventarioDeduccionService;
 exports.InventarioDeduccionService = InventarioDeduccionService = __decorate([

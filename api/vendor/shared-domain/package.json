@@ -97,6 +97,10 @@
                                                  "types":  "./dist/repartir-monto-cop.d.ts",
                                                  "default":  "./dist/repartir-monto-cop.js"
                                              },
+                    "./redondeo-cobro":  {
+                                             "types":  "./dist/redondeo-cobro.d.ts",
+                                             "default":  "./dist/redondeo-cobro.js"
+                                         },
                     "./consolidar-fragmentos-precio":  {
                                                            "types":  "./dist/consolidar-fragmentos-precio.d.ts",
                                                            "default":  "./dist/consolidar-fragmentos-precio.js"
@@ -197,6 +201,14 @@
                                           "types":  "./dist/dias-semana.d.ts",
                                           "default":  "./dist/dias-semana.js"
                                       },
+                    "./menu-franja":  {
+                                          "types":  "./dist/menu-franja.d.ts",
+                                          "default":  "./dist/menu-franja.js"
+                                      },
+                    "./menu-precio-foto-match":  {
+                                                     "types":  "./dist/menu-precio-foto-match.d.ts",
+                                                     "default":  "./dist/menu-precio-foto-match.js"
+                                                 },
                     "./usuario-display":  {
                                               "types":  "./dist/usuario-display.d.ts",
                                               "default":  "./dist/usuario-display.js"
@@ -213,6 +225,10 @@
                                               "types":  "./dist/resumen-periodo.d.ts",
                                               "default":  "./dist/resumen-periodo.js"
                                           },
+                    "./ganancias-periodo":  {
+                                                "types":  "./dist/ganancias-periodo.d.ts",
+                                                "default":  "./dist/ganancias-periodo.js"
+                                            },
                     "./stock-producto":  {
                                              "types":  "./dist/stock-producto.d.ts",
                                              "default":  "./dist/stock-producto.js"
@@ -225,6 +241,10 @@
                                                   "types":  "./dist/inventario-unidades.d.ts",
                                                   "default":  "./dist/inventario-unidades.js"
                                               },
+                    "./inventario-costo":  {
+                                               "types":  "./dist/inventario-costo.d.ts",
+                                               "default":  "./dist/inventario-costo.js"
+                                           },
                     "./inventario-movimientos":  {
                                                      "types":  "./dist/inventario-movimientos.d.ts",
                                                      "default":  "./dist/inventario-movimientos.js"

@@ -55,18 +55,15 @@ let TicketPreviewController = class TicketPreviewController {
         this.preview = preview;
     }
     catalog() {
-        return {
-            ancho_mm: 58,
-            items: this.preview.catalog(),
-        };
+        return this.preview.catalog();
     }
-    async demoHtml(tipo, res) {
-        const html = await this.preview.demoHtml(tipo);
+    async demoHtml(tipo, anchoMm, res) {
+        const html = await this.preview.demoHtml(tipo, anchoMm);
         sendHtml(res, html);
     }
-    async demo(tipo, res) {
+    async demo(tipo, anchoMm, res) {
         try {
-            const pdf = await this.preview.demoPdf(tipo);
+            const pdf = await this.preview.demoPdf(tipo, anchoMm);
             sendPdf(res, pdf, `drewrest-ticket-${tipo}.pdf`);
         }
         catch (e) {
@@ -74,7 +71,7 @@ let TicketPreviewController = class TicketPreviewController {
                 throw e;
             if (e instanceof common_1.NotFoundException)
                 throw e;
-            const html = await this.preview.demoHtml(tipo);
+            const html = await this.preview.demoHtml(tipo, anchoMm);
             sendHtml(res, html);
         }
     }
@@ -142,17 +139,19 @@ __decorate([
 __decorate([
     (0, common_1.Get)('demo/:tipo/html'),
     __param(0, (0, common_1.Param)('tipo')),
-    __param(1, (0, common_1.Res)()),
+    __param(1, (0, common_1.Query)('ancho_mm')),
+    __param(2, (0, common_1.Res)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:paramtypes", [String, Object, Object]),
     __metadata("design:returntype", Promise)
 ], TicketPreviewController.prototype, "demoHtml", null);
 __decorate([
     (0, common_1.Get)('demo/:tipo'),
     __param(0, (0, common_1.Param)('tipo')),
-    __param(1, (0, common_1.Res)()),
+    __param(1, (0, common_1.Query)('ancho_mm')),
+    __param(2, (0, common_1.Res)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:paramtypes", [String, Object, Object]),
     __metadata("design:returntype", Promise)
 ], TicketPreviewController.prototype, "demo", null);
 __decorate([
@@ -195,8 +194,8 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], TicketPreviewController.prototype, "pedidoTotalHtml", null);
 __decorate([
-    (0, common_1.Get)('factura/:id/html'),
-    __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
+    (0, common_1.Get)('factura/:idFactura/html'),
+    __param(0, (0, common_1.Param)('idFactura', common_1.ParseIntPipe)),
     __param(1, (0, common_1.Query)()),
     __param(2, (0, common_1.Res)()),
     __metadata("design:type", Function),
@@ -204,8 +203,8 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], TicketPreviewController.prototype, "facturaHtml", null);
 __decorate([
-    (0, common_1.Get)('factura/:id'),
-    __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
+    (0, common_1.Get)('factura/:idFactura'),
+    __param(0, (0, common_1.Param)('idFactura', common_1.ParseIntPipe)),
     __param(1, (0, common_1.Query)()),
     __param(2, (0, common_1.Res)()),
     __metadata("design:type", Function),
@@ -213,8 +212,8 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], TicketPreviewController.prototype, "factura", null);
 __decorate([
-    (0, common_1.Get)('movimiento-caja/:id/html'),
-    __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
+    (0, common_1.Get)('movimiento-caja/:idMovimiento/html'),
+    __param(0, (0, common_1.Param)('idMovimiento', common_1.ParseIntPipe)),
     __param(1, (0, common_1.Res)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Number, Object]),

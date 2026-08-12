@@ -42,3 +42,20 @@ export declare function lineasTicketExcesoCobro(d: DetalleExcesoCobro): LineaTic
 export declare function calcularDetalleExcesoCobro(params: CalcularDetalleExcesoCobroInput): DetalleExcesoCobro | null;
 /** Solo vuelto al cliente (compatibilidad). */
 export declare function calcularVueltoCliente(params: CalcularVueltoClienteInput): VueltoClienteInfo | null;
+/** Factura mínima para totalizar lo que realmente llegó por transferencia. */
+export type FacturaTransferidoRecibidoLike = {
+    metodo_pago?: string | null;
+    total?: number | null;
+    cobro_mixto_grupo?: number | null;
+    detalle_exceso_cobro?: unknown;
+};
+/**
+ * Monto transferido en esta factura: si hay exceso, el recibido completo;
+ * si no, el total de la pata transferencia.
+ */
+export declare function transferenciaRecibidaDeFactura(f: FacturaTransferidoRecibidoLike): number;
+/**
+ * Suma lo transferido (incluye exceso a domicilio/mesero/vuelto).
+ * En cobro mixto el snapshot se duplica en ambas patas: se cuenta una sola vez.
+ */
+export declare function totalTransferidoRecibido(facturas: readonly FacturaTransferidoRecibidoLike[]): number;
